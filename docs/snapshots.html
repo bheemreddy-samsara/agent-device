@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.4b36ad9653.js"></script>
+<script defer src="/agent-device/static/js/index.a1d27d2bce.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -123,7 +123,7 @@ now, and hints that point to hidden list content.</li>
 <li>On Android, repeating an unfiltered snapshot when nothing on screen changed (content or bounds) returns a short acknowledgement instead of the tree. <code>-i</code>, <code>-d</code>, <code>-s</code>, <code>--json</code>, and <code>--raw</code> always print full output. Add <code>--force-full</code> to get the full tree anyway.</li>
 <li>The default text output is a compact view for planning and targeting actions. It lists visible elements first and may collapse helper and accessibility noise. Use <code>--raw</code> or <code>--json</code> when you need the full provider tree. Keep <code>--raw</code> for troubleshooting, such as when you need the full off-screen tree that summaries abbreviate.</li>
 <li>Off-screen interactive content is collapsed into summaries that show only a few labels, such as <code>[off-screen below] 3 interactive items: &quot;Privacy&quot;, &quot;Battery&quot;, &quot;About&quot;</code>.</li>
-<li>If your target only appears in an off-screen summary, run <code>scroll &lt;direction&gt;</code> and snapshot again until it is visible.</li>
+<li>If your target only appears in an off-screen summary, run <code>scroll &lt;direction&gt; --until &lt;selector&gt;</code> to stop on it, or <code>scroll &lt;direction&gt; --settle</code> to get the diff with fresh refs. See <a href="/agent-device/docs/commands#interactions" class="rp-link">Interactions</a>.</li>
 <li>When agent-device knows which container holds the hidden content, it shows the summary inside that scroll or list container, for example <code>[content above scroll-area hidden]</code> or <code>[content below list hidden]</code>.</li>
 <li>Add <code>-s &quot;&lt;label&gt;&quot;</code> (or <code>-s @ref</code>) to limit output to one part of the screen. See <a href="#scope-a-snapshot" class="rp-link">Scope a snapshot</a>.</li>
 <li>Add <code>-d &lt;depth&gt;</code> when you only need the upper layers of the hierarchy.</li>
