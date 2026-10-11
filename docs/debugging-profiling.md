@@ -30,11 +30,30 @@ agent-device react-devtools profile report @c5
 
 `react-devtools` runs a pinned version of `agent-react-devtools` and passes your arguments to it.
 
+On React Native 0.87 and later, set up the app once before `react-devtools wait --connected` can succeed, locally or through a remote bridge: install `agent-react-devtools` as a dev dependency of the app project, run `npx agent-react-devtools init` there, and rebundle. The package `react-devtools` runs is temporary and does not install it into the app. Run `npx agent-react-devtools uninit` when you no longer need the setup.
+
 For React Native apps, overlays, Metro/Fast Refresh blockers, and routing to React DevTools or debugging evidence, start with `agent-device help react-native`. For slow-flow investigations, combine `help react-devtools` for the narrow React profile window with `help debugging` for log markers, network/audio evidence, traces, and perf samples. Start with one bounded survey: the `profile stop` summary, the `slow` and `rerenders` tables with a `--limit`, and `timeline` only when commit timing matters. Then drill into a specific `@c` ref with `profile report` instead of raising the `profile slow` limit again and again.
 
 React Native warning and error overlays come from the app. Treat them as findings or blockers: capture them, check `react-devtools errors` when connected, run `agent-device react-native dismiss-overlay` when the overlay is unrelated, then re-snapshot and report the overlay.
 
 For permission prompts and other alerts already on screen, see [Wait and alerts](/agent-device/docs/commands.md#wait-and-alerts).
+
+### Remote bridge sessions
+
+On Android and iOS sessions connected through a remote bridge profile, `react-devtools` opens a tunnel to the DevTools daemon at `127.0.0.1:8097` inside the remote sandbox. Android uses the bridge's `adb reverse` mapping; iOS uses the bridge's wildcard Metro host tunnel. The tunnel stays up until you run `agent-device react-devtools stop` or `agent-device disconnect`.
+
+React Native tries to reach DevTools once, during JavaScript startup. On remote iOS, start DevTools before that launch:
+
+```bash
+agent-device open com.example.myapp --platform ios
+agent-device react-devtools start
+agent-device open com.example.myapp --platform ios --relaunch
+agent-device react-devtools wait --connected
+```
+
+The first `open` creates the bridge session; the relaunch lets the app find the running DevTools daemon.
+
+This path assumes the DevTools behavior bundled with React Native 0.83 and later. Browser or Chromium DevTools workflows from older versions are not available inside remote sandboxes. For Expo projects, check the React Native version your SDK bundles; no Expo SDK has been verified separately.
 
 ## React Native JS memory through CDP
 
@@ -161,7 +180,12 @@ agent-device network dump 25 --include all
 
 - `network dump` parses recent HTTP(s) entries from the session app log for app/device sessions and from managed `agent-browser` request history for web sessions.
 - For app/device sessions, results depend on what the app writes to the platform log.
-- For the alias and per-platform limits, see [Media and logs](/agent-device/docs/commands.md#media-and-logs).
+- On Android, results include logcat timestamps, and status and duration can be filled in from adjacent GIBSDK packet lines when the URL is logged separately. Log streaming reattaches to the app's new process after a restart.
+- On iOS simulators, logs stream from inside the simulator, and `network dump` reads recent simulator log history when the live window is sparse.
+- On iOS, `network dump` can return zero entries for real traffic when the app does not log request metadata to Unified Logging. The response notes tell an empty repro window apart from a log window with no network lines.
+- On iOS, the system logs a request URL only when it opens a connection. Requests that reuse a keep-alive connection are reported against that connection's origin with `pathUnavailable: true`, their status, and timing. Requests whose connection opened before the scanned window are only counted in `unnamedRequests`. Treat an endpoint missing from an iOS dump as unproven, not as never called.
+- On web, request and response bodies are not available; use `agent-browser` HAR capture directly when you need them.
+- For the alias and scan limits, see [Media and logs](/agent-device/docs/commands.md#media-and-logs).
 
 ### Audio probes
 
@@ -209,6 +233,12 @@ agent-device perf trace stop --kind perfetto --out app.perfetto-trace
 - Memory and Android frame-health availability depend on platform and whether the active session is bound to an app/package. HarmonyOS reports process RSS through HDC; CPU profiling, frame sampling, and memory-snapshot artifacts remain unavailable on the public HDC surface.
 - `open` returns app startup duration as `startup`.
 - On Android and supported Apple targets, use `metrics.fps.droppedFramePercent` for the health check and `metrics.fps.worstWindows` to line up jank clusters with logs, network activity, or recent actions.
+- Android frame health comes from `dumpsys gfxinfo <package> framestats` and memory from `dumpsys meminfo <package>`. Apple frame health comes from the xctrace Animation Hitches template, and memory from process RSS. Memory values are in kilobytes.
+- Android frame health resets after each successful `perf frames` read and after `open <app>`. For a focused window, run `perf frames`, perform the interaction, then run `perf frames` again.
+- On physical iOS devices, `perf frames` records a short xctrace sample. Keep the device unlocked and connected, with the app in the foreground.
+- After an Android URL or deep-link `open`, including Expo Go and dev-client shells, agent-device tries to detect the foreground package. If the session still has no package, package-bound metrics stay unavailable until you run `open <app>`.
+- The Simpleperf report artifact keeps up to 50 parsed rows.
+- Without `--json`, each perf area prints a compact summary.
 
 ## Where to go deeper
 
