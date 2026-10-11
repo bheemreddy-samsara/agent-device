@@ -110,12 +110,26 @@ Skills come from the GitHub repository, not the npm package. The [agent-device s
 
 ## Recommended agent rule
 
-Add this as a project rule or custom instruction if your agent client supports one:
+Add this rule to your agent client's project rules or custom instructions. [Set up your client](#set-up-your-agent-client) shows where the file goes for each client.
 
 ```text
-Use agent-device only for app/device automation tasks. For a normal app-driving task, start immediately. Do not probe first with `--help`, `--version`, `devices`, `appstate`, `snapshot`, or `screenshot`; open the requested app in the foreground and continue from its initial interactive snapshot. For TV, Fire TV, or Vega OS tasks, read `agent-device help tv`. For exploratory QA, read `agent-device help dogfood`. For logs, network, audio, traces, or runtime failures, read `agent-device help debugging`. For React Native component trees, props/state/hooks, slow renders, or rerenders, read `agent-device help react-devtools`. For React Native JavaScript heap growth, heap snapshots, allocation hotspots, or retained-object leaks, read `agent-device help cdp`. For React Native apps, overlays, Metro/Fast Refresh blockers, and routing to React DevTools or debugging evidence, read `agent-device help react-native`.
+Use agent-device only for app/device automation tasks.
+For a normal app-driving task, start immediately. Do not probe first with `--help`, `--version`, `devices`, `appstate`, `snapshot`, or `screenshot`; open the requested app in the foreground and continue from its initial interactive snapshot.
+For TV, Fire TV, or Vega OS tasks, read `agent-device help tv`.
+For exploratory QA, read `agent-device help dogfood`.
+For logs, network, audio, traces, or runtime failures, read `agent-device help debugging`.
+For React Native component trees, props/state/hooks, slow renders, or rerenders, read `agent-device help react-devtools`.
+For React Native JavaScript heap growth, heap snapshots, allocation hotspots, or retained-object leaks, read `agent-device help cdp`.
+For React Native apps, overlays, Metro/Fast Refresh blockers, and routing to React DevTools or debugging evidence, read `agent-device help react-native`.
 
-Use MCP tools or the CLI in the integrated terminal. If `agent-device` is not on PATH but the user installed it globally in another shell, resolve the command the same way the user would from a normal terminal session and run that absolute path instead. This may require inspecting shell startup behavior or package-manager/global bin locations; do not assume the agent process `PATH` is the user's `PATH`. Do not silently fall back to `npx -y agent-device@latest`; ask or use an exact version. MCP exposes structured tools backed by the agent-device client; it does not expose generic shell execution. Prefer `open -> snapshot -i -> act -> re-snapshot -> verify -> close` where the target supports capture and selectors; otherwise follow target-specific help. Use current refs such as `@e3` for exploration and selectors for durable replay. Keep mutating commands against one session serial. Capture screenshots, logs, network, audio, perf, traces, recordings, and `.ad` replay scripts only when they add evidence.
+Use MCP tools or the CLI in the integrated terminal.
+If `agent-device` is not on PATH but the user installed it globally in another shell, resolve the command the same way the user would from a normal terminal session and run that absolute path instead. This may require inspecting shell startup behavior or package-manager/global bin locations; do not assume the agent process `PATH` is the user's `PATH`.
+Do not silently fall back to `npx -y agent-device@latest`; ask or use an exact version.
+MCP exposes structured tools backed by the agent-device client; it does not expose generic shell execution.
+Prefer `open -> snapshot -i -> act -> re-snapshot -> verify -> close` where the target supports capture and selectors; otherwise follow target-specific help.
+Use current refs such as `@e3` for exploration and selectors for durable replay.
+Keep mutating commands against one session serial.
+Capture screenshots, logs, network, audio, perf, traces, recordings, and `.ad` replay scripts only when they add evidence.
 ```
 
 ## MCP server
@@ -162,13 +176,26 @@ In MCP registries, the server is listed as `io.github.callstack/agent-device` (n
 
 Some agent clients run commands with a different `PATH` than your normal shell, so a global install that works in your terminal can be missing in the agent's terminal or MCP server. Run `command -v agent-device` in your own terminal and give the agent that absolute path, or use it as the MCP server `command`. If the path is under a version manager or a package-manager global bin directory, check your shell startup files for how that directory gets on `PATH`; the agent client may not load them.
 
+## Set up your agent client
+
+Each client reads the [recommended agent rule](#recommended-agent-rule) from its own location:
+
+| Client                             | Where the rule goes                               | Client-specific wrapper                                                     |
+| ---------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
+| Cursor                             | `.cursor/rules/agent-device.mdc`                  | Required `.mdc` frontmatter above the rule                                  |
+| Codex                              | `AGENTS.md` in the project root                   | None                                                                        |
+| Claude Code                        | `CLAUDE.md` in the project root                   | None; an `# agent-device` heading keeps it separate from other instructions |
+| Windsurf, Cline, Goose, and others | The client's project rules or custom instructions | Whatever the client requires for a rules file                               |
+
+The sections below cover each client, including MCP setup.
+
 ## Cursor
 
 Cursor can use the CLI or MCP tools. Use the CLI when you want every command visible in the terminal. Add MCP when you want Cursor Agent to discover `agent-device` tools directly from chat.
 
 ### Cursor: use the CLI
 
-Create a project rule:
+Create the rule file with the frontmatter Cursor requires:
 
 ```bash
 mkdir -p .cursor/rules
@@ -178,23 +205,11 @@ description: Use agent-device for app and device automation
 alwaysApply: true
 ---
 
-Use agent-device only for app/device automation tasks.
-For a normal app-driving task, start immediately. Do not probe first with `--help`, `--version`, `devices`, `appstate`, `snapshot`, or `screenshot`; open the requested app in the foreground and continue from its initial interactive snapshot.
-For TV, Fire TV, or Vega OS tasks, read `agent-device help tv`.
-For exploratory QA, read `agent-device help dogfood`.
-For logs, network, audio, traces, or runtime failures, read `agent-device help debugging`.
-For React Native component trees, props/state/hooks, slow renders, or rerenders, read `agent-device help react-devtools`.
-For React Native JavaScript heap growth, heap snapshots, or retained-object leaks, read `agent-device help cdp`.
-For React Native apps, overlays, Metro/Fast Refresh blockers, and routing to React DevTools or debugging evidence, read `agent-device help react-native`.
-
-Use the CLI in Cursor's integrated terminal.
-If `agent-device` is not on PATH but the user installed it globally in another shell, resolve the absolute binary path instead of using `npx -y agent-device@latest`.
-Prefer `open -> snapshot -i -> act -> re-snapshot -> verify -> close` where supported; otherwise follow target-specific help.
-Keep mutating commands against one session serial.
+REPLACE THIS LINE with the recommended agent rule from https://oss.callstack.com/agent-device/docs/agent-setup#recommended-agent-rule
 EOF
 ```
 
-Then ask Cursor Agent to run:
+Open `.cursor/rules/agent-device.mdc` and replace the placeholder line with the [recommended agent rule](#recommended-agent-rule). Then ask Cursor Agent to run:
 
 ```bash
 agent-device open <app-or-url> --platform ios --foreground
@@ -239,7 +254,7 @@ If the MCP server fails to start because Cursor can't find the global binary, us
 
 ## Codex
 
-Put the [recommended rule](#recommended-agent-rule) in `AGENTS.md` or the project instructions, then let Codex run `agent-device` in the terminal:
+Paste the [recommended agent rule](#recommended-agent-rule) into `AGENTS.md` in the project root, or into the project instructions, then let Codex run `agent-device` in the terminal:
 
 ```bash
 agent-device open <app-or-url> --platform ios --foreground
@@ -255,27 +270,7 @@ Claude Code can use `agent-device` from the terminal or from the VS Code extensi
 
 ### Claude Code: use the CLI
 
-Put this in `CLAUDE.md`:
-
-```bash
-cat > CLAUDE.md <<'EOF'
-# agent-device
-
-Use agent-device only for app/device automation tasks.
-For a normal app-driving task, start immediately. Do not probe first with `--help`, `--version`, `devices`, `appstate`, `snapshot`, or `screenshot`; open the requested app in the foreground and continue from its initial interactive snapshot.
-For TV, Fire TV, or Vega OS tasks, read `agent-device help tv`.
-For exploratory QA, read `agent-device help dogfood`.
-For logs, network, audio, traces, or runtime failures, read `agent-device help debugging`.
-For React Native component trees, props/state/hooks, slow renders, or rerenders, read `agent-device help react-devtools`.
-For React Native JavaScript heap growth, heap snapshots, or retained-object leaks, read `agent-device help cdp`.
-For React Native apps, overlays, Metro/Fast Refresh blockers, and routing to React DevTools or debugging evidence, read `agent-device help react-native`.
-
-Use the CLI in the integrated terminal.
-If `agent-device` is not on PATH but the user installed it globally in another shell, resolve the absolute binary path instead of using `npx -y agent-device@latest`.
-Prefer `open -> snapshot -i -> act -> re-snapshot -> verify -> close` where supported; otherwise follow target-specific help.
-Keep mutating commands against one session serial.
-EOF
-```
+Open `CLAUDE.md` in the project root, creating it if it doesn't exist. Add an `# agent-device` heading and paste the [recommended agent rule](#recommended-agent-rule) below it. Keep any instructions already in the file.
 
 Then ask Claude Code to run:
 
@@ -323,7 +318,7 @@ You can still run CLI commands in the integrated terminal for long-running or ma
 
 If the client supports `mcpServers`, use the [MCP server](#mcp-server) configuration, then tell the agent to use MCP tools or terminal CLI commands for device work.
 
-If the client supports project rules or custom instructions, add the [recommended agent rule](#recommended-agent-rule). If it doesn't, ask the agent to open the requested app and continue from the initial interactive snapshot; point it to a help topic only when the task is specialized or a command is unclear.
+If the client supports project rules or custom instructions, paste the [recommended agent rule](#recommended-agent-rule) there, inside any wrapper the client requires for a rules file. If it doesn't, ask the agent to open the requested app and continue from the initial interactive snapshot; point it to a help topic only when the task is specialized or a command is unclear.
 
 ## Related pages
 
@@ -483,7 +478,7 @@ agent-device artifacts --json
 agent-device disconnect
 ```
 
-To use AWS Device Farm only through MCP, run `connect` in the same effective state directory before you start `agent-device mcp`. MCP exposes device commands such as `open`, `snapshot`, `close`, and `artifacts`, but not provider `connect` commands.
+To drive AWS Device Farm only through MCP, see [Use a provider only through MCP](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#use-a-provider-only-through-mcp).
 
 ## Use the Node.js client
 
@@ -507,15 +502,11 @@ const closed = await client.sessions.close();
 
 ## Get artifacts and troubleshoot
 
-After `close`, AWS Device Farm can return remote-access video and log artifacts once it finalizes them. Run `agent-device artifacts --json`, or look up an earlier session by its ARN:
+After `close`, AWS Device Farm can return remote-access video and log artifacts once it finalizes them. The provider session ID is the remote-access session ARN. See [Retrieve artifacts after close](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#retrieve-artifacts-after-close).
 
-```bash
-agent-device artifacts <remote-access-session-arn> --provider aws-device-farm --json
-```
+If `connect` fails, use the reported `aws devicefarm get-*` error to check the credential chain, ARN, region, resource platform, or upload readiness. A failed `connect` has not allocated a device yet.
 
-If `connect` fails, use the reported `aws devicefarm get-*` error to check the credential chain, ARN, region, resource platform, or upload readiness. A failed `connect` has not allocated a device yet. If artifacts are still pending right after `close`, retry the lookup.
-
-On hosted WebDriver sessions, `fill` checks that the field received focus before it sends keys. If it cannot confirm focus, it fails without typing. Use `snapshot -i` to confirm the target. If the driver cannot report focus at all, use `press <target>` followed by `type <text>`, which sends text without confirming where it lands.
+To enter text, see [Fill text on hosted WebDriver sessions](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#fill-text-on-hosted-webdriver-sessions).
 
 On a screen that never goes still, such as a looping video, a live ticker, or continuous animation, `snapshot -i` can time out while `screenshot` of the same screen still returns. On a metered device every second of that read is billed, so do not retry the snapshot in a loop. Take a screenshot instead and drive from `@refs` an earlier snapshot captured. `--depth` trims the tree after it arrives, so it cannot shorten a read that never finishes. See [Snapshots](/agent-device/pr-preview/pr-3395/docs/snapshots.md) for details.
 
@@ -717,7 +708,7 @@ agent-device connect browserstack \
 
 `connect` verifies the BrowserStack credentials and the exact device/OS pair. It checks a `bs://` reference against recent uploads, and confirms that a local app file exists before saving its absolute path. A public URL is saved as-is; BrowserStack validates it when the session starts. `open` takes the app's installed package or bundle identifier, not its upload name.
 
-A running daemon keeps the BrowserStack credentials it started with. If your shell holds different ones, the first command that allocates a lease, such as `open`, refuses before it creates a session. Run `agent-device daemon stop` (with the same `--state-dir`) and rerun the command. A shell that sets neither variable uses the daemon's credentials.
+If you change credentials while the daemon runs, see [Change credentials while the daemon runs](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#change-credentials-while-the-daemon-runs).
 
 Optional labels:
 
@@ -770,7 +761,7 @@ agent-device artifacts --json
 agent-device disconnect
 ```
 
-To use BrowserStack only through MCP, run `connect` in the same effective state directory before you start `agent-device mcp`. MCP exposes device commands such as `open`, `snapshot`, `close`, and `artifacts`, but not provider `connect` commands.
+To drive BrowserStack only through MCP, see [Use a provider only through MCP](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#use-a-provider-only-through-mcp).
 
 ## Use the Node.js client
 
@@ -807,76 +798,67 @@ if (providerSessionId) {
 
 ## Get artifacts and troubleshoot
 
-After `close`, BrowserStack can return session video, Appium logs, device logs, dashboard URLs, and public URLs. Run `agent-device artifacts --json`, or look up an earlier session by its ID:
+After `close`, BrowserStack can return session video, Appium logs, device logs, dashboard URLs, and public URLs. The provider session ID is the WebDriver session ID. See [Retrieve artifacts after close](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#retrieve-artifacts-after-close).
 
-```bash
-agent-device artifacts <webdriver-session-id> --provider browserstack --json
-```
+BrowserStack errors distinguish rejected credentials, an unavailable device/OS pair, a missing `bs://` upload, and a missing local app file.
 
-BrowserStack errors distinguish rejected credentials, an unavailable device/OS pair, a missing `bs://` upload, and a missing local app file. If artifacts are still pending right after `close`, retry the lookup; BrowserStack may still be finalizing video and log URLs.
-
-On hosted WebDriver sessions, `fill` checks that the field received focus before it sends keys. If it cannot confirm focus, it fails without typing. Use `snapshot -i` to confirm the target. If the driver cannot report focus at all, use `press <target>` followed by `type <text>`, which sends text without confirming where it lands.
+To enter text, see [Fill text on hosted WebDriver sessions](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#fill-text-on-hosted-webdriver-sessions).
 
 
 
 ---
-url: /agent-device/pr-preview/pr-3395/docs/client-api.md
+url: /agent-device/pr-preview/pr-3395/docs/build-an-integration.md
 ---
 
-# Node.js API
+# Build an integration
 
-Use `createAgentDeviceClient()` for typed, deterministic device automation from Node.js instead of shelling out to the CLI.
+This page is for developers who build a bridge, remote daemon, device-cloud backend, or in-process runner on top of agent-device. These entry points let your server own device access, command dispatch, or Metro while reusing agent-device's behavior.
 
-Building an agent? Start with the dedicated [AI SDK](/agent-device/pr-preview/pr-3395/docs/ai-sdk.md) or [Eve](/agent-device/pr-preview/pr-3395/docs/eve.md) integration.
+To drive devices from your own Node.js code, use the [Node.js API](/agent-device/pr-preview/pr-3395/docs/client-api.md) instead.
 
 ## Runnable examples
 
-The repository includes [runnable, typechecked Node.js examples](https://github.com/callstack/agent-device/tree/main/examples/sdk). They import the same published `agent-device/*` entry points your code uses:
+The repository includes [runnable, typechecked examples](https://github.com/callstack/agent-device/tree/main/examples/sdk) for these entry points:
 
-| Example                                                                                                             | Demonstrates                                                                |
-| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| [`client-session.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/client-session.ts)           | Open, snapshot, interact, handle typed errors, and always close the session |
-| [`contracts-result.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/contracts-result.ts)       | Consume snapshot results with helpers from `agent-device/contracts`         |
-| [`batch-orchestration.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/batch-orchestration.ts) | Run a batch through a custom transport                                      |
-| [`metro-runtime.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/metro-runtime.ts)             | Normalize a Metro URL and resolve runtime transport hints                   |
+| Example                                                                                                             | Demonstrates                                              |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| [`batch-orchestration.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/batch-orchestration.ts) | Run a batch through a custom transport                    |
+| [`metro-runtime.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/metro-runtime.ts)             | Normalize a Metro URL and resolve runtime transport hints |
 
-Each example typechecks against the SDK through its own [`tsconfig.json`](https://github.com/callstack/agent-device/blob/main/examples/sdk/tsconfig.json). Build the package with `pnpm build`, then run an example with Node:
+Build the package with `pnpm build`, then run an example with Node:
 
 ```bash
-node --experimental-strip-types examples/sdk/client-session.ts
+node --experimental-strip-types examples/sdk/metro-runtime.ts
 ```
 
 ## API reference
 
-Public entry points:
+Entry points for integrations:
 
-- `agent-device`
-  - `createAgentDeviceClient(options?)`
-  - `createLocalArtifactAdapter(options?)`
-  - `AppError`, `isAgentDeviceError(error)`, `normalizeAgentDeviceError(error)`
-  - `centerOfRect(rect)`
-  - types: `AgentDeviceClient`, `AgentDeviceClientConfig`, `AgentDeviceDevice`
-  - types: every option and result type of the client's methods, among them `AppOpenOptions`,
-    `AppOpenResult`, `CaptureSnapshotOptions`, `CaptureSnapshotResult`, `CaptureScreenshotResult`,
-    `PressOptions`
-  - types: `SnapshotNode`, `RawSnapshotNode`, `SnapshotState`, `Rect`, `Point`
-  - types: `NormalizedError`, `AppErrorCode`, `KnownAppErrorCode`, `AppErrorDetails`, `ErrorCause`
-- `agent-device/io`
-  - `createLocalArtifactAdapter(options?)`
-  - types: `ArtifactAdapter`, `ArtifactDescriptor`, `CreateTempFileOptions`, `FileInputRef`,
-    `FileOutputRef`, `LocalArtifactAdapterOptions`, `OutputVisibility`, `ReserveOutputOptions`,
-    `ReservedOutputFile`, `ResolveInputOptions`, `ResolvedInputFile`, `TemporaryFile`
+- `agent-device/android-adb`
+  - `createAndroidPortReverseManager(provider)` / `createAndroidPortReverseManager(executor, { noRebind })`
+  - `captureAndroidLogcatWithAdb(executor, options?)`
+  - `readAndroidClipboardWithAdb(executor)` / `writeAndroidClipboardWithAdb(executor, text)`
+  - `getAndroidKeyboardStatusWithAdb(executor)` / `dismissAndroidKeyboardWithAdb(executor)`
+  - `openAndroidAppWithAdb(executor, packageName)`
+  - `forceStopAndroidAppWithAdb(executor, packageName)`
+  - `listAndroidAppsWithAdb(executor)`
+  - `getAndroidAppStateWithAdb(executor)`
+  - `runAdbShell(executor, words, options?)` / `runAdbExecOut(executor, words, options?)`
+  - `runAndroidShell(device, words, options?)` / `runAndroidExecOut(device, words, options?)`
+  - types: `AndroidAdbExecutor`, `AndroidAdbExecutorOptions`, `AndroidAdbProvider`,
+    `AndroidKeyboardState`, `AndroidKeyboardDismissResult`, `AndroidPortReverseEndpoint`
+- `agent-device/batch`
+  - `runBatch(req, sessionName, invoke)`
+- `agent-device/remote-config`
+  - `resolveRemoteConfigProfile(options)`
+  - types: `RemoteConfigProfile`
 - `agent-device/metro`
   - `buildBundleUrl(baseUrl, platform)`
   - `normalizeBaseUrl(baseUrl)`
   - `resolveRuntimeTransport(runtime)`
   - `prepareMetroRuntime(options?)`, `reloadMetro(options?)`, `stopMetroTunnel(options)`
   - types: `MetroBridgeDescriptor`, `MetroTunnelRequestMessage`, `MetroTunnelResponseMessage`
-- `agent-device/batch`
-  - `runBatch(req, sessionName, invoke)`
-- `agent-device/remote-config`
-  - `resolveRemoteConfigProfile(options)`
-  - types: `RemoteConfigProfile`
 - `agent-device/contracts`
   - `centerOfRect(rect)`
   - `defaultHintForCode(code)`, `normalizeError(error)`
@@ -903,17 +885,6 @@ Public entry points:
   - types: `MaterializeInstallSource`
 - `agent-device/artifacts`
   - `resolveAndroidArchivePackageName(archivePath)`
-- `agent-device/android-adb`
-  - `createAndroidPortReverseManager(provider)` / `createAndroidPortReverseManager(executor, { noRebind })`
-  - `captureAndroidLogcatWithAdb(executor, options?)`
-  - `readAndroidClipboardWithAdb(executor)` / `writeAndroidClipboardWithAdb(executor, text)`
-  - `getAndroidKeyboardStatusWithAdb(executor)` / `dismissAndroidKeyboardWithAdb(executor)`
-  - `openAndroidAppWithAdb(executor, packageName)`
-  - `forceStopAndroidAppWithAdb(executor, packageName)`
-  - `listAndroidAppsWithAdb(executor)`
-  - `getAndroidAppStateWithAdb(executor)`
-  - types: `AndroidAdbExecutor`, `AndroidAdbExecutorOptions`, `AndroidAdbProvider`,
-    `AndroidKeyboardState`, `AndroidKeyboardDismissResult`, `AndroidPortReverseEndpoint`
 - `agent-device/limrun`
   - `new LimrunRuntime(options)`
   - `runtime.getDeviceSession(device)`
@@ -923,6 +894,229 @@ Public entry points:
   - experimental `WebDriverPluginOptions` for providers using the shared engine.
 - `agent-device/plugins`
   - experimental factory context: `ProviderPluginHost`; see [provider plugins](/agent-device/pr-preview/pr-3395/docs/plugins.md).
+
+## Android ADB providers
+
+Use `agent-device/android-adb` when your bridge owns Android device access and you want
+agent-device's behavior for ADB operations. Executors receive the arguments that follow `adb`, so a
+remote bridge can route the same argument arrays through an ADB tunnel, websocket API, or another
+remote transport.
+
+The helpers take an executor directly. Use `captureAndroidLogcatWithAdb(executor, options?)` for a
+bounded logcat capture.
+
+A provider can also expose `reverse` to own port reversal. Plain executors do not advertise reverse
+support; call `createAndroidPortReverseManager(providerOrExecutor)`
+only when the provider supports `adb reverse` argument semantics. The manager makes duplicate setup
+idempotent for the same owner and rejects conflicting owners for the same local endpoint. For a
+device that other adb clients also drive, pass an executor with `{ noRebind: true }`: the manager
+runs `adb reverse --no-rebind` and never replaces an existing device mapping, including one it
+created. When `adb reverse --list` shows the mapping, the refusal fails with `COMMAND_FAILED` and
+`details.reason: 'android_port_reverse_rebind_refused'`. Otherwise it fails as an ordinary adb error.
+
+The device shell re-parses whatever follows `shell` or `exec-out`, so those commands are built for you:
+every dynamic word is rendered for the quoting its transport applies before it reaches the device. `adb`
+forwards words verbatim, so a word is single-quoted; `hdc` wraps each element it sends in double quotes,
+where `$`, a backquote, and `"` stay live, so a word is escaped for that context instead. An array that
+begins with `shell` or `exec-out` and did not come from those builders is refused with `INVALID_ARGS` and
+`details.reason: 'unguarded-device-shell-argv'` instead of being dispatched. A bridge that composes its
+own device commands calls `runAdbShell(executor, words, options?)` or
+`runAdbExecOut(executor, words, options?)` from `agent-device/android-adb`, passing each value as its
+own word; `runAndroidShell(device, words, options?)` and `runAndroidExecOut(device, words, options?)`
+resolve the executor from a device instead.
+
+```ts
+import { getAndroidAppStateWithAdb, listAndroidAppsWithAdb } from 'agent-device/android-adb';
+import type { AndroidAdbExecutorOptions } from 'agent-device/android-adb';
+
+const provider = {
+  exec: async (args: readonly string[], options?: AndroidAdbExecutorOptions) =>
+    await runAdbThroughRemoteTunnel(args, options),
+};
+
+const apps = await listAndroidAppsWithAdb(provider.exec); // user-installed apps by default
+const foreground = await getAndroidAppStateWithAdb(provider.exec);
+```
+
+## Batch orchestration for custom transports
+
+Use `agent-device/batch` when a bridge or in-process runner receives daemon-shaped requests but owns command dispatch itself. The helper applies the same validation, inherited flags, serial execution, partial results, and error envelopes as the daemon `batch` command.
+
+Full example from [`examples/sdk/batch-orchestration.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/batch-orchestration.ts):
+
+```ts file="<root>/../examples/sdk/batch-orchestration.ts"
+/**
+ * Batch orchestration for a custom transport: `runBatch` keeps step
+ * validation, inherited flags, serial execution, partial results, and
+ * daemon-shaped error envelopes aligned with the CLI's `batch` command, so a
+ * bridge that owns command dispatch itself does not have to reimplement them.
+ *
+ * Demonstrates: `runBatch` from `agent-device/batch`, consumed against the
+ * `DaemonResponse` result type from `agent-device/contracts`.
+ *
+ * Prerequisites: none — `dispatch` below is a stub; a real integration would
+ * replace it with a call into the bridge's own command dispatcher.
+ *
+ * Run: node --experimental-strip-types examples/sdk/batch-orchestration.ts
+ */
+import { runBatch } from 'agent-device/batch';
+import type { DaemonResponse } from 'agent-device/contracts';
+
+type BatchRequest = Parameters<typeof runBatch>[0];
+
+async function dispatch(stepReq: unknown): Promise<Record<string, unknown>> {
+  console.log('dispatching step', stepReq);
+  return { handled: true };
+}
+
+function bridgeErrorToDaemonResponse(error: unknown): Extract<DaemonResponse, { ok: false }> {
+  return {
+    ok: false,
+    error: {
+      code: 'COMMAND_FAILED',
+      message: error instanceof Error ? error.message : 'Unknown bridge error',
+    },
+  };
+}
+
+async function handleBatch(req: BatchRequest): Promise<DaemonResponse> {
+  return await runBatch(req, req.session ?? 'default', async (stepReq) => {
+    try {
+      return { ok: true, data: await dispatch(stepReq) };
+    } catch (error) {
+      return bridgeErrorToDaemonResponse(error);
+    }
+  });
+}
+
+const result = await handleBatch({
+  command: 'batch',
+  positionals: [],
+  flags: {
+    batchSteps: [
+      { command: 'wait', input: { text: 'Welcome' } },
+      { command: 'back', input: {} },
+    ],
+  },
+});
+
+if (result.ok) {
+  console.log(`batch completed: ${JSON.stringify(result.data)}`);
+} else {
+  console.error(`batch failed [${result.error.code}]: ${result.error.message}`);
+  process.exitCode = 1;
+}
+
+```
+
+## Remote Metro helpers
+
+```ts
+import { prepareMetroRuntime, reloadMetro, stopMetroTunnel } from 'agent-device/metro';
+import { resolveRemoteConfigProfile } from 'agent-device/remote-config';
+
+const remoteConfig = resolveRemoteConfigProfile({
+  configPath: './agent-device.remote.json',
+  cwd: process.cwd(),
+});
+
+const prepared = await prepareMetroRuntime({
+  projectRoot: remoteConfig.profile.metroProjectRoot!,
+  kind: remoteConfig.profile.metroKind ?? 'auto',
+  proxyBaseUrl: remoteConfig.profile.metroProxyBaseUrl,
+  proxyBearerToken: remoteConfig.profile.metroBearerToken,
+  bridgeScope: {
+    tenantId: remoteConfig.profile.tenant!,
+    runId: remoteConfig.profile.runId!,
+    leaseId: remoteConfig.profile.leaseId!,
+  },
+  companionProfileKey: remoteConfig.resolvedPath,
+});
+
+console.log(prepared.iosRuntime, prepared.androidRuntime);
+
+await reloadMetro({
+  runtime: prepared.iosRuntime,
+});
+
+await stopMetroTunnel({
+  projectRoot: remoteConfig.profile.metroProjectRoot!,
+  profileKey: remoteConfig.resolvedPath,
+});
+```
+
+Use `agent-device/remote-config` for profile loading and path resolution, `agent-device/metro` for Metro preparation, reload, and tunnel lifecycle, and `agent-device/contracts` when a server consumer needs daemon request or runtime contract types. For bridged remote Metro, `proxyBaseUrl` is the bridge origin and `publicBaseUrl` is optional; the bridge descriptor supplies cloud iOS wildcard HTTPS hints and Android runtime-route hints. `reloadMetro()` calls Metro's `/reload` endpoint, matching the terminal `r` reload path for connected React Native apps.
+
+## Selector helpers
+
+Use `agent-device/selectors` to parse and match selector expressions in a remote daemon or bridge. The `role=` term matches the platform-neutral `kind` vocabulary that `snapshot --json` publishes (see [Snapshots](/agent-device/pr-preview/pr-3395/docs/snapshots.md#structured-node-fields---json)): pass the nodes as captured, and a node whose `kind` is `text` always matches `role=text`. Separately, pre-reconciliation leaf spellings (`statictext`, `edittext`, `textview`, …) still match during a deprecation window, each on the nodes that actually carried that class. A legacy spelling matches beside such a node's `kind`, not in place of it — `role=webarea` resolves a macOS-helper `AXWebArea` node whose `kind` is `axwebarea`, for example. Matching stays platform-aware because editability checks differ by backend.
+
+`listSelectorChainMatches(nodes, chain, options)` returns every node the winning selector alternative matches, in snapshot order, plus that alternative and its index — the same first-match domain `findSelectorChainMatch` uses, without uniqueness refusal, so a runner applies its own strictness to the same nodes the CLI matched. `resolveSelectorChain` can name a later alternative: by default it refuses an ambiguous one and keeps walking, so the indices agree when it passes `requireUnique: false`, when the first matching alternative is unique, or when `disambiguateAmbiguous: true` resolves that alternative in place. It returns `null` when no alternative matches. `findSelectorChainMatch` and `listSelectorChainMatches` take `{ platform, requireRect? }`; `resolveSelectorChain` also takes `requireUnique?` (default `true`) and `disambiguateAmbiguous?`. The matched `SnapshotNode` objects are the ones passed in.
+
+```ts
+import { findSelectorChainMatch, parseSelectorChain } from 'agent-device/selectors';
+
+const chain = parseSelectorChain('role=button label="Continue" visible=true');
+
+const match = findSelectorChainMatch(snapshot.nodes, chain, {
+  platform: 'android',
+  requireRect: true,
+});
+
+if (!match) {
+  // Build a daemon-shaped error with formatSelectorFailure(...) if needed.
+}
+```
+
+
+
+---
+url: /agent-device/pr-preview/pr-3395/docs/client-api.md
+---
+
+# Node.js API
+
+This page is for developers who drive devices from their own Node.js code. Use `createAgentDeviceClient()` for typed, deterministic device automation instead of shelling out to the CLI.
+
+Building an agent? Start with the dedicated [AI SDK](/agent-device/pr-preview/pr-3395/docs/ai-sdk.md) or [Eve](/agent-device/pr-preview/pr-3395/docs/eve.md) integration. Building a bridge, remote daemon, or device-cloud backend that owns device access or command dispatch? See [Build an integration](/agent-device/pr-preview/pr-3395/docs/build-an-integration.md).
+
+## Runnable examples
+
+The repository includes [runnable, typechecked Node.js examples](https://github.com/callstack/agent-device/tree/main/examples/sdk). They import the same published `agent-device/*` entry points your code uses:
+
+| Example                                                                                                       | Demonstrates                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`client-session.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/client-session.ts)     | Open, snapshot, interact, handle typed errors, and always close the session                                                                        |
+| [`contracts-result.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/contracts-result.ts) | Consume snapshot results with helpers from [`agent-device/contracts`](/agent-device/pr-preview/pr-3395/docs/build-an-integration.md#api-reference) |
+
+Examples for custom transports and Metro are on [Build an integration](/agent-device/pr-preview/pr-3395/docs/build-an-integration.md#runnable-examples).
+
+Each example typechecks against the SDK through its own [`tsconfig.json`](https://github.com/callstack/agent-device/blob/main/examples/sdk/tsconfig.json). Build the package with `pnpm build`, then run an example with Node:
+
+```bash
+node --experimental-strip-types examples/sdk/client-session.ts
+```
+
+## API reference
+
+Entry points for driving devices from Node.js:
+
+- `agent-device`
+  - `createAgentDeviceClient(options?)`
+  - `createLocalArtifactAdapter(options?)`
+  - `AppError`, `isAgentDeviceError(error)`, `normalizeAgentDeviceError(error)`
+  - `centerOfRect(rect)`
+  - types: `AgentDeviceClient`, `AgentDeviceClientConfig`, `AgentDeviceDevice`
+  - types: every option and result type of the client's methods, among them `AppOpenOptions`,
+    `AppOpenResult`, `CaptureSnapshotOptions`, `CaptureSnapshotResult`, `CaptureScreenshotResult`,
+    `PressOptions`
+  - types: `SnapshotNode`, `RawSnapshotNode`, `SnapshotState`, `Rect`, `Point`
+  - types: `NormalizedError`, `AppErrorCode`, `KnownAppErrorCode`, `AppErrorDetails`, `ErrorCause`
+- `agent-device/io`
+  - `createLocalArtifactAdapter(options?)`
+  - types: `ArtifactAdapter`, `ArtifactDescriptor`, `CreateTempFileOptions`, `FileInputRef`,
+    `FileOutputRef`, `LocalArtifactAdapterOptions`, `OutputVisibility`, `ReserveOutputOptions`,
+    `ReservedOutputFile`, `ResolveInputOptions`, `ResolvedInputFile`, `TemporaryFile`
 - `agent-device/ai-sdk`
   - `createAgentDeviceTools(options)`
   - types: `AgentDeviceToolSet`, `AgentDeviceTools`, `CreateAgentDeviceToolsOptions`
@@ -1092,49 +1286,6 @@ MCP tools use the same command contracts, so they can also target `platform: 'we
 setup and doctor stay CLI-only. Web network inspection returns the standard network result shape
 without request or response bodies.
 
-## Android ADB providers
-
-Use `agent-device/android-adb` when your bridge owns Android device access and you want
-agent-device's behavior for ADB operations. Executors receive the arguments that follow `adb`, so a
-remote bridge can route the same argument arrays through an ADB tunnel, websocket API, or another
-remote transport.
-
-The helpers take an executor directly. Use `captureAndroidLogcatWithAdb(executor, options?)` for a
-bounded logcat capture.
-
-A provider can also expose `reverse` to own port reversal. Plain executors do not advertise reverse
-support; call `createAndroidPortReverseManager(providerOrExecutor)`
-only when the provider supports `adb reverse` argument semantics. The manager makes duplicate setup
-idempotent for the same owner and rejects conflicting owners for the same local endpoint. For a
-device that other adb clients also drive, pass an executor with `{ noRebind: true }`: the manager
-runs `adb reverse --no-rebind` and never replaces an existing device mapping, including one it
-created. When `adb reverse --list` shows the mapping, the refusal fails with `COMMAND_FAILED` and
-`details.reason: 'android_port_reverse_rebind_refused'`. Otherwise it fails as an ordinary adb error.
-
-The device shell re-parses whatever follows `shell` or `exec-out`, so those commands are built for you:
-every dynamic word is rendered for the quoting its transport applies before it reaches the device. `adb`
-forwards words verbatim, so a word is single-quoted; `hdc` wraps each element it sends in double quotes,
-where `$`, a backquote, and `"` stay live, so a word is escaped for that context instead. An array that
-begins with `shell` or `exec-out` and did not come from those builders is refused with `INVALID_ARGS` and
-`details.reason: 'unguarded-device-shell-argv'` instead of being dispatched. A bridge that composes its
-own device commands calls `runAdbShell(executor, words, options?)` or
-`runAdbExecOut(executor, words, options?)` from `agent-device/android-adb`, passing each value as its
-own word; `runAndroidShell(device, words, options?)` and `runAndroidExecOut(device, words, options?)`
-resolve the executor from a device instead.
-
-```ts
-import { getAndroidAppStateWithAdb, listAndroidAppsWithAdb } from 'agent-device/android-adb';
-import type { AndroidAdbExecutorOptions } from 'agent-device/android-adb';
-
-const provider = {
-  exec: async (args: readonly string[], options?: AndroidAdbExecutorOptions) =>
-    await runAdbThroughRemoteTunnel(args, options),
-};
-
-const apps = await listAndroidAppsWithAdb(provider.exec); // user-installed apps by default
-const foreground = await getAndroidAppStateWithAdb(provider.exec);
-```
-
 ## Command methods
 
 Use `client.command.<method>()` for command-level device actions. These calls go through the same daemon transport as the higher-level client methods, so they carry session metadata and tenant/run/lease fields, return normalized daemon errors, and handle remote artifacts.
@@ -1150,7 +1301,7 @@ const controller = new AbortController();
 await client.interactions.press({ ref: '@e12', signal: controller.signal });
 ```
 
-With the built-in transport, a signal that is already aborted rejects the call without sending anything (`error.details.dispatched: 'no'`). Aborting while the request is in flight closes that request's connection, the daemon marks the request canceled, and the promise rejects with the typed canceled-request error (`error.details.reason: 'request_canceled'`, `error.details.dispatched: 'unknown'`). A custom transport receives the signal on its context and may cancel differently. The daemon and the session stay alive for other requests. An abort is not a timeout: it never triggers the runner cleanup or daemon reset that a timeout does. Cancellation covers only the daemon request, so a response-artifact download already underway is not stopped, and a canceled one-shot replay still runs the existing cleanup that can tear down a daemon this client started.
+With the built-in transport, a signal that is already aborted rejects the call without sending anything (`error.details.dispatched: 'no'`). Aborting while the request is in flight closes that request's connection, the daemon marks the request canceled, and the promise rejects with the typed canceled-request error (`error.details.reason: 'request_canceled'`, `error.details.dispatched: 'unknown'`). A custom transport receives the signal on its context and may cancel differently. The daemon and the session stay alive for other requests. On iOS, a command that already reached the device keeps running there, so the daemon holds the session while the device reports it running. Your promise still rejects at once. The hold ends when the device reports the command finished, when the command's own timeout runs out, or when the device cannot confirm the command (it never received it, or the status check fails). Only in the first case is the canceled work known to be over before the session's next request starts. An abort is not a timeout: it never triggers the runner cleanup or daemon reset that a timeout does. Cancellation covers only the daemon request, so a response-artifact download already underway is not stopped, and a canceled one-shot replay still runs the existing cleanup that can tear down a daemon this client started.
 
 ```ts
 await client.command.wait({
@@ -1303,78 +1454,8 @@ On Android, each successful `perf({ area: 'frames' })` read and each `open` of a
 `client.batch.run({ steps })` accepts structured steps:
 `{ command: 'open', input: { app: 'settings' } }`. Step `input` uses the same fields as the
 matching client command. Daemon-shaped `positionals`/`flags` steps are internal to the daemon and not
-part of the client API.
-
-## Batch orchestration for custom transports
-
-Use `agent-device/batch` when a bridge or in-process runner receives daemon-shaped requests but owns command dispatch itself. The helper applies the same validation, inherited flags, serial execution, partial results, and error envelopes as the daemon `batch` command.
-
-Full example from [`examples/sdk/batch-orchestration.ts`](https://github.com/callstack/agent-device/blob/main/examples/sdk/batch-orchestration.ts):
-
-```ts file="<root>/../examples/sdk/batch-orchestration.ts"
-/**
- * Batch orchestration for a custom transport: `runBatch` keeps step
- * validation, inherited flags, serial execution, partial results, and
- * daemon-shaped error envelopes aligned with the CLI's `batch` command, so a
- * bridge that owns command dispatch itself does not have to reimplement them.
- *
- * Demonstrates: `runBatch` from `agent-device/batch`, consumed against the
- * `DaemonResponse` result type from `agent-device/contracts`.
- *
- * Prerequisites: none — `dispatch` below is a stub; a real integration would
- * replace it with a call into the bridge's own command dispatcher.
- *
- * Run: node --experimental-strip-types examples/sdk/batch-orchestration.ts
- */
-import { runBatch } from 'agent-device/batch';
-import type { DaemonResponse } from 'agent-device/contracts';
-
-type BatchRequest = Parameters<typeof runBatch>[0];
-
-async function dispatch(stepReq: unknown): Promise<Record<string, unknown>> {
-  console.log('dispatching step', stepReq);
-  return { handled: true };
-}
-
-function bridgeErrorToDaemonResponse(error: unknown): Extract<DaemonResponse, { ok: false }> {
-  return {
-    ok: false,
-    error: {
-      code: 'COMMAND_FAILED',
-      message: error instanceof Error ? error.message : 'Unknown bridge error',
-    },
-  };
-}
-
-async function handleBatch(req: BatchRequest): Promise<DaemonResponse> {
-  return await runBatch(req, req.session ?? 'default', async (stepReq) => {
-    try {
-      return { ok: true, data: await dispatch(stepReq) };
-    } catch (error) {
-      return bridgeErrorToDaemonResponse(error);
-    }
-  });
-}
-
-const result = await handleBatch({
-  command: 'batch',
-  positionals: [],
-  flags: {
-    batchSteps: [
-      { command: 'wait', input: { text: 'Welcome' } },
-      { command: 'back', input: {} },
-    ],
-  },
-});
-
-if (result.ok) {
-  console.log(`batch completed: ${JSON.stringify(result.data)}`);
-} else {
-  console.error(`batch failed [${result.error.code}]: ${result.error.message}`);
-  process.exitCode = 1;
-}
-
-```
+part of the client API. To run daemon-shaped batches through your own dispatcher, see
+[Batch orchestration for custom transports](/agent-device/pr-preview/pr-3395/docs/build-an-integration.md#batch-orchestration-for-custom-transports).
 
 ## Android `installFromSource()`
 
@@ -1438,65 +1519,6 @@ await client.apps.installFromSource({
 Remote daemons may also support `{ kind: 'github-actions-artifact', owner, repo, artifactName }` or `{ kind: 'github-actions-artifact', owner, repo, runId, artifactName }`. The local client passes these payloads through unchanged; it does not authenticate with GitHub or download the artifact.
 
 Android `.apk` and `.aab` URL sources resolve package identity from the downloaded install artifact. Archive URLs may contain one installable `.apk`, `.aab`, `.ipa`, or iOS `.app`, including inside nested archives.
-
-## Remote Metro helpers
-
-```ts
-import { prepareMetroRuntime, reloadMetro, stopMetroTunnel } from 'agent-device/metro';
-import { resolveRemoteConfigProfile } from 'agent-device/remote-config';
-
-const remoteConfig = resolveRemoteConfigProfile({
-  configPath: './agent-device.remote.json',
-  cwd: process.cwd(),
-});
-
-const prepared = await prepareMetroRuntime({
-  projectRoot: remoteConfig.profile.metroProjectRoot!,
-  kind: remoteConfig.profile.metroKind ?? 'auto',
-  proxyBaseUrl: remoteConfig.profile.metroProxyBaseUrl,
-  proxyBearerToken: remoteConfig.profile.metroBearerToken,
-  bridgeScope: {
-    tenantId: remoteConfig.profile.tenant!,
-    runId: remoteConfig.profile.runId!,
-    leaseId: remoteConfig.profile.leaseId!,
-  },
-  companionProfileKey: remoteConfig.resolvedPath,
-});
-
-console.log(prepared.iosRuntime, prepared.androidRuntime);
-
-await reloadMetro({
-  runtime: prepared.iosRuntime,
-});
-
-await stopMetroTunnel({
-  projectRoot: remoteConfig.profile.metroProjectRoot!,
-  profileKey: remoteConfig.resolvedPath,
-});
-```
-
-Use `agent-device/remote-config` for profile loading and path resolution, `agent-device/metro` for Metro preparation, reload, and tunnel lifecycle, and `agent-device/contracts` when a server consumer needs daemon request or runtime contract types. For bridged remote Metro, `proxyBaseUrl` is the bridge origin and `publicBaseUrl` is optional; the bridge descriptor supplies cloud iOS wildcard HTTPS hints and Android runtime-route hints. `reloadMetro()` calls Metro's `/reload` endpoint, matching the terminal `r` reload path for connected React Native apps.
-
-## Selector helpers
-
-Use `agent-device/selectors` to parse and match selector expressions in a remote daemon or bridge. The `role=` term matches the platform-neutral `kind` vocabulary that `snapshot --json` publishes (see [Snapshots](/agent-device/pr-preview/pr-3395/docs/snapshots.md#structured-node-fields---json)): pass the nodes as captured, and a node whose `kind` is `text` always matches `role=text`. Separately, pre-reconciliation leaf spellings (`statictext`, `edittext`, `textview`, …) still match during a deprecation window, each on the nodes that actually carried that class. A legacy spelling matches beside such a node's `kind`, not in place of it — `role=webarea` resolves a macOS-helper `AXWebArea` node whose `kind` is `axwebarea`, for example. Matching stays platform-aware because editability checks differ by backend.
-
-`listSelectorChainMatches(nodes, chain, options)` returns every node the winning selector alternative matches, in snapshot order, plus that alternative and its index — the same first-match domain `findSelectorChainMatch` uses, without uniqueness refusal, so a runner applies its own strictness to the same nodes the CLI matched. `resolveSelectorChain` can name a later alternative: by default it refuses an ambiguous one and keeps walking, so the indices agree when it passes `requireUnique: false`, when the first matching alternative is unique, or when `disambiguateAmbiguous: true` resolves that alternative in place. It returns `null` when no alternative matches. `options` is `{ platform, requireRect? }`; the matched `SnapshotNode` objects are the ones passed in.
-
-```ts
-import { findSelectorChainMatch, parseSelectorChain } from 'agent-device/selectors';
-
-const chain = parseSelectorChain('role=button label="Continue" visible=true');
-
-const match = findSelectorChainMatch(snapshot.nodes, chain, {
-  platform: 'android',
-  requireRect: true,
-});
-
-if (!match) {
-  // Build a daemon-shaped error with formatSelectorFailure(...) if needed.
-}
-```
 
 
 
@@ -1945,6 +1967,7 @@ agent-device click @e1 --button secondary   # macOS secondary click / context me
 agent-device focus @e2
 agent-device fill @e2 "text"          # Clear then type
 agent-device fill @e2 "search" --delay-ms 80
+printf %s "$PASSWORD" | agent-device fill @e2 --text-stdin   # Text from stdin, kept out of argv
 agent-device type "text"              # Type into focused field without clearing
 agent-device type "query" --delay-ms 80
 agent-device press 300 500
@@ -1968,6 +1991,7 @@ agent-device gesture transform 200 420 80 -40 2 35 700 # combined pan, zoom, and
 ```
 
 `fill` clears then types. `type` does not clear.
+`fill --text-stdin` reads the text from stdin instead of a text argument, so a secret never appears in the CLI's process arguments. Pipe the value with `printf %s`, which sends it verbatim. It reads at most 64 KiB, removes exactly one trailing newline (`\n` or `\r\n`), and refuses a terminal, empty input, invalid UTF-8, or an additional text argument. The value is registered as sensitive for diagnostics, and command output shows it as `${VAR}` with `--record-as` and as `[REDACTED]` otherwise, in success data and in an error's message, hint, cause and details; daemon-owned fields such as `logPath` and `diagnosticId` are left unchanged. While script recording is armed, combine it with `--record-as <VAR>` to publish `${VAR}`, or `--no-record` to leave the step out; passing neither is an error. Without an armed recording the step is not recorded. Batch steps do not accept it.
 A successful `click` or `press` means the action was sent to the target where the command found it, whether that is a tap, a mouse click, or an accessibility action. It does not confirm that the action reached that element or changed the screen. When your next step depends on it, add `--verify` to learn whether the screen changed (`changedFromBefore`), add `--settle` to get the diff once the UI goes quiet, or follow with `wait <selector>` for the screen you expect.
 When an interaction fails, see [Retry after a failed command](#retry-after-a-failed-command) before you retry.
 `type` accepts text only. Do not pass `@ref` to `type`; use `fill @ref "text"` to target a field directly, or `press @ref` then `type "text"` to append in the focused field.
@@ -2096,7 +2120,7 @@ agent-device replay ./session.ad --keep-session   # Suppress its terminal close 
 - `replay -u`/`--update` is retired and accepted as a no-op; it does not rewrite the script.
 - `--save-script [path]` on `open` records a replay script when the session closes.
 
-See [Replay & E2E](/agent-device/pr-preview/pr-3395/docs/replay-e2e.md) for recording, Maestro compatibility, and CI workflow details.
+See [Replay & E2E](/agent-device/pr-preview/pr-3395/docs/replay-e2e.md) for recording and CI workflow details, and [Run Maestro flows](/agent-device/pr-preview/pr-3395/docs/run-maestro-flows.md) for Maestro YAML.
 
 ## Batch
 
@@ -3141,6 +3165,20 @@ Use a device cloud or farm when an agent needs to drive a hosted mobile device w
 - [TestMu AI](/agent-device/pr-preview/pr-3395/docs/testmu.md): Android emulator, iOS simulator, and real-device sessions over WebDriver.
 - [Limrun](/agent-device/pr-preview/pr-3395/docs/limrun.md): direct iOS simulator and Android emulator instances.
 
+## Compare providers
+
+|                         | BrowserStack                                                    | AWS Device Farm                                                                                                       | TestMu AI                                                                                        | Limrun                                                                                      |
+| ----------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Devices                 | Android and iOS real devices                                    | Android and iOS real devices                                                                                          | Android emulators and iOS simulators by default; real devices with `--provider-device-type real` | Android emulators and iOS simulators                                                        |
+| Ships as                | Built in                                                        | Built in; needs the AWS CLI                                                                                           | The `@agent-device/testmu` plugin                                                                | Built in                                                                                    |
+| Credentials             | `BROWSERSTACK_USERNAME`, `BROWSERSTACK_ACCESS_KEY`              | The AWS CLI credential chain, such as `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` | `LT_USERNAME`, `LT_ACCESS_KEY`                                                                   | `LIMRUN_API_KEY` (optional `LIMRUN_REGION`), or `LIM_*_INSTANCE_*` for an existing instance |
+| Device allocated on     | `open`                                                          | `open`                                                                                                                | `open`                                                                                           | First device command, such as `install` or `open`                                           |
+| App source              | `--provider-app`: `bs://` reference, HTTP(S) URL, or local path | `--aws-app-arn` upload ARN; no install after allocation                                                               | `--provider-app`: `lt://` reference, HTTP(S) URL, or local path                                  | `install <id> <path-or-url>`, or `open <asset-name>` for an uploaded asset                  |
+| Artifacts after `close` | Video, Appium and device logs, dashboard and public links       | Video and log files, once AWS finalizes them                                                                          | Video, Appium, device, network, and command logs, screenshots, dashboard link                    | None                                                                                        |
+| Port reverse            | No; use BrowserStack Local                                      | No                                                                                                                    | No                                                                                               | Android over ADB; not on iOS                                                                |
+
+## Shared workflow
+
 Every provider runs through the local `agent-device` daemon. `connect` checks your credentials and configuration, then saves non-secret connection state; it does not allocate a device. BrowserStack, AWS Device Farm, and TestMu AI allocate a hosted session on `open`. Limrun allocates an instance on the first device command, such as `install` or `open`.
 
 Every provider follows the same steps:
@@ -3153,6 +3191,30 @@ Every provider follows the same steps:
 Each provider accepts only its own provider flags (`--provider-*` and `--aws-*`). A flag the provider does not use fails with `INVALID_ARGS` naming the flag, whether you pass it to `connect`, `client.leases.allocate()`, or a remote-config profile, so no setting is silently dropped.
 
 The generated remote profiles are safe to store as non-secret configuration. They can include app IDs, ARNs, device names, OS versions, and labels, but never provider API keys, access keys, or AWS secret keys.
+
+## Use a provider only through MCP
+
+Run `agent-device connect <provider>` in the same effective state directory before you start `agent-device mcp`. MCP exposes device commands such as `open`, `snapshot`, `close`, and `artifacts`, but not provider `connect` or `disconnect`.
+
+## Change credentials while the daemon runs
+
+A running daemon keeps the BrowserStack, TestMu AI, and Limrun credentials it started with. If your shell holds different ones, the first command that allocates a device, such as `open`, refuses before it creates a session. Run `agent-device daemon stop` with the same `--state-dir`, then rerun the command. A shell that sets none of the provider's variables uses the daemon's credentials.
+
+AWS Device Farm reads the AWS CLI credential chain instead, so this check does not apply to it.
+
+## Fill text on hosted WebDriver sessions
+
+On BrowserStack, AWS Device Farm, and TestMu AI, `fill` checks that the field received focus before it sends keys. If it cannot confirm focus, it fails without typing. Use `snapshot -i` to confirm the target. If the driver cannot report focus at all, use `press <target>` followed by `type <text>`, which sends text without confirming where it lands.
+
+## Retrieve artifacts after close
+
+After `close`, run `agent-device artifacts --json` to check for the artifacts your provider makes available (see [Compare providers](#compare-providers)). To look up an earlier session, pass its provider session ID:
+
+```bash
+agent-device artifacts <provider-session-id> --provider <provider> --json
+```
+
+Providers finalize video and log URLs after the session ends. If the lookup reports artifacts as pending right after `close`, retry it a little later.
 
 
 
@@ -3486,7 +3548,7 @@ agent-device disconnect
 
 On an attached Android instance, agent-device does not replace an existing port reverse mapping. If the owner already maps a device port, such as `tcp:8081` for their Metro server, a reverse to that port fails and the owner's mapping stays in place. The error has `details.reason: 'android_port_reverse_rebind_refused'` when `adb reverse --list` shows the mapping; otherwise it is a plain ADB failure.
 
-A running daemon keeps the Limrun variables it started with. If your shell holds different account variables, or different instance variables for the platform you lease, the first command that allocates a lease, such as `install` or `open`, refuses before it creates or attaches to an instance. Run `agent-device daemon stop` (with the same `--state-dir`) and rerun the command. A shell that sets none of these variables uses the daemon's values.
+If your shell's account variables, or its instance variables for the platform you lease, differ from the ones the daemon started with, the first `install` or `open` refuses before it creates or attaches to an instance. See [Change credentials while the daemon runs](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#change-credentials-while-the-daemon-runs).
 
 `install`, and `apps` before the first `open`, need `LIMRUN_API_KEY` because they use Limrun asset storage. After `open`, `apps` lists the apps installed on the instance without the key. Install your app before you hand over the instance. From the Node.js runtime, `getDeviceSession(device).installRemoteApp(url)` installs from a signed asset URL without the API key.
 
@@ -3518,7 +3580,7 @@ On iOS, `settings` supports `appearance`, `permission`, `location`, and `clear-a
 
 On iOS, `fill` taps the target, waits for that field to take text-entry focus, and only then types. Apps that never report a globally focused element, such as Flutter forms, still fill and report `textEntryReadiness: "focused-element"`. If the tap does not focus a field, `fill` fails with `text_entry_focus_not_observed` instead of typing into an unknown field. Use `type` to send text to whichever field already has focus.
 
-To use Limrun only through MCP, run `connect` in the same effective state directory before you start `agent-device mcp`. MCP exposes device commands such as `open`, `snapshot`, and `close`, but not provider `connect` commands.
+To drive Limrun only through MCP, see [Use a provider only through MCP](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#use-a-provider-only-through-mcp). Limrun returns no provider artifacts, so `artifacts` has nothing to fetch.
 
 ## Embed the Node.js runtime
 
@@ -4247,6 +4309,8 @@ url: /agent-device/pr-preview/pr-3395/docs/replay-e2e.md
 
 Record a session as an `.ad` script, then run it again with `replay` or run a folder of scripts as an E2E suite with `test`.
 
+To run Maestro YAML flows or export `.ad` scripts to Maestro YAML, see [Run Maestro flows](/agent-device/pr-preview/pr-3395/docs/run-maestro-flows.md).
+
 ## How it works
 
 You work in two passes:
@@ -4351,51 +4415,6 @@ agent-device replay ~/.agent-device/sessions/e2e-2026-02-09T12-00-00-000Z.ad --s
   fresh snapshot can be captured to verify against), the divergence cause is
   `IDENTITY_UNVERIFIABLE` instead. Both codes say the recorded screen changed; only
   `AMBIGUOUS_MATCH` proves your selector matched more than one element.
-
-## Run Maestro compatibility flows
-
-Pass `--maestro` to `replay` or `test` to run Maestro YAML flows. Only the subset below is supported:
-
-```bash
-agent-device replay ./flow.yaml --maestro --platform ios --session e2e-run
-agent-device test ./maestro-flows --maestro --platform android --artifacts-dir ./tmp/maestro-artifacts
-```
-
-Supported subset:
-
-- Flows: `launchApp` (with `clearState`, `permissions`, and Apple-only launch arguments; `permissions` apply after state clearing but before launch, and a `launchApp` without `permissions` touches nothing — there is no silent `all: allow` default); `setPermissions` (mid-flow permission grants, denials, and resets; `all` resolves in the backend — one simctl call on iOS, the declared permissions on Android — with specific entries overriding after it); `runFlow` file/inline; `runFlow.when` and `repeat.while` conditions (`platform`, `visible`, `notVisible`, and `true`, all re-evaluated before every `repeat` iteration); `onFlowStart`/`onFlowComplete`; `repeat` with `times`, `while`, or both; and retry.
-- Interactions: `tapOn`, `doubleTapOn`, `longPressOn`, `inputText` on the focused element, `eraseText`, `openLink`, `hideKeyboard`, basic `pressKey`, and `back`; selector targets poll until available and support recursive `index`, `childOf`, `above`, `below`, `leftOf`, `rightOf`, `containsChild`, `containsDescendants`, points, and `optional`; outer command labels are metadata, not target selectors.
-- Assertions and navigation: `assertVisible`, `assertNotVisible`, `assertTrue` (literal values and `${VAR}` lookups only; `""`, `"false"`, `"0"`, `"null"`, and `"undefined"` are falsy, everything else is truthy), `extendedWaitUntil`, `scroll`, `scrollUntilVisible`, absolute/percentage/target `swipe`, `takeScreenshot`, `waitForAnimationToEnd`, `clearState`, and `stopApp`.
-- Scripts: ordered `runScript` file/env scripts with `http.post`, `json`, and `output` variables; `evalScript` inline expressions run flow-scoped JavaScript and write `output.*` leaves for later steps.
-
-Boundaries:
-
-- Permissions: every entry is one `settings permission` call, applied in order with `all` first; the step stops at the first entry the selected platform refuses, earlier entries stay applied, and the error names what landed. Android’s only allow level is while-in-use, so `location: inuse` and `location: never` mean `allow` and `deny` there, while `location: always` and `photos: limited` are Apple-only and fail. On iOS, which service a runtime changes is `simctl privacy`’s own verdict: current runtimes refuse a targeted `notifications` change and leave notifications untouched under `all`.
-- Runtime: iOS and Android only; `launchApp.clearState` and standalone `clearState` support Android and iOS simulators, launch arguments are Apple-only, and other standalone device utility/state commands are unsupported.
-- Expressions: `evalScript` and condition `true:` fields (`runFlow.when` and `repeat.while` share one evaluator) are evaluated as JavaScript (flow `env` and prior `output` leaves are string-typed); a `true:` field that is a boolean, a `maestro.platform` comparison, or plain literal text after `${VAR}` lookups is decided without JavaScript, with the `assertTrue` falsy table for literal text. Other fields stay literal or `${VAR}` lookup-only — `assertTrue` supports literals and bare lookups, and other expression-shaped payloads fail loud.
-- Environment: flow `env` is the default, `AD_VAR_*` overrides it, and CLI `-e KEY=VALUE` wins over both.
-- Failure diagnostics: resolved targets and `runFlow` paths are rendered, while `inputText` payloads remain hidden; do not place secrets in diagnostic identifiers.
-- Trust: `runScript`, `evalScript`, and JavaScript condition `true:` fields execute flow scripts in-process via `node:vm`, which is not a security sandbox; `runScript` may make `http.post` network requests and its output keys cannot contain a dot. `evalScript` and `true:` fields that need JavaScript are refused outright for a flow accepted over the daemon’s remote HTTP surface, since that context can escape to the host.
-- Errors and tracking: unsupported commands and fields fail with source context when available; open a focused issue only when implementation work is planned.
-- Session takeover: `--keep-session` is a native `.ad` replay option and is rejected for Maestro YAML.
-
-[ADR 0015](https://github.com/callstack/agent-device/blob/main/docs/adr/0015-direct-maestro-engine.md) lists the deliberate deviations from Maestro. If a missing feature matters for your suite, [open a focused issue](https://github.com/callstack/agent-device/issues/new) with a small flow snippet.
-
-## Export `.ad` scripts to Maestro YAML
-
-To run a recorded flow with Maestro, export the `.ad` script to Maestro YAML:
-
-```bash
-agent-device replay export ./workflows/checkout.ad --out ./maestro/checkout.yaml
-```
-
-`replay export` only converts the file: it does not start the daemon or contact a device. Without `--out`, it prints the YAML to stdout.
-
-Each `open <appId>` exports with an explicit `launchApp.appId`, so a flow can switch between apps and return to the original app. The first app remains the flow's default `appId`; relaunch options and app-specific deep links stay attached to their authored targets.
-
-Deep links, including schemes without `//` such as `tel:` and `mailto:`, export as `openLink`. A standalone `open tel:+15551234567` emits only the link command; `open com.example.app mailto:agent@example.test` emits the app launch followed by the link.
-
-Export is strict. It writes Maestro YAML for compatible flow actions such as app launch, taps, long press, text input, keyboard dismiss/enter, back, home, text visibility assertions, coordinate swipes, basic scroll, screenshots, and `.ad` `env` directives. `home` exports as `pressKey: Home`, so flows that visit the home screen and reopen the app can be exported. Agent-only inspection or maintenance actions such as `snapshot`, `get`, `record`, `trace`, `settings`, and unsupported selector shapes fail with the source line and action instead of being silently dropped. Known semantic differences are reported as warnings; for example, `.ad` `fill` exports as `tapOn` plus `inputText`, which may append text in Maestro rather than replacing existing field contents. Native `.ad` `label=` selectors export as Maestro `text:` selectors and warn because Maestro text matching is broader than label-only matching. A strict `wait absent` is reported as unsupported rather than mapped to Maestro's more lenient `notVisible` condition.
 
 ## Run a lightweight `.ad` suite
 
@@ -4658,11 +4677,7 @@ agent-device replay ./flow.ad
 agent-device replay ./flow.ad --from 4 --plan-digest ab12...
 ```
 
-For Maestro flows, `--from` counts steps in the top-level plan. A `runFlow` with no condition, or with
-a condition that resolves before the run, is flattened into its commands (or dropped when the condition
-is false). A control step decided at run time (`runFlow`, `repeat`, or `retry`) counts as one step, and
-you cannot resume at a command nested inside it. As with `.ad` replay, restore any state and
-environment values the skipped steps would have set before you resume.
+For how `--from` counts steps in a Maestro flow, see [Resume a failed Maestro flow](/agent-device/pr-preview/pr-3395/docs/run-maestro-flows.md#resume-a-failed-maestro-flow).
 
 Passing `--plan-digest` that no longer matches the current script — because you edited it, an include changed, or platform-conditioned expansion differs — fails `INVALID_ARGS` before any action; run a fresh full replay to get a new digest. `--from` is `replay`-only; `test` rejects it (a suite run must stay full and deterministic).
 
@@ -4689,7 +4704,83 @@ Passing `--plan-digest` that no longer matches the current script — because yo
     build, or the element is not exposed to accessibility. `readiness.end: sparse` means the app
     showed an empty tree: the screen was mid-transition or the app had left. Add a `wait` step for
     a landmark on the new screen before the press.
-- Maestro compatibility flow fails on unsupported syntax:
+
+
+
+---
+url: /agent-device/pr-preview/pr-3395/docs/run-maestro-flows.md
+---
+
+# Run Maestro flows
+
+`agent-device` runs a subset of Maestro YAML flows on iOS and Android, and exports `.ad` scripts to Maestro YAML. This is a compatibility layer, not full Maestro support:
+
+- Only the commands and fields in [Supported subset](#supported-subset) run. Anything else fails with source context instead of being skipped.
+- Flows run on iOS and Android only.
+- `runScript`, `evalScript`, and JavaScript conditions execute flow code on the machine running the agent-device daemon, without a security sandbox. Run only flows you trust to run there.
+
+For recording and replaying native `.ad` scripts, see [Replay & E2E testing](/agent-device/pr-preview/pr-3395/docs/replay-e2e.md).
+
+## Run a Maestro flow
+
+Pass `--maestro` to `replay` or `test`:
+
+```bash
+agent-device replay ./flow.yaml --maestro --platform ios --session e2e-run
+agent-device test ./maestro-flows --maestro --platform android --artifacts-dir ./tmp/maestro-artifacts
+```
+
+Keep the target binding, such as `--platform ios`, on the `replay` or `test` command. `agent-device help maestro` prints the same subset and boundaries as this page.
+
+## Supported subset
+
+- Flows: `launchApp` (with `clearState`, `permissions`, and Apple-only launch arguments; `permissions` apply after state clearing but before launch, and a `launchApp` without `permissions` touches nothing — there is no silent `all: allow` default); `setPermissions` (mid-flow permission grants, denials, and resets; `all` resolves in the backend — one simctl call on iOS, the declared permissions on Android — with specific entries overriding after it); `runFlow` file/inline; `runFlow.when` and `repeat.while` conditions (`platform`, `visible`, `notVisible`, and `true`, all re-evaluated before every `repeat` iteration); `onFlowStart`/`onFlowComplete`; `repeat` with `times`, `while`, or both; and retry.
+- Interactions: `tapOn`, `doubleTapOn`, `longPressOn`, `inputText` on the focused element, `eraseText`, `openLink`, `hideKeyboard`, basic `pressKey`, and `back`; selector targets poll until available and support recursive `index`, `childOf`, `above`, `below`, `leftOf`, `rightOf`, `containsChild`, `containsDescendants`, points, and `optional`; outer command labels are metadata, not target selectors.
+- Assertions and navigation: `assertVisible`, `assertNotVisible`, `assertTrue` (literal values and `${VAR}` lookups only; `""`, `"false"`, `"0"`, `"null"`, and `"undefined"` are falsy, everything else is truthy), `extendedWaitUntil`, `scroll`, `scrollUntilVisible`, absolute/percentage/target `swipe`, `takeScreenshot`, `waitForAnimationToEnd`, `clearState`, and `stopApp`.
+- Scripts: ordered `runScript` file/env scripts with `http.post`, `json`, and `output` variables; `evalScript` inline expressions run flow-scoped JavaScript and write `output.*` leaves for later steps.
+
+## Boundaries
+
+- Permissions: every entry is one `settings permission` call, applied in order with `all` first; the step stops at the first entry the selected platform refuses, earlier entries stay applied, and the error names what landed. Android’s only allow level is while-in-use, so `location: inuse` and `location: never` mean `allow` and `deny` there, while `location: always` and `photos: limited` are Apple-only and fail. On iOS, which service a runtime changes is `simctl privacy`’s own verdict: current runtimes refuse a targeted `notifications` change and leave notifications untouched under `all`.
+- Runtime: iOS and Android only; `launchApp.clearState` and standalone `clearState` support Android and iOS simulators, launch arguments are Apple-only, and other standalone device utility/state commands are unsupported.
+- Expressions: `evalScript` and condition `true:` fields (`runFlow.when` and `repeat.while` share one evaluator) are evaluated as JavaScript (flow `env` and prior `output` leaves are string-typed); a `true:` field that is a boolean, a `maestro.platform` comparison, or plain literal text after `${VAR}` lookups is decided without JavaScript, with the `assertTrue` falsy table for literal text. Other fields stay literal or `${VAR}` lookup-only — `assertTrue` supports literals and bare lookups, and other expression-shaped payloads fail loud.
+- Environment: flow `env` is the default, `AD_VAR_*` overrides it, and CLI `-e KEY=VALUE` wins over both.
+- Failure diagnostics: resolved targets and `runFlow` paths are rendered, while `inputText` payloads remain hidden; do not place secrets in diagnostic identifiers.
+- Trust: `runScript`, `evalScript`, and JavaScript condition `true:` fields execute flow scripts in-process via `node:vm`, which is not a security sandbox; `runScript` may make `http.post` network requests and its output keys cannot contain a dot. `evalScript` and `true:` fields that need JavaScript are refused outright for a flow accepted over the daemon’s remote HTTP surface, since that context can escape to the host.
+- Errors and tracking: unsupported commands and fields fail with source context when available; open a focused issue only when implementation work is planned.
+- Session takeover: `--keep-session` is a native `.ad` replay option and is rejected for Maestro YAML.
+
+[ADR 0015](https://github.com/callstack/agent-device/blob/main/docs/adr/0015-direct-maestro-engine.md) lists the deliberate deviations from Maestro. If a missing feature matters for your suite, [open a focused issue](https://github.com/callstack/agent-device/issues/new) with a small flow snippet.
+
+## Resume a failed Maestro flow
+
+A failed Maestro step returns the same replay divergence report as an `.ad` script, including the resume information, and `replay --from <n> --plan-digest <sha256>` resumes it the same way. See [Resume a failed replay](/agent-device/pr-preview/pr-3395/docs/replay-e2e.md#resume-a-failed-replay) for the workflow.
+
+For Maestro flows, `--from` counts steps in the top-level plan. A `runFlow` with no condition, or with
+a condition that resolves before the run, is flattened into its commands (or dropped when the condition
+is false). A control step decided at run time (`runFlow`, `repeat`, or `retry`) counts as one step, and
+you cannot resume at a command nested inside it. As with `.ad` replay, restore any state and
+environment values the skipped steps would have set before you resume.
+
+## Export `.ad` scripts to Maestro YAML
+
+To run a recorded flow with Maestro, export the `.ad` script to Maestro YAML:
+
+```bash
+agent-device replay export ./workflows/checkout.ad --out ./maestro/checkout.yaml
+```
+
+`replay export` only converts the file: it does not start the daemon or contact a device. Without `--out`, it prints the YAML to stdout.
+
+Each `open <appId>` exports with an explicit `launchApp.appId`, so a flow can switch between apps and return to the original app. The first app remains the flow's default `appId`; relaunch options and app-specific deep links stay attached to their authored targets.
+
+Deep links, including schemes without `//` such as `tel:` and `mailto:`, export as `openLink`. A standalone `open tel:+15551234567` emits only the link command; `open com.example.app mailto:agent@example.test` emits the app launch followed by the link.
+
+Export is strict. It writes Maestro YAML for compatible flow actions such as app launch, taps, long press, text input, keyboard dismiss/enter, back, home, text visibility assertions, coordinate swipes, basic scroll, screenshots, and `.ad` `env` directives. `home` exports as `pressKey: Home`, so flows that visit the home screen and reopen the app can be exported. Agent-only inspection or maintenance actions such as `snapshot`, `get`, `record`, `trace`, `settings`, and unsupported selector shapes fail with the source line and action instead of being silently dropped. Known semantic differences are reported as warnings; for example, `.ad` `fill` exports as `tapOn` plus `inputText`, which may append text in Maestro rather than replacing existing field contents. Native `.ad` `label=` selectors export as Maestro `text:` selectors and warn because Maestro text matching is broader than label-only matching. A strict `wait absent` is reported as unsupported rather than mapped to Maestro's more lenient `notVisible` condition.
+
+## Troubleshooting
+
+- A flow fails on unsupported syntax:
   - Check [ADR 0015](https://github.com/callstack/agent-device/blob/main/docs/adr/0015-direct-maestro-engine.md). If the missing feature matters to your suite, open a focused issue with a small flow snippet.
 
 
@@ -5474,9 +5565,7 @@ agent-device artifacts --json
 agent-device disconnect
 ```
 
-To use TestMu AI only through MCP, run `connect` in the same effective state directory before you
-start `agent-device mcp`. MCP exposes device commands such as `open`, `snapshot`, `close`, and
-`artifacts`, but not provider `connect` commands.
+To drive TestMu AI only through MCP, see [Use a provider only through MCP](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#use-a-provider-only-through-mcp).
 
 ## Use the Node.js client
 
@@ -5486,11 +5575,7 @@ releases the lease. Keep `leases.release()` in `finally`: it does nothing after 
 and releases the lease when a command fails first. Add `providerDeviceType: 'real'` to
 `leases.allocate` to run on a real device.
 
-The daemon reads `LT_USERNAME` and `LT_ACCESS_KEY` from its environment and keeps the values it
-started with. If your shell holds different ones, the first command that allocates a lease, such as
-`open`, refuses before it creates a session. Run `agent-device daemon stop` (with the same
-`--state-dir`) and rerun the command. A shell that sets neither variable uses the daemon's
-credentials.
+The daemon reads `LT_USERNAME` and `LT_ACCESS_KEY` from its environment. If you change credentials while the daemon runs, see [Change credentials while the daemon runs](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#change-credentials-while-the-daemon-runs).
 
 ```ts
 import { createAgentDeviceClient } from 'agent-device';
@@ -5533,14 +5618,8 @@ if (providerSessionId) {
 ## Get artifacts and troubleshoot
 
 After `close`, TestMu AI can return session video, Appium logs, device logs, network and command
-logs, a screenshot archive, and the App Automation dashboard link. Run `agent-device artifacts --json`, or look up an earlier session by its ID:
-
-```bash
-agent-device artifacts <webdriver-session-id> --provider testmu --json
-```
-
-The TestMu AI session ID is the WebDriver session ID. If artifacts are still pending right after
-`close`, retry the lookup; TestMu AI finalizes video and log URLs after the session ends.
+logs, a screenshot archive, and the App Automation dashboard link. The provider session ID is the
+WebDriver session ID. See [Retrieve artifacts after close](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#retrieve-artifacts-after-close).
 
 To use a staging or private TestMu AI deployment, redirect the WebDriver, upload, and
 catalog/session-detail endpoints with `TESTMU_WEBDRIVER_ENDPOINT`, `TESTMU_APP_UPLOAD_ENDPOINT` (virtual
@@ -5548,10 +5627,7 @@ devices), `TESTMU_REAL_DEVICE_APP_UPLOAD_ENDPOINT` (real devices), and `TESTMU_A
 app list that `connect` uses to check credentials always comes from
 `https://manual-api.lambdatest.com/app/data`.
 
-On hosted WebDriver sessions, `fill` checks that the field received focus before it sends keys. If
-it cannot confirm focus, it fails without typing. Use `snapshot -i` to confirm the target. If the
-driver cannot report focus at all, use `press <target>` followed by `type <text>`, which sends text
-without confirming where it lands.
+To enter text, see [Fill text on hosted WebDriver sessions](/agent-device/pr-preview/pr-3395/docs/device-clouds.md#fill-text-on-hosted-webdriver-sessions).
 
 
 
