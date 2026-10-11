@@ -566,7 +566,7 @@ Notes:
 
 - `input` is required and takes the same fields as the matching MCP or Node client command.
 - A step can only have `command`, `input`, and `runtime` keys; any other key is rejected.
-- Steps written as `positionals`/`flags` are rejected (that shape was removed in 0.21). Rewrite each step with structured input, for example `{"command":"open","input":{"app":"settings","platform":"ios"}}`.
+- Steps written as `positionals`/`flags` are rejected. Rewrite each step with structured input, for example `{"command":"open","input":{"app":"settings","platform":"ios"}}`.
 - `batch` and `replay` steps can't be nested inside a batch.
 - `--on-error stop` is the only error mode: the batch stops at the first failing step.
 - A batch runs at most 100 steps by default. Pass `--max-steps <n>` to raise or lower the limit, up to 1000.
@@ -1049,7 +1049,7 @@ Use `agent-device/remote-config` for profile loading and path resolution, `agent
 
 ## Selector helpers
 
-Use `agent-device/selectors` to parse and match selector expressions in a remote daemon or bridge. The `role=` term matches the platform-neutral `kind` vocabulary that `snapshot --json` publishes (see [Snapshots](/agent-device/docs/snapshots.md#structured-node-fields---json)): pass the nodes as captured, and a node whose `kind` is `text` always matches `role=text`. Separately, pre-reconciliation leaf spellings (`statictext`, `edittext`, `textview`, …) still match during a deprecation window, each on the nodes that actually carried that class. A legacy spelling matches beside such a node's `kind`, not in place of it — `role=webarea` resolves a macOS-helper `AXWebArea` node whose `kind` is `axwebarea`, for example. Matching stays platform-aware because editability checks differ by backend.
+Use `agent-device/selectors` to parse and match selector expressions in a remote daemon or bridge. The `role=` term matches the platform-neutral `kind` vocabulary that `snapshot --json` publishes (see [Snapshots](/agent-device/docs/snapshots.md#structured-node-fields---json)): pass the nodes as captured, and a node whose `kind` is `text` always matches `role=text`. Separately, the deprecated raw leaf spellings (`statictext`, `edittext`, `textview`, …) also match, each on the nodes that actually carried that class. A leaf spelling matches beside such a node's `kind`, not in place of it — `role=webarea` resolves a macOS-helper `AXWebArea` node whose `kind` is `axwebarea`, for example. Matching stays platform-aware because editability checks differ by backend.
 
 `listSelectorChainMatches(nodes, chain, options)` returns every node the winning selector alternative matches, in snapshot order, plus that alternative and its index — the same first-match domain `findSelectorChainMatch` uses, without uniqueness refusal, so a runner applies its own strictness to the same nodes the CLI matched. `resolveSelectorChain` can name a later alternative: by default it refuses an ambiguous one and keeps walking, so the indices agree when it passes `requireUnique: false`, when the first matching alternative is unique, or when `disambiguateAmbiguous: true` resolves that alternative in place. It returns `null` when no alternative matches. `findSelectorChainMatch` and `listSelectorChainMatches` take `{ platform, requireRect? }`; `resolveSelectorChain` also takes `requireUnique?` (default `true`) and `disambiguateAmbiguous?`. The matched `SnapshotNode` objects are the ones passed in.
 
@@ -1807,7 +1807,7 @@ agent-device prepare ios-runner --platform ios --timeout 240000
 - If a fresh runner launch gets stuck before accepting connections, agent-device invalidates that runner session and launches it once more without forcing a rebuild.
 - CI may cache `~/.agent-device/apple-runner/derived` when the cache key includes the exact agent-device package contents and selected Xcode version.
 - After a successful build, agent-device removes the build scratch from the new cache key (intermediates, precompiled and module caches, logs) and keeps `Build/Products` and the metadata file, which is all reuse and launch read; one iOS simulator key measured 165.7 MB before the trim and 5.9 MB after. A key that fails certification is rebuilt from scratch either way, and a runner source or Xcode change mints a new key, so the scratch is never used again. Only the key this build gets with no path override is trimmed, compared by resolved real path; a `AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH` pointing anywhere else, including inside the managed runner cache, is never trimmed, because a fixed path rebuilds into the same tree incrementally.
-- agent-device versions from before the Apple runner rename kept their cache in `~/.agent-device/ios-runner`. Current versions never read it, and it is not removed automatically because an older version installed on the same machine may still use it. Delete it with `rm -rf ~/.agent-device/ios-runner` once no old version runs.
+- agent-device never reads or removes `~/.agent-device/ios-runner`, a runner cache that older agent-device versions on the same machine may still use. Delete it with `rm -rf ~/.agent-device/ios-runner` once no such version runs.
 - Runner reuse is authorized only by the cache metadata's content manifest: a restored tree whose files no longer match the recorded digests, modes, or symlink targets is discarded and rebuilt. A cache key must stay exact — the runtime never falls back to a broader cache.
 - Every runner source or Xcode change creates a new cache key under `~/.agent-device/apple-runner/derived/<folder>/`, where the folder names the platform and device kind (`ios-simulator`, `ios-device`, `tvos-simulator`, `tvos-device`, `macos`, `visionos-simulator`, `visionos-device`). After a build, agent-device deletes, on a best-effort basis and without delaying the start, keys beside the new one in the same folder that are neither among the 3 last used (the new key included) nor used in the last day, and never one a runner lease not proven dead points at or a build is holding. A key that cannot be deleted is left in place and reported as a `runner_xctestrun_cache_eviction_failed` warning diagnostic. `AGENT_DEVICE_IOS_RUNNER_CACHE_KEEP=<n>` changes that count and `0` keeps every key. A set `AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH` is never swept.
 - Certification is fail-closed: when a product tree cannot be certified at all — a product escaping the derived-data root, an unreadable subtree, a file over 128 MB, or a non-regular entry such as a socket — the build fails with `runner_cache_uncertifiable` naming the path instead of launching uncertified bytes. Point `AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH` at a plain directory the current user owns; replacing the tree (the error's hint says how) clears a refusal.
@@ -2010,7 +2010,7 @@ Android text entry is owned by `agent-device`: provider-native injection when av
 `click --button middle` returns an unsupported-operation error on macOS.
 `swipe` is a quick, fixed-duration directional throw. Use `gesture pan` for deliberate timed movement.
 Neither `swipe` nor `gesture fling` takes a duration, and `gesture rotate` takes no velocity — see
-[Migrating Gestures](/agent-device/docs/migrating-gestures.md) if you have scripts or recordings that still pass one.
+[Rewrite Old Gesture Commands](/agent-device/docs/migrating-gestures.md) if you have scripts or recordings that still pass one.
 Repeated coordinate swipes accept at most 200 repetitions and 10000ms pauses, and their combined
 gesture/pause schedule must fit within 60000ms.
 `gesture pan` accepts `x y dx dy [durationMs]` for deliberate drags. It uses one pointer by default. Add `--pointer-count 2` for a parallel two-finger pan with constant contact span and angle. Android preserves the requested travel duration.
@@ -2117,7 +2117,7 @@ agent-device replay ./session.ad --keep-session   # Suppress its terminal close 
 - `test --timeout <ms>` and `test --retries <n>` apply per script attempt (retries are capped at `3`).
 - `test --artifacts-dir <path>` overrides the default suite artifact root at `.agent-device/test-artifacts`.
 - A failing step returns a `REPLAY_DIVERGENCE` report; `replay --from <n> --plan-digest <sha256>` resumes at plan step `n` (`test` rejects `--from`). See [Resume a failed replay](/agent-device/docs/replay-e2e.md#resume-a-failed-replay).
-- `replay -u`/`--update` is retired and accepted as a no-op; it does not rewrite the script.
+- `replay -u`/`--update` is accepted and does nothing; it does not rewrite the script.
 - `--save-script [path]` on `open` records a replay script when the session closes.
 
 See [Replay & E2E](/agent-device/docs/replay-e2e.md) for recording and CI workflow details, and [Run Maestro flows](/agent-device/docs/run-maestro-flows.md) for Maestro YAML.
@@ -2416,7 +2416,7 @@ agent-device perf trace start --kind perfetto --out app.perfetto-trace
 agent-device perf trace stop --kind perfetto --out app.perfetto-trace
 ```
 
-- Use an explicit `frames`, `memory`, `cpu`, or `trace` area so each request answers one profiling question. In 0.21, bare `perf`, `perf sample`, `perf metrics`, and the `metrics` alias fail with guidance to the focused replacements.
+- Use an explicit `frames`, `memory`, `cpu`, or `trace` area so each request answers one profiling question. Bare `perf`, `perf sample`, `perf metrics`, and the `metrics` alias fail with guidance to the focused replacements.
 - `perf frames` returns bounded frame/jank health; `perf memory sample` returns a compact native/process memory sample; `perf memory snapshot` writes a heap/memgraph artifact and returns its path.
 - `cdp` samples and snapshots the React Native JavaScript heap through Metro CDP; see [Debugging & Profiling](/agent-device/docs/debugging-profiling.md#react-native-js-memory-through-cdp).
 - `perf cpu profile ... --kind xctrace` and `perf trace ... --kind xctrace` record an Apple `.trace`; `perf cpu profile ... --kind simpleperf` and `perf trace ... --kind perfetto` capture Android native profiles and traces for the active session package. These commands return artifact paths and compact metadata; raw profile and trace contents stay on disk. See [Performance snapshots](/agent-device/docs/debugging-profiling.md#performance-snapshots).
@@ -2563,9 +2563,9 @@ agent-device record stop                # Stop active recording
 
 - `--fps <n>` (1-120) applies to physical iOS device recording as an explicit FPS cap.
 
-- `--quality <medium|high>` controls recording output quality. Android maps it to `adb shell screenrecord --bit-rate`; Limrun sessions map it to the provider recorder's quality (`medium` to 5, `high` to 8). Apple export always preserves the captured resolution, so `--quality` has no effect on Apple output size. `medium` is the default; pass `high` for evidence, release notes, or debugging visual artifacts. Legacy numeric values are still accepted for compatibility: `5`-`7` map to `medium`, and `8`-`10` map to `high`.
+- `--quality <medium|high>` controls recording output quality. Android maps it to `adb shell screenrecord --bit-rate`; Limrun sessions map it to the provider recorder's quality (`medium` to 5, `high` to 8). Apple export always preserves the captured resolution, so `--quality` has no effect on Apple output size. `medium` is the default; pass `high` for evidence, release notes, or debugging visual artifacts. Numeric values are also accepted: `5`-`7` map to `medium`, and `8`-`10` map to `high`.
 
-- `screenshot --scale <factor>` proportionally resizes both dimensions. The accepted range is `0.01` through `1`; use `1` for full resolution. The former `--max-size <px>` flag was removed and is refused with migration guidance wherever it appears (CLI, `.ad` scripts, Node options, config, and the retired `AGENT_DEVICE_SCREENSHOT_MAX_SIZE` env var).
+- `screenshot --scale <factor>` proportionally resizes both dimensions. The accepted range is `0.01` through `1`; use `1` for full resolution. `--max-size <px>` is refused with guidance to use `--scale` wherever it appears (CLI, `.ad` scripts, Node options, config, and the `AGENT_DEVICE_SCREENSHOT_MAX_SIZE` env var).
 
 - Set `AGENT_DEVICE_SCREENSHOT_SCALE=0.3` (or `screenshotScale` in config) as a token-conscious screenshot default for agent workflows. An explicit `--scale` overrides it.
 
@@ -2583,7 +2583,7 @@ agent-device record stop                # Stop active recording
 
 - `screenshot --scale <factor> --overlay-refs` writes a smaller image and draws refs for that final image size; avoid very small scales when text, icons, or labels need to remain readable.
 
-- `diff screenshot` compares the current live screenshot to `--baseline`, or compares `--baseline` to an optional saved `current.png` path without requiring an active session. Each input is decoded from its own bytes, so `--baseline` and a saved current image may be PNG or JPEG whatever their extension says. Most `agent-device screenshot` artifacts are PNG; a HarmonyOS capture is the JPEG its device serves, stored under the requested name. Its text output reports ranked changed regions with screen-space rectangles, changed-pixel counts, and each region's share of the diff; JSON also includes normalized rectangles. The `ocr` and `nonTextDeltas` result fields are retired and never populated; for qualitative interpretation, read the baseline, current, and diff images with vision. It writes a diff PNG with a light grayscale current-screen context, red-tinted changed pixels, and outlined changed regions when `--out` is provided. Live iOS simulator diffs normalize status-bar chrome by default; use `screenshot --normalize-status-bar` when capturing reusable baselines.
+- `diff screenshot` compares the current live screenshot to `--baseline`, or compares `--baseline` to an optional saved `current.png` path without requiring an active session. Each input is decoded from its own bytes, so `--baseline` and a saved current image may be PNG or JPEG whatever their extension says. Most `agent-device screenshot` artifacts are PNG; a HarmonyOS capture is the JPEG its device serves, stored under the requested name. Its text output reports ranked changed regions with screen-space rectangles, changed-pixel counts, and each region's share of the diff; JSON also includes normalized rectangles. The `ocr` and `nonTextDeltas` result fields are never populated; for qualitative interpretation, read the baseline, current, and diff images with vision. It writes a diff PNG with a light grayscale current-screen context, red-tinted changed pixels, and outlined changed regions when `--out` is provided. Live iOS simulator diffs normalize status-bar chrome by default; use `screenshot --normalize-status-bar` when capturing reusable baselines.
 
 - `diff screenshot --overlay-refs` additionally writes a separate current-screen overlay guide for live captures without using that annotated image for the pixel comparison. If current-screen refs intersect changed regions, the output lists the best ref matches under those regions. Saved-image comparisons do not have live accessibility refs, so `--overlay-refs` is unavailable when a `current.png` path is provided.
 
@@ -3623,16 +3623,15 @@ After allocating a lease, call `runtime.getDeviceSession(device)` to get the all
 url: /agent-device/docs/migrating-gestures.md
 ---
 
-# Migrating Gestures
+# Rewrite Old Gesture Commands
 
-`agent-device` 0.20.0 removed the timed forms of `swipe`, `gesture fling`, and `gesture swipe`, and
-the `velocity` argument of `gesture rotate`. Nothing is silently reinterpreted: every removed form
-fails with an `INVALID_ARGS` error that names its replacement.
+`swipe`, `gesture fling`, and `gesture swipe` don't take a duration, and `gesture rotate` doesn't
+take a velocity. A command, script, or client call that passes one fails with an `INVALID_ARGS`
+error that names its replacement; nothing is silently reinterpreted.
 
-Find your surface below — CLI, Node.js, MCP, or saved `.ad` recordings — and apply its rewrite. The
-last sections cover how future removals are handled.
+Find your surface below — CLI, Node.js, MCP, or saved `.ad` recordings — and apply its rewrite.
 
-## What changed
+## Throws and drags
 
 Gesture commands separate a _throw_ from a _deliberate drag_:
 
@@ -3645,7 +3644,7 @@ Gesture commands separate a _throw_ from a _deliberate drag_:
 
 ## CLI
 
-| Removed                                             | Use instead                              |
+| Old form                                            | Use instead                              |
 | --------------------------------------------------- | ---------------------------------------- |
 | `swipe x1 y1 x2 y2 durationMs`                      | `gesture pan x1 y1 dx dy durationMs`     |
 | `gesture fling <direction> x y distance durationMs` | `gesture fling <direction> x y distance` |
@@ -3679,8 +3678,8 @@ for a default-duration swipe.
 
 ## Node.js
 
-`interactions.swipe`, `interactions.fling`, and `interactions.swipeGesture` no longer accept
-`durationMs`; `interactions.rotateGesture` no longer accepts `velocity`. Passing them is a type
+`interactions.swipe`, `interactions.fling`, and `interactions.swipeGesture` don't accept
+`durationMs`; `interactions.rotateGesture` doesn't accept `velocity`. Passing them is a type
 error at compile time and an `INVALID_ARGS` rejection at runtime. The client rejects the call before
 it reaches the daemon, so plain JavaScript and stale compiled builds get the error rather than a
 silently retimed gesture.
@@ -3704,10 +3703,10 @@ await device.interactions.swipe({ from: { x: 197, y: 650 }, to: { x: 197, y: 300
 
 ## MCP
 
-The `swipe`, `gesture` (`fling`, `swipe` kinds), and `gesture rotate` tool schemas no longer
-advertise `durationMs` or `velocity`, so an agent reading the schema will not produce the removed
+The `swipe`, `gesture` (`fling`, `swipe` kinds), and `gesture rotate` tool schemas don't
+advertise `durationMs` or `velocity`, so an agent reading the schema will not produce the old
 form. An agent that sends one anyway — from a cached schema or a memorized example — gets an
-`INVALID_ARGS` rejection that names the removed key and the command to use instead, for example
+`INVALID_ARGS` rejection that names the rejected key and the command to use instead, for example
 `gesture fling does not accept durationMs; use gesture pan for timed movement`. Unlike the CLI and
 `.ad` errors, the MCP error names the replacement command without a filled-in rewrite.
 
@@ -3715,8 +3714,9 @@ You do not need to change your MCP server configuration.
 
 ## Saved `.ad` recordings
 
-`.ad` scripts keep their positional syntax, which matches the CLI and is not scheduled for removal
-(see [Positional `.ad` syntax](#positional-ad-syntax) below). Remove only the retired arguments.
+`.ad` scripts keep their positional syntax, which matches the CLI (see
+[Positional `.ad` syntax](#positional-ad-syntax) below). Remove only the duration or velocity
+argument.
 
 A script that still carries one fails **when it is parsed**, before the replay executes any device
 action, and the error names the line:
@@ -3740,7 +3740,7 @@ swipe 206 650 206 300 --count 2 --pause-ms 200 --pattern one-way
 A duration held in a variable (`swipe 197 650 197 300 ${DURATION}`) is reported the same way: the
 check counts arguments, so it does not need the value.
 
-**Running your scripts is the definitive check.** Every retired form is rejected when the script is
+**Running your scripts is the definitive check.** Every old form is rejected when the script is
 parsed, before the replay runs any device action, so `agent-device test <glob>` or
 `agent-device replay <file>.ad` finds and names every stale line. To locate them in bulk without a
 device, use the patterns below. They split tokens on any whitespace (space or tab) and match a bare
@@ -3750,7 +3750,7 @@ quoted token, so treat a clean grep as a first pass and the run as the proof.
 
 ```bash
 # a numeric slot: bare/quoted number (optionally signed) or ${VAR}. Requiring a
-# digit keeps a following flag like --count from being read as the retired slot.
+# digit keeps a following flag like --count from being read as the extra slot.
 num='("-?[0-9][0-9.]*"|"\$\{[^}]*\}"|-?[0-9][0-9.]*|\$\{[^}]*\})'
 # swipe x1 y1 x2 y2 durationMs
 grep -rnE "\\bswipe([[:space:]]+$num){5}" --include='*.ad' .
@@ -3763,46 +3763,23 @@ grep -rnE "\\bgesture[[:space:]]+rotate([[:space:]]+$num){4}" --include='*.ad' .
 ```
 
 Instead of editing by hand, you can re-record: the recorder writes the current form, so a fresh
-`open --save-script` → interact → `close` run produces a migrated script. Recording starts at
+`open --save-script` → interact → `close` run produces a script in the current form. Recording starts at
 `open`, so pass `--save-script` there; `close --save-script` on a session opened without it is
 rejected.
 
 ### Maestro flows
 
-Maestro `swipe` with a `duration` is **not** affected, and Maestro flows need no migration.
+Maestro `swipe` with a `duration` is **not** affected, and Maestro flows need no changes.
 `agent-device` runs a timed Maestro swipe as `gesture pan` and keeps Maestro's
 fast-swipe-then-hold timing.
 
 `replay export` writes an explicit `duration: 100`, the fling duration, so an exported flow runs at
 the speed the `.ad` script ran instead of Maestro's 400ms default.
 
-## Deprecation policy
-
-Before a public gesture input is removed, it goes through these steps:
-
-1. **Announce.** The input is documented as deprecated, and the release notes name the
-   replacement.
-2. **Warn for one minor release.** The input keeps working and normalizes to the replacement, with a
-   `deprecations` entry in the response so an agent sees the migration while the call still
-   succeeds.
-3. **Publish the migration.** A section on this page covers CLI, Node.js, MCP, and `.ad`, with a
-   concrete before/after per surface.
-4. **Prove the repository is clean.** A repository-wide search for the removed shape returns no hits
-   in fixtures, examples, skills, docs, or tests. `agent-device` has no usage telemetry, so this
-   search and the published migration guide are the evidence; silence from users is not.
-5. **Remove.** The input is rejected with an `INVALID_ARGS` error that states the replacement, and
-   the compatibility path is deleted. For an input that can appear in a saved recording, the
-   rejection fires at parse time and names the line, so a stale script never half-executes.
-
-The 0.20.0 removal completed all five steps.
-
 ## Positional `.ad` syntax
 
-Positional gesture arguments in `.ad` are **not** a compatibility shim and are not scheduled for
-removal.
-
-`.ad` is a line-based script format that uses the CLI's syntax, so positional gestures are the file
-format itself, not a bridge to an older one. Node.js and MCP send structured input; the CLI and
+Positional gesture arguments in `.ad` are the file format itself, not a compatibility shim. `.ad` is
+a line-based script format that uses the CLI's syntax. Node.js and MCP send structured input; the CLI and
 `.ad` files use positional arguments. Keeping `.ad` positional keeps recordings readable and
 searchable with grep.
 
@@ -4692,9 +4669,9 @@ For how `--from` counts steps in a Maestro flow, see [Resume a failed Maestro fl
 
 Passing `--plan-digest` that no longer matches the current script — because you edited it, an include changed, or platform-conditioned expansion differs — fails `INVALID_ARGS` before any action; run a fresh full replay to get a new digest. `--from` is `replay`-only; `test` rejects it (a suite run must stay full and deterministic).
 
-## `--update`/`-u` (retired)
+## `--update`/`-u`
 
-`--update`/`-u` does not rewrite `.ad` files. The flag is accepted and does nothing: every replay divergence carries ranked `suggestions` whether or not you pass it. Review a suggestion, then edit the `.ad` file yourself if it's right. [ADR 0012](https://github.com/callstack/agent-device/blob/main/docs/adr/0012-interactive-replay.md) explains why automatic rewriting was retired.
+`--update`/`-u` does not rewrite `.ad` files. The flag is accepted and does nothing: every replay divergence carries ranked `suggestions` whether or not you pass it. Review a suggestion, then edit the `.ad` file yourself if it's right. [ADR 0012](https://github.com/callstack/agent-device/blob/main/docs/adr/0012-interactive-replay.md) explains why replay does not rewrite scripts automatically.
 
 ## Troubleshooting
 
@@ -5282,13 +5259,10 @@ On iOS, `role` (when present) is the native AX class (`UIButton`), carried only 
 
 `role=` selectors (and `find role=...`) match the `kind` vocabulary: a node whose `kind` is `text`
 or `text-field` always matches `role=text` / `role=text-field`, the bracketed word a snapshot
-shows for that node
-([#3021](https://github.com/callstack/agent-device/issues/3021)). Older spellings — the raw leaf
-classes `role=statictext`, `role=edittext`, `role=textview`, `role=searchfield`, and the rest of the
-leaf vocabulary — still match during a deprecation window, each only on nodes that carried that
-class (so `role=linearlayout` never matches a `FrameLayout` row the way a shared `group` alias
-would). Use the `kind` spelling in your selectors; the leaf aliases are deprecated and will be
-removed in a future breaking release.
+shows for that node. The raw leaf classes — `role=statictext`, `role=edittext`, `role=textview`,
+`role=searchfield`, and the rest of the leaf vocabulary — also match as deprecated aliases, each only
+on nodes that carried that class (so `role=linearlayout` never matches a `FrameLayout` row the way a
+shared `group` alias would). Use the `kind` spelling in your selectors.
 
 ## Scope a snapshot
 
