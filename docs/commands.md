@@ -590,7 +590,7 @@ agent-device replay ./session.ad --keep-session   # Suppress its terminal close 
 - `replay -u`/`--update` is retired and accepted as a no-op; it does not rewrite the script.
 - `--save-script [path]` on `open` records a replay script when the session closes.
 
-See [Replay & E2E](/agent-device/docs/replay-e2e.md) for recording, Maestro compatibility, and CI workflow details.
+See [Replay & E2E](/agent-device/docs/replay-e2e.md) for recording and CI workflow details, and [Run Maestro flows](/agent-device/docs/run-maestro-flows.md) for Maestro YAML.
 
 ## Batch
 
