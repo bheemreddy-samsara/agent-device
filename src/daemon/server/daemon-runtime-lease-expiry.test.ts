@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { afterEach, test, vi } from 'vitest';
-import { testCreateCommandSurface } from '../__tests__/command-surface-fixture.ts';
 
 const leaseProbe = vi.hoisted(() => ({
   registries: [] as import('../lease-registry.ts').LeaseRegistry[],
@@ -22,8 +21,8 @@ vi.mock('../lease-lifecycle.ts', async (importOriginal) => {
 });
 
 import { endLeaseSessions } from '../lease-lifecycle.ts';
-import { startDaemonRuntime } from './daemon-runtime.ts';
-import { mkdtempForTestSync } from '../../__tests__/test-utils/tmp-dir.ts';
+import { startDaemonRuntimeFixture } from '../../__tests__/daemon-composition/daemon-runtime-fixture.ts';
+import { mkdtempForTestSync } from '@agent-device/test-kit/tmp-dir';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -34,8 +33,7 @@ test('an expired lease ends its session without any further request', async () =
   vi.useFakeTimers();
   const stateDir = mkdtempForTestSync('agent-device-daemon-lease-expiry-');
   try {
-    const runtime = await startDaemonRuntime({
-      createCommandSurface: testCreateCommandSurface,
+    const runtime = await startDaemonRuntimeFixture({
       env: {
         ...process.env,
         AGENT_DEVICE_STATE_DIR: stateDir,

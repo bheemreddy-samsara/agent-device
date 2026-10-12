@@ -9,7 +9,7 @@ import { makeSessionStore } from '../../__tests__/support/store-factory.ts';
 import type { DeviceLease } from '@agent-device/contracts/device';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { withTestDeviceInventory } from '../../../__tests__/test-utils/device-inventory-gateways.ts';
-import { IOS_SIMULATOR, TVOS_SIMULATOR } from '../../../__tests__/test-utils/device-fixtures.ts';
+import { IOS_SIMULATOR, TVOS_SIMULATOR } from '@agent-device/test-kit/device-fixtures';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   clearRequestCanceled,
