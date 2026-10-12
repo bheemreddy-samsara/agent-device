@@ -123,7 +123,7 @@ function bootDeliveries(records: ReturnType<typeof broadcastRecords>) {
 
 type PreparationInput = { serial: string; outputDir: string; startedAt: number; deadline: number };
 
-function createPreparation({ serial, startedAt }: PreparationInput) {
+function createPreparation({ serial, startedAt, deadline }: PreparationInput) {
   const commands: {
     name: string;
     executable: string;
@@ -140,7 +140,7 @@ function createPreparation({ serial, startedAt }: PreparationInput) {
     provider: undefined as string | undefined,
     fingerprint: undefined as string | undefined,
     uid: undefined as number | undefined,
-    budgetMs: 40_000,
+    budgetMs: deadline - startedAt,
     startedAt,
     finishedAt: undefined as number | undefined,
     complete: false,
@@ -175,8 +175,7 @@ async function observeProvider(
   input: PreparationInput,
   preparation: ReturnType<typeof createPreparation>,
 ) {
-  const { startedAt, deadline } = input;
-  const prepDeadline = Math.min(startedAt + preparation.budgetMs, deadline);
+  const prepDeadline = input.deadline;
   const probe = (name: string, args: string[]) => {
     const remaining = prepDeadline - Date.now();
     if (remaining <= 0) throw new Error('Native provider preparation deadline exceeded');

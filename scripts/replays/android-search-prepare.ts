@@ -8,6 +8,6 @@ const preparation = await prepareAndroidSearch({
   serial,
   outputDir,
   startedAt,
-  deadline: startedAt + 40_000,
+  deadline: startedAt + 90_000,
 });
 process.exitCode = preparation.satisfied ? 0 : 2;

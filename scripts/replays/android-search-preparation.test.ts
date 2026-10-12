@@ -25,13 +25,14 @@ test('natural transition preserves default and disabled observations without GUI
   expect(summary.observations[1].deliveries).toEqual([
     { record: 'a820e6e', index: 98, state: 'FAILURE' },
   ]);
+  expect(summary.budgetMs).toBe(90_000);
   expect(summary.complete).toBe(true);
   expect(summary.satisfied).toBe(true);
   expect(summary.serial).toBe('emulator-own');
   expect(summary.provider).toBe(provider);
   expect(summary.uid).toBe(10145);
   expect(summary.fingerprint).toContain('emu64xa:16/');
-  expect(summary.finishedAt - summary.startedAt).toBeLessThanOrEqual(40_000);
+  expect(summary.finishedAt - summary.startedAt).toBeLessThanOrEqual(90_000);
   expect(
     summary.commands.every(
       (command: { timeoutMs: number }) => command.timeoutMs > 0 && command.timeoutMs <= 15_000,
@@ -112,7 +113,7 @@ test.each([
   ['unsupported image', { identity: 'other/image' }],
   ['unsupported provider', { resolvedProvider: 'other.provider' }],
   ['failed getter', { packageExit: 3 }],
-  ['preflight consumes preparation budget', { preflightCost: 40_000 }],
+  ['preflight consumes preparation budget', { preflightCost: 90_000 }],
 ] satisfies [string, Scenario][])(
   'native preparation refuses %s without invoking GUI',
   async (_name, scenario) => {
@@ -130,8 +131,27 @@ test.each([
     expect(
       prepCommands.every(
         (command: { startedAt: number; timeoutMs: number }) =>
-          command.startedAt + command.timeoutMs <= summary.startedAt + 40_000,
+          command.startedAt + command.timeoutMs <= summary.startedAt + 90_000,
       ),
     ).toBe(true);
   },
 );
+
+test('comparison admits the observed native transition after45s without GUI', async () => {
+  const { result, summary, calls } = await runSearchFixture({ readyAfterMs: 45_000 }, false);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect(summary.satisfied).toBe(true);
+  expect(summary.finishedAt - summary.startedAt).toBeGreaterThan(45_000);
+  expect(summary.finishedAt - summary.startedAt).toBeLessThanOrEqual(90_000);
+  expect(summary.budgetMs).toBe(90_000);
+  expect(
+    summary.commands.every(
+      (command: { timeoutMs: number }) => command.timeoutMs > 0 && command.timeoutMs <= 15_000,
+    ),
+  ).toBe(true);
+  expect(summary.observations.at(-1).bootEnded).toBe(true);
+  expect(summary.observations.at(-1).state.disabled).toHaveLength(2);
+  expect(summary.observations.at(-1).killRecords.every(Boolean)).toBe(true);
+  expect(summary.commands.at(-1).name).toBe('prep-recheck');
+  expect(calls).not.toContain('REPLAY');
+});

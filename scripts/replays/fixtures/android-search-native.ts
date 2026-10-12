@@ -31,6 +31,7 @@ export type Scenario = {
   packageExit?: number;
   fingerprintExit?: number;
   preflightCost?: number;
+  readyAfterMs?: number;
 };
 
 function createNativeFixture(cwd: string, scenario: Scenario) {
@@ -43,6 +44,16 @@ function createNativeFixture(cwd: string, scenario: Scenario) {
     scenario.recheck ?? scenario.state ?? packageState,
   );
   fs.writeFileSync(path.join(cwd, 'history.txt'), scenario.history ?? history);
+  fs.writeFileSync(
+    path.join(cwd, 'pending-history.txt'),
+    history
+      .slice(
+        history.indexOf('      BroadcastRecord{a820e6e'),
+        history.indexOf('      BroadcastRecord{1f473ba'),
+      )
+      .replace(/^([ \t]*)FAILURE[^\n]+$/m, '$1PENDING (-1) #98: (manifest)')
+      .replace('        reason: onApplicationCleanupLocked\n', ''),
+  );
   const preload = path.join(cwd, 'clock.mjs');
   fs.writeFileSync(
     preload,
@@ -73,10 +84,11 @@ case "$*" in
    count=0; if [ -f package-count ]; then count=$(cat package-count); fi
    count=$((count + 1)); echo "$count" > package-count
    if [ "$PACKAGE_EXIT" != 0 ]; then echo 'native package getter failed' >&2; exit "$PACKAGE_EXIT"; fi
-   if [ "$TRANSITION" = true ] && [ "$count" = 1 ]; then cat default.txt
+   if [ $((clock + cost)) -lt "$READY_AT" ]; then cat default.txt
+   elif [ "$TRANSITION" = true ] && [ "$count" = 1 ]; then cat default.txt
    elif [ "$count" -ge "$RECHECK_AT" ]; then cat recheck.txt
    else cat package.txt; fi;;
- *"broadcasts history") cat history.txt;;
+ *"broadcasts history") if [ $((clock + cost)) -lt "$READY_AT" ]; then cat pending-history.txt; else cat history.txt; fi;;
  *) echo "native producer: $*";;
 esac
 case "$*" in *input_method) exit "$PROBE_EXIT";; esac
@@ -119,6 +131,7 @@ function fixtureEnvironment(cwd: string, preload: string, scenario: Scenario) {
     PACKAGE_EXIT: String(scenario.packageExit ?? 0),
     FINGERPRINT_EXIT: String(scenario.fingerprintExit ?? 0),
     PREFLIGHT_COST: String(scenario.preflightCost ?? 1000),
+    READY_AT: String(1_000_000 + (scenario.readyAfterMs ?? 0)),
   };
 }
 

@@ -75,3 +75,14 @@ test('refused preparation retains resolved provider evidence without replay', as
     'native producer: -s emulator-own shell dumpsys activity exit-info com.google.android.settings.intelligence\n',
   );
 });
+
+test('diagnostic refuses a native transition after45s within its original40s preparation', async () => {
+  const { result, summary, calls } = await runSearchFixture({ readyAfterMs: 45_000 });
+  expect(result.exitCode, result.stderr).toBe(2);
+  expect(summary.preparation.satisfied).toBe(false);
+  expect(summary.preparation.budgetMs).toBe(40_000);
+  expect(summary.replayExit).toBeUndefined();
+  expect(summary.traceProbeComplete).toBe(false);
+  expect(calls).not.toContain('REPLAY');
+  expect(calls).toContain('--async_stop');
+});

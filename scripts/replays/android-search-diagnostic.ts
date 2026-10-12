@@ -101,7 +101,7 @@ try {
     serial,
     outputDir,
     startedAt,
-    deadline: deadline - 195_000,
+    deadline: Math.min(startedAt + 40_000, deadline - 195_000),
   });
   commands.push(...preparation.commands);
   provider = preparation.provider;
