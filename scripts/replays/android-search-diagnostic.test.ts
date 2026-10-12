@@ -76,7 +76,7 @@ process.exitCode = Number(process.env.REPLAY_EXIT);
     const calls = fs.readFileSync(path.join(cwd, 'calls.log'), 'utf8');
     const replayReached = categories && mask !== '0';
     expect(result.exitCode, result.stderr).toBe(status);
-    expect(summary.nativeComplete).toBe(replayReached && probeExit === 0);
+    expect(summary.traceProbeComplete).toBe(replayReached && probeExit === 0);
     expect(summary.diagnosticOnly).toBe(true);
     expect(summary.validForDecision).toBe(false);
     expect(summary.variant.head).toBe('source-variant');

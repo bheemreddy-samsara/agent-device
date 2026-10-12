@@ -172,7 +172,7 @@ try {
 } catch (error) {
   diagnosticError ??= String(error);
 }
-const nativeComplete =
+const traceProbeComplete =
   probesSucceeded && !diagnosticError && replayExit !== undefined && !fs.existsSync(traceMarker);
 fs.writeFileSync(
   path.join(outputDir, 'summary.json'),
@@ -187,7 +187,7 @@ fs.writeFileSync(
       corpus,
       startedAt,
       finishedAt: Date.now(),
-      nativeComplete,
+      traceProbeComplete,
       replayExit,
       diagnosticError,
       commands,
@@ -201,6 +201,6 @@ process.exitCode =
     ? replayExit > 0
       ? replayExit
       : 2
-    : nativeComplete
+    : traceProbeComplete
       ? 0
       : 2;

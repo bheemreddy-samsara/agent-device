@@ -44,6 +44,10 @@ if [ "$READINESS_MODE" != normal ]; then
     DIAGNOSTIC_EXIT=0
     node --experimental-strip-types scripts/replays/android-search-diagnostic.ts "$ANDROID_SERIAL" "$NATIVE_DIR" "$AGENT_DEVICE_STATE_DIR" "$ATRACE_MARKER" || DIAGNOSTIC_EXIT=$?
     stop_native_diagnostics
+    case "$LOGCAT_EXIT" in
+      0|124|143) ;;
+      *) if [ "$DIAGNOSTIC_EXIT" -eq 0 ]; then DIAGNOSTIC_EXIT=2; fi ;;
+    esac
     exit "$DIAGNOSTIC_EXIT"
   fi
   node --experimental-strip-types scripts/replays/readiness-experiment.ts begin android
