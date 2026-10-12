@@ -115,6 +115,7 @@ async function resolveAndroidOpenTarget(
       device,
       input.target,
       input.currentAppBundleId,
+      input.launchArgs,
     ),
     appName: input.target,
   };

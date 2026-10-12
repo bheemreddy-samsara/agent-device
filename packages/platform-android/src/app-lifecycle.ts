@@ -192,6 +192,13 @@ function androidLaunchArgs(options: OpenAndroidAppOptions): string[] {
   return options.launchArgs ?? [];
 }
 
+export function buildAndroidIntentArgs(
+  intent: string,
+  launchArgs: readonly string[] = [],
+): string[] {
+  return ['-a', intent, ...launchArgs];
+}
+
 export async function openAndroidApp(
   device: DeviceInfo,
   app: string,
@@ -289,7 +296,12 @@ async function openAndroidIntent(
   if (options.activity) {
     throw new AppError('INVALID_ARGS', 'Activity override requires a package name, not an intent');
   }
-  await runAndroidShell(device, ['am', 'start', '-W', '-a', intent, ...androidLaunchArgs(options)]);
+  await runAndroidShell(device, [
+    'am',
+    'start',
+    '-W',
+    ...buildAndroidIntentArgs(intent, options.launchArgs),
+  ]);
 }
 
 async function openAndroidPackageActivity(

@@ -165,13 +165,14 @@ export async function resolveSessionAppBundleIdForTarget(
   device: DeviceInfo,
   openTarget: string | undefined,
   currentAppBundleId: string | undefined,
+  launchArgs?: readonly string[],
 ): Promise<string | undefined> {
   if (device.platform === 'harmonyos') {
     return bundleIdFromOpenTarget(openTarget) ?? currentAppBundleId;
   }
   return (
     (await resolveIosBundleIdForOpen(device, openTarget, currentAppBundleId)) ??
-    (await tryResolveAndroidPackageForOpen(device, openTarget)) ??
+    (await tryResolveAndroidPackageForOpen(device, openTarget, launchArgs)) ??
     (shouldPreserveAndroidPackageContext(device, openTarget) ? currentAppBundleId : undefined)
   );
 }
@@ -179,11 +180,12 @@ export async function resolveSessionAppBundleIdForTarget(
 async function tryResolveAndroidPackageForOpen(
   device: DeviceInfo,
   openTarget: string | undefined,
+  launchArgs?: readonly string[],
 ): Promise<string | undefined> {
   if (device.platform !== 'android' || !openTarget) return undefined;
   try {
     const { resolveAndroidPackageForOpen } = await loadAndroidMechanics();
-    return await resolveAndroidPackageForOpen(device, openTarget);
+    return await resolveAndroidPackageForOpen(device, openTarget, launchArgs);
   } catch {
     return undefined;
   }

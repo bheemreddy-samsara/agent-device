@@ -275,6 +275,38 @@ test('open applies launch-only flags only to the direct app launch before runtim
   ]);
 });
 
+test('Android open forwards component launch overrides to requested app identity resolution', async () => {
+  const sessionStore = makeSessionStore();
+  const device = makeAndroidEmulator();
+  const launchArgs = ['-n', 'com.example.app/.MainActivity'];
+  mockResolveTargetDevice.mockResolvedValue(device);
+  const response = await handleSessionCommands({
+    createCommandSurface: testCreateCommandSurface,
+    platformServices: daemonPlatformServicesFixture(),
+    req: {
+      token: 't',
+      session: 'intent-override',
+      command: 'open',
+      positionals: ['settings'],
+      flags: { platform: 'android', launchArgs },
+    },
+    sessionName: 'intent-override',
+    logPath: path.join(mkdtempForTestSync('daemon'), 'daemon.log'),
+    sessionStore,
+    invoke: noopInvoke,
+  });
+
+  expect(response?.ok).toBe(true);
+  expect(mockResolveAndroidPackage).toHaveBeenCalledWith(device, 'settings', launchArgs);
+  expect(mockDispatch).toHaveBeenCalledWith(
+    device,
+    'open',
+    ['settings'],
+    undefined,
+    expect.objectContaining({ launchArgs }),
+  );
+});
+
 test('open --metro-port alone defaults the host to 10.0.2.2 on an Android emulator', async () => {
   const sessionStore = makeSessionStore();
   const sessionName = 'runtime-open-port-only-android';
