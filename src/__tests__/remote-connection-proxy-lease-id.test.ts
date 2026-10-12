@@ -25,8 +25,10 @@ const DAEMON_LEASE_ID = 'abc123abc123abc1';
 function recordingAllocate(requests: LeaseAllocateRequest[]) {
   return async (request: LeaseAllocateRequest) => {
     requests.push(request);
-    // The daemon's own id, as an older daemon that ignores the requested one answers.
+    // The daemon's own id, as a daemon that ignores the requested one answers. The reply names
+    // the device it picked, so the allocate-by-spec fallback for a reply without one never runs.
     return {
+      device: { platform: 'android' as const, id: 'emulator-5554', name: 'Pixel 9' },
       leaseId: DAEMON_LEASE_ID,
       tenantId: request.tenant,
       runId: request.runId,
