@@ -59,3 +59,19 @@ test.each([
     }
   },
 );
+
+test('refused preparation retains resolved provider evidence without replay', async () => {
+  const { result, summary, calls, output } = await runSearchFixture({ fingerprintExit: 3 });
+  expect(result.exitCode, result.stderr).toBe(2);
+  expect(summary.preparation.satisfied).toBe(false);
+  expect(summary.preparation.provider).toBe('com.google.android.settings.intelligence');
+  expect(summary.replayExit).toBeUndefined();
+  expect(calls).not.toContain('REPLAY');
+  expect(summary.traceProbeComplete).toBe(false);
+  expect(fs.readFileSync(path.join(output, 'provider-after.stdout.txt'), 'utf8')).toContain(
+    'appId=10145',
+  );
+  expect(fs.readFileSync(path.join(output, 'search-exit-info.stdout.txt'), 'utf8')).toBe(
+    'native producer: -s emulator-own shell dumpsys activity exit-info com.google.android.settings.intelligence\n',
+  );
+});

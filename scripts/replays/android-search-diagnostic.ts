@@ -122,13 +122,13 @@ try {
     deadline: deadline - 195_000,
   });
   commands.push(...preparation.commands);
+  provider = preparation.provider;
   if (!preparation.satisfied)
     throw new Error(preparation.error ?? 'Native provider preparation failed');
-  provider = preparation.provider;
   if (adb('atrace-prep', ['shell', 'atrace', '--async_dump']).exitCode !== 0)
     throw new Error('Native diagnostic could not preserve preparation trace');
   traceDumpClearsBuffer = true;
-  adb('provider-before', ['shell', 'dumpsys', 'package', provider]);
+  adb('provider-before', ['shell', 'dumpsys', 'package', preparation.provider]);
   clock('before-replay');
   if (deadline - Date.now() < 195_000)
     throw new Error('Native preparation left insufficient replay budget');

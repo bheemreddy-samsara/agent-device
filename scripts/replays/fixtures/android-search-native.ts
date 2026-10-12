@@ -29,6 +29,7 @@ export type Scenario = {
   identity?: string;
   resolvedProvider?: string;
   packageExit?: number;
+  fingerprintExit?: number;
   preflightCost?: number;
 };
 
@@ -66,7 +67,7 @@ echo $((clock + cost)) > clock
 case "$*" in
  *--list_categories) printf 'pm - Package Manager\n'; if [ "$CATEGORIES" = true ]; then echo 'ss - System Server'; fi;;
  *resolve-activity*) echo "$PROVIDER/.search.SearchActivity";;
- *ro.build.fingerprint) echo "$FINGERPRINT";;
+ *ro.build.fingerprint) if [ "$FINGERPRINT_EXIT" != 0 ]; then echo "native fingerprint getter failed" >&2; exit "$FINGERPRINT_EXIT"; fi; echo "$FINGERPRINT";;
  *debug.atrace.tags.enableflags) echo "$MASK";;
  *--async_stop|*--async_dump) echo 'trace_event_clock_sync: realtime_ts=1000'; echo 'broadcastPackageChanged; cpnft=caller.raw';;
  *"dumpsys package"*)
@@ -130,6 +131,7 @@ process.exitCode = Number(process.env.REPLAY_EXIT);
         PROVIDER: scenario.resolvedProvider ?? provider,
         FINGERPRINT: scenario.identity ?? fingerprint,
         PACKAGE_EXIT: String(scenario.packageExit ?? 0),
+        FINGERPRINT_EXIT: String(scenario.fingerprintExit ?? 0),
         PREFLIGHT_COST: String(scenario.preflightCost ?? 1000),
       },
     },

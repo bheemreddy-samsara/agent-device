@@ -214,12 +214,12 @@ async function observeProvider(
     'android.intent.category.DEFAULT',
   ]);
   const provider = /^([A-Za-z0-9_.]+)\/[A-Za-z0-9_.$]+$/m.exec(resolution)?.[1];
+  preparation.provider = provider;
   const fingerprint = probe('prep-fingerprint', [
     'shell',
     'getprop',
     'ro.build.fingerprint',
   ]).trim();
-  preparation.provider = provider;
   preparation.fingerprint = fingerprint;
   if (provider !== knownProvider || fingerprint !== knownFingerprint)
     throw new Error('Native provider precondition is unsupported for this image/provider');
