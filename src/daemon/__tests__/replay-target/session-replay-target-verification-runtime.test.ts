@@ -221,7 +221,15 @@ test('an annotated click whose target renders on the second capture waits for it
   });
   expect(mockDispatchCommand).toHaveBeenCalledTimes(2);
   expect(readinessDiagnostics()).toEqual([
-    { polls: 2, waitedMs: 200, end: 'done', command: 'click' },
+    {
+      polls: 2,
+      waitedMs: 200,
+      end: 'done',
+      command: 'click',
+      replaySession: scene.sessionName,
+      replayPath: scene.filePath,
+      step: 1,
+    },
   ]);
 });
 
@@ -266,7 +274,15 @@ test('the budget the gate hands the dispatch counts from the end of its first ca
 
   expect(response.ok).toBe(true);
   expect(readinessDiagnostics()).toEqual([
-    { polls: 9, waitedMs: 2_100, end: 'done', command: 'click' },
+    {
+      polls: 9,
+      waitedMs: 2_100,
+      end: 'done',
+      command: 'click',
+      replaySession: scene.sessionName,
+      replayPath: scene.filePath,
+      step: 1,
+    },
   ]);
   expect(scene.invoked[0]?.flags?.readinessTimeoutMs).toBe(400);
 });

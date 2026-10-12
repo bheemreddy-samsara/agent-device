@@ -203,7 +203,7 @@ export function createAdReplayStepRuntime(params: {
       });
     },
 
-    async observeTarget({ action, token }) {
+    async observeTarget({ action, token, index }) {
       const observeOnce = async (): Promise<AdReplayTargetObservation> => {
         const observation = await captureTargetObservation(action);
         lastObservation = observation;
@@ -251,7 +251,13 @@ export function createAdReplayStepRuntime(params: {
         emitDiagnostic({
           level: 'debug',
           phase: 'interaction_target_readiness',
-          data: { ...gateWait.readiness, command: action.command },
+          data: {
+            ...gateWait.readiness,
+            command: action.command,
+            replaySession: ctx.sessionName,
+            replayPath: ctx.resolved,
+            step: index + 1,
+          },
         });
       }
       if (observed.kind === 'done') return observed.result;
