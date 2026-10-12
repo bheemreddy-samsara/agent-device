@@ -11,7 +11,7 @@ test('command evidence retains both producer pipes and nonzero status', async ()
     executable: process.execPath,
     args: [
       '-e',
-      'process.stdout.write("raw stdout\\nλ"); process.stderr.write("raw stderr\\n"); process.exitCode = 7',
+      String.raw`process.stdout.write("raw stdout\nλ"); process.stderr.write("raw stderr\n"); process.exitCode = 7`,
     ],
     outputDir,
     timeoutMs: 2000,
