@@ -47,8 +47,14 @@ if [ "$2" = scripts/replays/android-search-diagnostic.ts ]; then
      sleep 0.01; ticks=$((ticks + 1))
    done
    test -f logger-ready && kill -0 "$logger" || exit 42
+ else
+   ticks=0
+   while kill -0 "$logger" 2>/dev/null && [ "$ticks" -lt 100 ]; do
+     sleep 0.01; ticks=$((ticks + 1))
+   done
+   if kill -0 "$logger" 2>/dev/null; then exit 42; fi
  fi
- touch "$6"; sleep 0.1
+ touch "$6"
  if [ "$INTERRUPT" = true ]; then kill -TERM "$PPID"; fi
  exit "$COMMAND_EXIT"
 fi`,
