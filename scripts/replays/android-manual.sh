@@ -50,6 +50,7 @@ if [ "$READINESS_MODE" != normal ]; then
     esac
     exit "$DIAGNOSTIC_EXIT"
   fi
+  node --experimental-strip-types scripts/replays/android-search-prepare.ts "$ANDROID_SERIAL" test/artifacts/readiness-experiment/android-preparation
   node --experimental-strip-types scripts/replays/readiness-experiment.ts begin android
   REPLAY_EXIT=0
   pnpm gate replay-android --serial "$ANDROID_SERIAL" --debug --retries 0 --artifacts-dir test/artifacts/replays-android --report-junit test/artifacts/replays-android.junit.xml || REPLAY_EXIT=$?

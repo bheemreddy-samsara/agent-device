@@ -6,15 +6,19 @@ import { runCmdSync } from '@agent-device/host-kit/command';
 import { mkdtempForTest } from '@agent-device/test-kit/tmp-dir';
 
 test.each([
-  [false, 7, false, 0, 7],
-  [true, 2, false, 0, 2],
-  [true, 7, false, 0, 7],
-  [true, 0, true, 0, 143],
-  [true, 0, false, 1, 2],
-  [true, 7, false, 1, 7],
+  [false, 7, false, 0, 7, 'enabled', 0],
+  [true, 2, false, 0, 2, 'enabled', 0],
+  [true, 7, false, 0, 7, 'enabled', 0],
+  [true, 0, true, 0, 143, 'enabled', 0],
+  [true, 0, false, 1, 2, 'enabled', 0],
+  [true, 7, false, 1, 7, 'enabled', 0],
+  [false, 0, false, 0, 9, 'disabled', 0],
+  [false, 0, false, 0, 2, 'enabled', 2],
+  [false, 0, false, 0, 2, 'disabled', 2],
+  [false, 0, false, 0, 0, 'normal', 2],
 ] as const)(
-  'manual diagnostic=%s helper=%i interruption=%s logcat=%i cleans only owned collectors',
-  async (diagnostic, commandExit, interrupt, logcatExit, expectedExit) => {
+  'manual diagnostic=%s helper=%i interruption=%s logcat=%i status=%i mode=%s prep=%i',
+  async (diagnostic, commandExit, interrupt, logcatExit, expectedExit, mode, prepExit) => {
     const cwd = await mkdtempForTest('android-manual-actor-');
     const bin = path.join(cwd, 'bin');
     fs.mkdirSync(bin);
@@ -36,7 +40,9 @@ if [ "$1 $2" = 'gate replay-android' ]; then exit "$COMMAND_EXIT"; fi`,
     );
     tool(
       'node',
-      String.raw`if [ "$3" = begin ]; then touch begun; fi
+      String.raw`printf '%s\n' "$*" >> node-calls.log
+if [ "$2" = scripts/replays/android-search-prepare.ts ]; then touch prepared; exit "$PREP_EXIT"; fi
+if [ "$3" = begin ]; then touch begun; fi
 if [ "$3" = summarize ]; then touch summarized; exit 9; fi
 if [ "$2" = scripts/replays/android-search-diagnostic.ts ]; then
  read stamp logger < "$4/native-logcat-start.txt"
@@ -69,7 +75,7 @@ fi`,
       step.uses?.startsWith('reactivecircus/android-emulator-runner@'),
     );
     const script = runner.with.script
-      .replaceAll(/\$\{\{ inputs.readiness_wait \}\}/g, 'enabled')
+      .replaceAll(/\$\{\{ inputs.readiness_wait \}\}/g, mode)
       .replaceAll(/\$\{\{ inputs.android_diagnostic \}\}/g, String(diagnostic))
       .replaceAll(/\$\{\{ steps.fixture-app.outputs.apk-path \}\}/g, '')
       .replaceAll(/\$\{\{ steps.fixture-app.outputs.app-id \}\}/g, '')
@@ -87,6 +93,7 @@ fi`,
           PATH: `${bin}:${process.env.PATH}`,
           AGENT_DEVICE_STATE_DIR: path.join(cwd, 'state'),
           COMMAND_EXIT: String(commandExit),
+          PREP_EXIT: String(prepExit),
           INTERRUPT: String(interrupt),
           LOGCAT_FAILURE: String(logcatExit),
         },
@@ -94,8 +101,19 @@ fi`,
       if (result.exitCode !== 0) break;
     }
     expect(result.exitCode, result.stderr).toBe(expectedExit);
-    expect(fs.existsSync(path.join(cwd, 'begun'))).toBe(!diagnostic);
-    expect(fs.existsSync(path.join(cwd, 'summarized'))).toBe(!diagnostic);
+    const measured = !diagnostic && mode !== 'normal' && prepExit === 0;
+    expect(fs.existsSync(path.join(cwd, 'begun'))).toBe(measured);
+    expect(fs.existsSync(path.join(cwd, 'summarized'))).toBe(measured);
+    expect(fs.existsSync(path.join(cwd, 'prepared'))).toBe(!diagnostic && mode !== 'normal');
+    const nodeCalls = fs.readFileSync(path.join(cwd, 'node-calls.log'), 'utf8');
+    if (measured) {
+      expect(nodeCalls.indexOf('android-search-prepare.ts')).toBeLessThan(
+        nodeCalls.indexOf('begin android'),
+      );
+      expect(nodeCalls).toContain(
+        'android-search-prepare.ts emulator-7000 test/artifacts/readiness-experiment/android-preparation',
+      );
+    }
     if (diagnostic) {
       expect(fs.existsSync(path.join(cwd, 'logger-stopped'))).toBe(logcatExit === 0);
       expect(fs.readFileSync(path.join(cwd, 'trace-stopped'), 'utf8')).toBe(
@@ -111,9 +129,11 @@ fi`,
       );
     } else {
       expect(fs.existsSync(path.join(cwd, 'trace-stopped'))).toBe(false);
-      expect(fs.readFileSync(path.join(cwd, 'calls.log'), 'utf8')).toContain(
-        'replay-android --serial emulator-7000 --debug --retries 0',
-      );
+      const calls = fs.readFileSync(path.join(cwd, 'calls.log'), 'utf8');
+      if (measured)
+        expect(calls).toContain('replay-android --serial emulator-7000 --debug --retries 0');
+      else if (mode === 'normal') expect(calls).toContain('replay-android --retries 2');
+      else expect(calls).not.toContain('gate replay-android');
     }
   },
 );
