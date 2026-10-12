@@ -160,6 +160,7 @@ try {
   }
 }
 try {
+  adb('broadcast-history', ['shell', 'dumpsys', 'activity', '-a', 'broadcasts', 'history']);
   clock('after-replay');
   if (provider) {
     adb('provider-after', ['shell', 'dumpsys', 'package', provider]);
