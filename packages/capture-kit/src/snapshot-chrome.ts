@@ -1,9 +1,16 @@
-import { isAndroidInputMethodNode } from '@agent-device/contracts/android-input-ownership';
 import {
   ANDROID_SYSTEM_CHROME_PACKAGE,
   hasAndroidSystemChromeProvenance,
   isAndroidSystemChromeWindowResourceId,
 } from '@agent-device/contracts/android-system-chrome';
+import {
+  hasIosKeyboardRole,
+  IOS_KEYBOARD_CHROME_MARKER_ROLES,
+  IOS_KEYBOARD_SETTLE_CHROME_ROLES,
+  IOS_KEYBOARD_SUBTREE_CHROME_ROLES,
+  IOS_KEYBOARD_SURFACE_ROLES,
+  isAndroidInputMethodNode,
+} from '@agent-device/contracts/android-input-ownership';
 import type { SnapshotNode } from '@agent-device/kernel/snapshot';
 import { normalizeType } from '@agent-device/contracts/snapshot';
 
@@ -74,64 +81,39 @@ type SettleChrome = {
 
 const EMPTY_SETTLE_CHROME: SettleChrome = { strippedIndexes: new Set(), refs: new Set() };
 
-/**
- * UIKit classes the keyboard owns whose nodes the regular projection can flatten beside app
- * content — the key plane and a key when no `[Keyboard]` container survives, the system
- * input-assistant (QuickType) bar, and the dock's "Next keyboard" / "Dictate" buttons. Once the
- * projection has dropped the keyboard's own window, neither the container-subtree nor the
- * window walk can reach them, but each node still carries its producing class in `role`.
- *
- * Exact class names only, so a near miss fails closed rather than widening what counts as
- * chrome (the same discipline `geometry-policy.ts` applies to private UIKit roles). Classes are
- * locale-independent, unlike every label these nodes carry, and private to the keyboard
- * surfaces — an app cannot host one in its own view tree.
- */
-const IOS_KEYBOARD_OWNED_ROLES: ReadonlySet<string> = new Set([
-  'UIKeyboardLayoutStar',
-  'UIAccessibilityElementKBKey',
-  'UIKeyboardDockItemButton',
-  'TUISystemInputAssistantView',
-  'TUISystemInputAssistantPageView',
-  'TUIPredictionView',
-  'TUIPredictionViewCell',
-]);
-
-/**
- * The system `inputView` host frame: chrome itself, but it OWNS NO SUBTREE — an app's custom
- * `UITextField.inputView` content (a drawn keypad, a composer) renders under this placeholder and
- * stays a control the agent must see. Stripping only the marker keeps the keyboard's appearance
- * at one visible line without swallowing app content; if the class is ever renamed, the inert
- * marker line returns as noise rather than app content vanishing — noise fails loudly.
- */
-const IOS_KEYBOARD_CHROME_MARKER_ROLES: ReadonlySet<string> = new Set([
-  '_UIRemoteKeyboardPlaceholderView',
-]);
-
-function hasRole(node: SnapshotNode, roles: ReadonlySet<string>): boolean {
-  return node.role !== undefined && roles.has(node.role);
-}
-
-function isKeyboardOwnedRoleNode(node: SnapshotNode): boolean {
-  return hasRole(node, IOS_KEYBOARD_OWNED_ROLES);
-}
-
 function collectKeyboardChrome(nodes: SnapshotNode[]): SettleChrome {
   const byIndex = new Map(nodes.map((node) => [node.index, node]));
   const containerIndexes = new Set(
     nodes.filter((node) => normalizeType(node.type ?? '') === 'keyboard').map((node) => node.index),
   );
-  const ownedSubtreeRootIndexes = new Set(
-    nodes.filter(isKeyboardOwnedRoleNode).map((node) => node.index),
+  // Role-declared keyboard surfaces, reached because the interactive projection flattens them
+  // beside app content: chrome PER NODE (surface roles), chrome by SUBTREE (system-only hosts),
+  // or chrome AS A MARKER with no subtree (hosts the app can also fill — its custom inputView,
+  // its inputAssistantItem bar buttons — so the app content under a marker survives).
+  const surfaceIndexes = new Set(
+    nodes
+      .filter(
+        (node) =>
+          hasIosKeyboardRole(node, IOS_KEYBOARD_SURFACE_ROLES) ||
+          hasIosKeyboardRole(node, IOS_KEYBOARD_SETTLE_CHROME_ROLES),
+      )
+      .map((node) => node.index),
   );
   const markerIndexes = new Set(
     nodes
-      .filter((node) => hasRole(node, IOS_KEYBOARD_CHROME_MARKER_ROLES))
+      .filter((node) => hasIosKeyboardRole(node, IOS_KEYBOARD_CHROME_MARKER_ROLES))
+      .map((node) => node.index),
+  );
+  const subtreeChromeRootIndexes = new Set(
+    nodes
+      .filter((node) => hasIosKeyboardRole(node, IOS_KEYBOARD_SUBTREE_CHROME_ROLES))
       .map((node) => node.index),
   );
   if (
     containerIndexes.size === 0 &&
-    ownedSubtreeRootIndexes.size === 0 &&
-    markerIndexes.size === 0
+    surfaceIndexes.size === 0 &&
+    markerIndexes.size === 0 &&
+    subtreeChromeRootIndexes.size === 0
   ) {
     return EMPTY_SETTLE_CHROME;
   }
@@ -143,36 +125,23 @@ function collectKeyboardChrome(nodes: SnapshotNode[]): SettleChrome {
   }
   // Preserve app-owned accessory controls hosted above the keyboard: they were
   // swept in by the whole-window pass but are not keyboard chrome.
-  const accessoryExemptIndexes = collectKeyboardAccessoryIndexes(
+  for (const index of collectKeyboardAccessoryIndexes(
     nodes,
     byIndex,
     windowIndexes,
     containerIndexes,
     containerSubtreeIndexes,
-  );
-  for (const index of accessoryExemptIndexes) {
+  )) {
     chromeIndexes.delete(index);
   }
-  // Keyboard-owned classes the projection flattened out of every reachable subtree are chrome
-  // by their own declaration — but the walk may NOT outrank the app-accessory exemption above:
-  // an app's `UITextField.inputAssistantItem` bar buttons render UNDER the system assistant
-  // view, above the keys, and the window pass just exempted them; re-claiming them through the
-  // assistant's subtree would hide real app controls from the settle diff. An exempted node
-  // only re-joins chrome when IT declares a keyboard-owned role (a prediction cell is
-  // system-owned wherever it sits); an app node under an owned host stays exempt. In the
-  // flattened interactive shape there is no window anchor, the exemption is empty, and the
-  // walk claims the key plane exactly as the container-descendant walk always did.
-  for (const index of collectOwnedKeyboardChromeIndexes(
-    nodes,
-    byIndex,
-    ownedSubtreeRootIndexes,
-    containerSubtreeIndexes,
-    accessoryExemptIndexes,
-  )) {
+  // No role claim may reach app content: surface roles are chrome per node, subtree claims only
+  // start at system-only hosts the app can never fill, and markers own no subtree. That is why
+  // these passes need no interaction with the accessory exemption or an editable-text guard —
+  // an app node under the assistant view or the inputView placeholder is simply never claimed.
+  for (const index of surfaceIndexes) chromeIndexes.add(index);
+  for (const index of collectSubtreeIndexes(nodes, byIndex, subtreeChromeRootIndexes)) {
     chromeIndexes.add(index);
   }
-  // The system inputView host frame is itself chrome, but owning no subtree: an app's custom
-  // input view content under it survives classification.
   for (const index of markerIndexes) chromeIndexes.add(index);
   const refs = new Set(
     nodes.filter((node) => node.ref && chromeIndexes.has(node.index)).map((node) => node.ref),
@@ -183,70 +152,6 @@ function collectKeyboardChrome(nodes: SnapshotNode[]): SettleChrome {
     [...chromeIndexes].filter((index) => !containerIndexes.has(index)),
   );
   return { strippedIndexes, refs };
-}
-
-/**
- * The subtree under each keyboard-owned-class root, minus two app-content guards: indexes the
- * app-accessory exemption already granted (an app's `inputAssistantItem` bar buttons ride the
- * system assistant view above the keys), and editable text the app hosts inside an owned root
- * outside the keyboard container, with its subtree. A keyboard's own `Key` nodes trip neither —
- * they sit inside the container subtree, which the accessory pass never exempts — and the
- * flattened interactive shape carries no window anchor, so the exemption is empty there and the
- * walk claims the whole key plane exactly as the container-descendant walk always did.
- */
-function collectOwnedKeyboardChromeIndexes(
-  nodes: SnapshotNode[],
-  byIndex: Map<number, SnapshotNode>,
-  ownedSubtreeRootIndexes: ReadonlySet<number>,
-  containerSubtreeIndexes: ReadonlySet<number>,
-  accessoryExemptIndexes: ReadonlySet<number>,
-): Set<number> {
-  const chromeIndexes = collectSubtreeIndexes(nodes, byIndex, ownedSubtreeRootIndexes);
-  // An exempted node re-joins chrome only when IT declares a keyboard-owned role: a system
-  // prediction cell is chrome wherever it sits, while an app's `inputAssistantItem` bar button
-  // under the assistant view declares no owned role and keeps its exemption.
-  for (const index of accessoryExemptIndexes) {
-    if (!ownedSubtreeRootIndexes.has(index)) chromeIndexes.delete(index);
-  }
-  for (const index of collectHostedEditableTextIndexes(
-    nodes,
-    byIndex,
-    chromeIndexes,
-    containerSubtreeIndexes,
-  )) {
-    chromeIndexes.delete(index);
-  }
-  return chromeIndexes;
-}
-
-/**
- * Editable text the app hosts under an owned root outside the keyboard container, and the
- * chrome claimed beneath it — the inputAccessoryView guard in disguise: an app that rides its
- * own composer on the assistant host keeps the field it is typing into.
- */
-function collectHostedEditableTextIndexes(
-  nodes: SnapshotNode[],
-  byIndex: Map<number, SnapshotNode>,
-  chromeIndexes: ReadonlySet<number>,
-  containerSubtreeIndexes: ReadonlySet<number>,
-): Set<number> {
-  const dropped = new Set<number>();
-  const hostedTextIndexes = new Set(
-    nodes
-      .filter(
-        (node) =>
-          chromeIndexes.has(node.index) &&
-          EDITABLE_TEXT_TYPES.has(normalizeType(node.type ?? '')) &&
-          !containerSubtreeIndexes.has(node.index),
-      )
-      .map((node) => node.index),
-  );
-  for (const node of nodes) {
-    if (!chromeIndexes.has(node.index)) continue;
-    if (hasAncestorIn(node, byIndex, hostedTextIndexes)) dropped.add(node.index);
-  }
-  for (const index of hostedTextIndexes) dropped.add(index);
-  return dropped;
 }
 
 /**

@@ -234,11 +234,15 @@ test('the real interactive keyboard capture collapses to one [Keyboard] diff lin
   }
 
   // The stripped set collapses the ~50 keyboard-surface nodes; what survives is
-  // app content plus the lone keyboard plane line.
+  // app content plus the keyboard plane line and two accepted residues: the
+  // floating home-indicator Toolbar (31) and the inert QuickType UIScrollView
+  // (35) under the assistant markers, which declare no keyboard-owned role and
+  // are not under a system-only subtree host. Noise lines fail loudly; a
+  // subtree claim through the assistant host could swallow app controls.
   assert.equal(survivors.filter((node) => node.type === 'Key').length, 0);
   assert.deepEqual(
     survivors.filter((node) => node.index >= 31).map((node) => node.type),
-    ['Toolbar', 'Keyboard'],
+    ['Toolbar', 'ScrollView', 'Keyboard'],
   );
   // App content never rides along: the search field the fill targeted survives.
   assert.equal(chromeRefs.has(refFor(nodes, 'Search products')), false);
@@ -289,9 +293,10 @@ test('the inputView host frame is stripped without swallowing app input-view con
   );
 });
 
-// An app that hosts editable text inside a keyboard-owned subtree (its own
-// composer riding the input-assistant host) keeps the field it is typing into.
-test('editable text hosted inside a keyboard-owned subtree survives classification', () => {
+// An app that hosts editable text under a keyboard MARKER host (its own composer
+// riding the input-assistant host) keeps the field it is typing into: the marker
+// is chrome itself and owns no subtree.
+test('editable text hosted under a keyboard marker host survives classification', () => {
   const nodes = attachRefs([
     {
       index: 0,
@@ -403,4 +408,137 @@ test('app inputAssistantItem buttons under the assistant view keep the accessory
   assert.equal(chromeRefs.has(refFor(nodes, 'keep')), true);
   assert.equal(chromeRefs.has(refFor(nodes, 'Assistant Bar')), true);
   assert.equal(chromeRefs.has(refFor(nodes, 'q')), true);
+});
+
+// The route #3469 targets: the interactive projection has NO Window anchor, so the
+// app-accessory exemption is empty and only the marker rule protects app content. An
+// app Button under the assistant view survives on its own; a prediction cell beside
+// it, chrome by its own declared role, still collapses.
+test('an app control under the assistant host survives on the Window-less interactive shape', () => {
+  const nodes = attachRefs([
+    {
+      index: 0,
+      depth: 0,
+      type: 'Application',
+      label: 'Example',
+      rect: { x: 0, y: 0, width: 402, height: 874 },
+    },
+    {
+      index: 1,
+      depth: 1,
+      parentIndex: 0,
+      type: 'TextField',
+      label: 'Search',
+      rect: { x: 18, y: 100, width: 366, height: 44 },
+      hittable: true,
+    },
+    {
+      index: 2,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Other',
+      role: 'TUISystemInputAssistantView',
+      rect: { x: 0, y: 546, width: 402, height: 44 },
+    },
+    {
+      index: 3,
+      depth: 2,
+      parentIndex: 2,
+      type: 'Button',
+      label: 'Paste',
+      rect: { x: 8, y: 550, width: 60, height: 36 },
+      hittable: true,
+    },
+    {
+      index: 4,
+      depth: 2,
+      parentIndex: 2,
+      type: 'Button',
+      role: 'TUIPredictionViewCell',
+      label: 'keep',
+      rect: { x: 200, y: 550, width: 60, height: 36 },
+      hittable: true,
+    },
+    {
+      index: 5,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Keyboard',
+      role: 'UIKeyboardAutomatic',
+      rect: { x: 0, y: 606, width: 402, height: 268 },
+    },
+    {
+      index: 6,
+      depth: 2,
+      parentIndex: 5,
+      type: 'Key',
+      role: 'UIAccessibilityElementKBKey',
+      label: 'q',
+      rect: { x: 0, y: 620, width: 39, height: 54 },
+    },
+  ]);
+  const chromeRefs = collectSettleChromeRefs(nodes, undefined);
+
+  assert.equal(
+    chromeRefs.has(refFor(nodes, 'Paste')),
+    false,
+    'the assistant host is a marker: it claims no subtree, so an app control under it survives',
+  );
+  assert.equal(chromeRefs.has(refFor(nodes, 'keep')), true);
+  assert.equal(chromeRefs.has(refFor(nodes, 'Search')), false);
+});
+
+// A capture that reports the key plane or the prediction bar WITHOUT any key/cell/marker
+// sibling: the subtree-role hosts alone must still strip their subtrees, or the empty-set
+// early return re-leaks the plane's inert children into the settle diff and tail budget.
+test('a subtree-role host with no surface or marker sibling still strips its subtree', () => {
+  const nodes = attachRefs([
+    {
+      index: 0,
+      depth: 0,
+      type: 'Application',
+      label: 'Example',
+      rect: { x: 0, y: 0, width: 402, height: 874 },
+    },
+    {
+      index: 1,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Other',
+      role: 'UIKeyboardLayoutStar',
+      rect: { x: 0, y: 606, width: 402, height: 268 },
+    },
+    {
+      index: 2,
+      depth: 2,
+      parentIndex: 1,
+      type: 'Other',
+      label: 'autoguess candidate row',
+      rect: { x: 0, y: 606, width: 402, height: 44 },
+    },
+    {
+      index: 3,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Other',
+      role: 'TUIPredictionView',
+      label: 'Typing Predictions',
+      rect: { x: 0, y: 546, width: 402, height: 44 },
+    },
+    {
+      index: 4,
+      depth: 2,
+      parentIndex: 3,
+      type: 'Other',
+      rect: { x: 0, y: 546, width: 402, height: 44 },
+    },
+  ]);
+  const survivors = withoutSettleChrome(nodes, undefined);
+  const chromeRefs = collectSettleChromeRefs(nodes, undefined);
+
+  assert.deepEqual(
+    survivors.map((node) => node.index),
+    [0],
+  );
+  assert.equal(chromeRefs.size, 4);
 });

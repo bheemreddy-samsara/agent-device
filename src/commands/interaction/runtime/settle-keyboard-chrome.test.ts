@@ -48,8 +48,11 @@ test('the settled diff after a fill shows the keyboard as one line, not one per 
   assert.match(texts, /\[keyboard\]/);
   assert.ok(!diff.lines.some((line) => /\[key\]/.test(line.text)), texts);
   assert.ok(!/Next keyboard|Dictate|Typing Predictions|keep|kind/.test(texts), texts);
-  // App content is unchanged; the keyboard line and the floating toolbar the
-  // keyboard-window capture also reports are the only additions.
-  assert.equal(diff.summary.additions, 2);
+  // App content is unchanged; the additions are the keyboard plane line plus
+  // two accepted noise residues: the floating toolbar the keyboard-window
+  // capture also reports, and the inert QuickType UIScrollView under the
+  // assistant markers (no keyboard-owned role of its own; the assistant host
+  // is a marker and claims no subtree, so nothing under it is subtree-claimed).
+  assert.equal(diff.summary.additions, 3);
   assert.equal(diff.summary.removals, 0);
 });
