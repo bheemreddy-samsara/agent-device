@@ -19,7 +19,7 @@ import {
 } from '@agent-device/kernel/device';
 import {
   resolveAndroidSerialAllowlist,
-  resolveIosSimulatorDeviceSetPath,
+  resolveRequestIosSimulatorDeviceSetPath,
 } from '@agent-device/kernel/device-isolation';
 import {
   deviceClaimOwnerCannotRelease,
@@ -213,7 +213,7 @@ function inventoryIosSimulatorSetPath(
   target: DeviceInfo['target'],
 ) {
   return resolveAppleSimulatorSetPathForSelector({
-    simulatorSetPath: resolveIosSimulatorDeviceSetPath(configuredPath),
+    simulatorSetPath: resolveRequestIosSimulatorDeviceSetPath(configuredPath),
     platform,
     target,
   });

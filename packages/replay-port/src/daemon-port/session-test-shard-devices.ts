@@ -3,7 +3,7 @@ import type { DeviceInventoryRequest } from '@agent-device/contracts/device';
 import { listDeviceInventory } from '@agent-device/device-selection/device-inventory-context';
 import {
   resolveAndroidSerialAllowlist,
-  resolveIosSimulatorDeviceSetPath,
+  resolveRequestIosSimulatorDeviceSetPath,
 } from '@agent-device/kernel/device-isolation';
 import {
   isMobilePlatform,
@@ -100,7 +100,7 @@ function buildReplayTestShardInventoryRequest(
     platform: flags?.platform,
     target: flags?.target,
     iosSimulatorSetPath: resolveAppleSimulatorSetPathForSelector({
-      simulatorSetPath: resolveIosSimulatorDeviceSetPath(flags?.iosSimulatorDeviceSet),
+      simulatorSetPath: resolveRequestIosSimulatorDeviceSetPath(flags?.iosSimulatorDeviceSet),
       platform: flags?.platform,
       target: flags?.target,
     }),
