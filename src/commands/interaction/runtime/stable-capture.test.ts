@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 import type { SnapshotState } from '@agent-device/kernel/snapshot';
 import type { AgentDeviceBackend } from '@agent-device/contracts/backend';
+import { makeSnapshotState } from '@agent-device/capture-kit/snapshot-state-fixtures';
+import { iosInteractiveKeyboardCaptureNodes } from '@agent-device/capture-kit/snapshot-chrome-fixtures';
 import { createLocalArtifactAdapter } from '../../../io.ts';
 import { createAgentDevice } from '../../../runtime.ts';
 import { localCommandPolicy } from '@agent-device/contracts/command-policy';
@@ -237,6 +239,36 @@ test('settle keeps the default quiet window for a backend-less overlapping local
   assert.equal(outcome.settled, true);
   assert.ok(outcome.waitedMs >= 500, `settled before the requested quiet window`);
   assert.ok(outcome.waitedMs < 800, `local mutation settled after ${outcome.waitedMs}ms`);
+});
+
+// Why keyboard chrome is stripped from BOTH sides rather than the candidate
+// only: with the keyboard up on both sides, its ~50 identical chrome nodes
+// dominate the denominator, so no shared-identity ratio reaches the broad bar
+// — on main too (keys counted on both sides, already shared). Stripping the
+// same projection the settle diff collapses therefore only ever removes the
+// false broad verdict (keyboard arrival counted as replacement); it cannot
+// disarm a broad check that previously fired. The check that replaces the
+// keyboard-up pair is the one the fill actually performs: baseline without
+// the keyboard, capture with it, overlapping content — default window.
+test('settle keeps the default quiet window when only keyboard chrome arrives', async () => {
+  const keyboardUp = makeSnapshotState(iosInteractiveKeyboardCaptureNodes(), {
+    backend: 'xctest',
+    snapshotQuality: { state: 'healthy', backend: 'tree' },
+  });
+  const { runtime } = staticSnapshotRuntime(keyboardUp);
+
+  const outcome = await runStableCaptureLoop(
+    runtime,
+    { session: 'default' },
+    {
+      quietMs: 500,
+      timeoutMs: 5_000,
+      broadTransitionBaselineNodes: keyboardUp.nodes.filter((node) => node.index <= 30),
+    },
+  );
+
+  assert.equal(outcome.settled, true);
+  assert.ok(outcome.waitedMs < 800, `keyboard arrival settled after ${outcome.waitedMs}ms`);
 });
 
 function staticSnapshotRuntime(snapshot: SnapshotState) {

@@ -19,6 +19,7 @@ import {
   type StableCaptureSignal,
 } from './stable-capture-signal.ts';
 import { preferredSnapshotBackendForVerdict } from '@agent-device/capture-kit/snapshot-quality-verdict';
+import { withoutSettleChrome } from '@agent-device/capture-kit/snapshot-chrome';
 
 /**
  * The quiet-window stable-capture loop shared by `wait stable` and the
@@ -114,11 +115,13 @@ export async function runStableCaptureLoop(
       params.broadTransitionBaselineNodes,
       capture.snapshot,
       runtime.backend.platform,
+      session?.appBundleId,
     );
     const signal = stableCaptureSignal(capture.snapshot);
-    requiredQuietMs = stableCaptureTransitionQuietMs({
+    requiredQuietMs = stableCaptureNextQuietWindowMs({
       baseline: transitionBaseline,
-      signal,
+      snapshot: capture.snapshot,
+      appBundleId: session?.appBundleId,
       requestedQuietMs: quietMs,
       currentQuietMs: requiredQuietMs,
     });
@@ -187,6 +190,7 @@ function stableCaptureTransitionBaseline(
   baselineNodes: SnapshotNode[] | undefined,
   snapshot: Parameters<typeof stableCaptureSignal>[0] | undefined,
   platform: AgentDeviceRuntime['backend']['platform'],
+  appBundleId: string | undefined,
 ): StableCaptureSignal | undefined {
   // SnapshotState.backend is optional at the runtime boundary. The bound iOS backend remains
   // authoritative when a presented capture omits that provenance; a declared non-XCTest backend
@@ -205,7 +209,25 @@ function stableCaptureTransitionBaseline(
   // a coherent transitional tree win the default 500ms quiet window.
   const hasTinyPresentedBaseline = baselineNodes.length <= TINY_STABLE_TREE_NODE_COUNT;
   if (!hasCompleteViewportProjection && !hasTinyPresentedBaseline) return undefined;
-  return stableCaptureSignal({ ...snapshot, nodes: baselineNodes });
+  return stableCaptureReplacementSignal({ ...snapshot, nodes: baselineNodes }, appBundleId);
+}
+
+/**
+ * The comparison signal for the broad-replacement verdict: the capture minus the chrome the
+ * settle diff also collapses (`withoutSettleChrome`). Keyboard surface arriving or leaving —
+ * ~40 keys, the candidate bar, the dock buttons on a fill — is not a screen replacement, and
+ * counting it as one made every keyboard-raising action pay the 1.5 s confirmation window
+ * (#3469). The survivor rule lives in the shared classifier, so this signal and the diff agree
+ * on what keyboard chrome is; here it only decides the quiet window, never the visible diff.
+ */
+function stableCaptureReplacementSignal(
+  snapshot: Parameters<typeof stableCaptureSignal>[0],
+  appBundleId: string | undefined,
+): StableCaptureSignal {
+  return stableCaptureSignal({
+    ...snapshot,
+    nodes: withoutSettleChrome(snapshot.nodes, appBundleId),
+  });
 }
 
 function isBoundIosXCTestCapture(
@@ -216,16 +238,23 @@ function isBoundIosXCTestCapture(
   return backend === undefined && platform === 'ios';
 }
 
-function stableCaptureTransitionQuietMs(params: {
+/**
+ * The quiet window the candidate capture demands: the broad-replacement verdict runs on the
+ * chrome-free candidate signal (see `stableCaptureReplacementSignal`), so a keyboard pop never
+ * reaches the confirmation branch at all.
+ */
+function stableCaptureNextQuietWindowMs(params: {
   baseline: StableCaptureSignal | undefined;
-  signal: StableCaptureSignal;
+  snapshot: Parameters<typeof stableCaptureSignal>[0];
+  appBundleId: string | undefined;
   requestedQuietMs: number;
   currentQuietMs: number;
 }): number {
-  if (
-    params.requestedQuietMs < DEFAULT_STABLE_QUIET_MS ||
-    !stableCaptureSignalsHaveBroadReplacement(params.baseline, params.signal)
-  ) {
+  if (params.requestedQuietMs < DEFAULT_STABLE_QUIET_MS || !params.baseline) {
+    return params.currentQuietMs;
+  }
+  const replacementSignal = stableCaptureReplacementSignal(params.snapshot, params.appBundleId);
+  if (!stableCaptureSignalsHaveBroadReplacement(params.baseline, replacementSignal)) {
     return params.currentQuietMs;
   }
   return Math.max(params.requestedQuietMs, BROAD_TRANSITION_CONFIRMATION_QUIET_MS);

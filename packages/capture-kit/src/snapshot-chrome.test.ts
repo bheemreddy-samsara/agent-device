@@ -1,11 +1,18 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { attachRefs, type RawSnapshotNode, type SnapshotNode } from '@agent-device/kernel/snapshot';
-import { collectSettleChromeRefs } from './snapshot-chrome.ts';
+import { collectSettleChromeRefs, withoutSettleChrome } from './snapshot-chrome.ts';
+import { iosInteractiveKeyboardCaptureNodes } from './snapshot-chrome.fixtures.ts';
 
 function refFor(nodes: SnapshotNode[], label: string): string {
   const node = nodes.find((candidate) => candidate.label === label);
   assert.ok(node?.ref, `expected a node labelled "${label}" with a ref`);
+  return node.ref;
+}
+
+function refForIdentifier(nodes: SnapshotNode[], identifier: string): string {
+  const node = nodes.find((candidate) => candidate.identifier === identifier);
+  assert.ok(node?.ref, `expected a node identified "${identifier}" with a ref`);
   return node.ref;
 }
 
@@ -199,4 +206,122 @@ test('Android classifier filters IME keys but keeps app dialog and unmarked Syst
   assert.equal(chromeRefs.has(refFor(nodes, 'Submit')), false);
   assert.equal(chromeRefs.has(refFor(nodes, 'Allow')), false);
   assert.equal(chromeRefs.has(refFor(nodes, 'Volume')), false);
+});
+
+// #3469: the interactive projection flattens the keyboard's assistant bar and
+// dock buttons beside app content and keeps the [Keyboard] plane as a bare
+// top-level line, so the window walk cannot reach them. The keyboard-owned
+// UIKit classes in `role` carry the classification through the flattening.
+test('the real interactive keyboard capture collapses to one [Keyboard] diff line', () => {
+  const nodes = attachRefs(iosInteractiveKeyboardCaptureNodes());
+  const survivors = withoutSettleChrome(nodes, undefined);
+  const chromeRefs = collectSettleChromeRefs(nodes, undefined);
+
+  // Every key, the QuickType bar (host, page, predictions), and the dock
+  // buttons are chrome; the keyboard plane itself stays visible as the
+  // "keyboard appeared" signal.
+  const keyboard = nodes.find((node) => node.type === 'Keyboard');
+  assert.ok(keyboard?.ref);
+  assert.equal(chromeRefs.has(keyboard.ref), true);
+  for (const node of nodes) {
+    const isKeyboardSurface =
+      node.type === 'Key' ||
+      node.role === 'UIKeyboardLayoutStar' ||
+      node.role === 'TUISystemInputAssistantView' ||
+      node.role === 'TUIPredictionViewCell' ||
+      node.role === 'UIKeyboardDockItemButton';
+    if (isKeyboardSurface) assert.equal(chromeRefs.has(node.ref), true, `node ${node.index}`);
+  }
+
+  // The stripped set collapses the ~50 keyboard-surface nodes; what survives is
+  // app content plus the lone keyboard plane line.
+  assert.equal(survivors.filter((node) => node.type === 'Key').length, 0);
+  assert.deepEqual(
+    survivors.filter((node) => node.index >= 31).map((node) => node.type),
+    ['Toolbar', 'Keyboard'],
+  );
+  // App content never rides along: the search field the fill targeted survives.
+  assert.equal(chromeRefs.has(refFor(nodes, 'Search products')), false);
+});
+
+// The system inputView host frame is chrome itself, but an app's custom
+// UITextField.inputView content renders under it and must survive.
+test('the inputView host frame is stripped without swallowing app input-view content', () => {
+  const nodes = attachRefs([
+    {
+      index: 0,
+      depth: 0,
+      type: 'Application',
+      label: 'Example',
+      rect: { x: 0, y: 0, width: 402, height: 874 },
+    },
+    {
+      index: 1,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Other',
+      identifier: 'inputView',
+      role: '_UIRemoteKeyboardPlaceholderView',
+      rect: { x: 0, y: 590, width: 402, height: 284 },
+    },
+    {
+      index: 2,
+      depth: 2,
+      parentIndex: 1,
+      type: 'Button',
+      label: 'Custom keypad key',
+      identifier: 'app-keypad-7',
+      rect: { x: 10, y: 600, width: 80, height: 80 },
+      hittable: true,
+    },
+  ]);
+  const survivors = withoutSettleChrome(nodes, undefined);
+
+  assert.equal(
+    survivors.some((node) => node.index === 1),
+    false,
+    'the placeholder host frame itself is chrome',
+  );
+  assert.equal(
+    collectSettleChromeRefs(nodes, undefined).has(refFor(nodes, 'Custom keypad key')),
+    false,
+    'content the app hosts inside its own inputView is not keyboard chrome',
+  );
+});
+
+// An app that hosts editable text inside a keyboard-owned subtree (its own
+// composer riding the input-assistant host) keeps the field it is typing into.
+test('editable text hosted inside a keyboard-owned subtree survives classification', () => {
+  const nodes = attachRefs([
+    {
+      index: 0,
+      depth: 0,
+      type: 'Application',
+      label: 'Example',
+      rect: { x: 0, y: 0, width: 402, height: 874 },
+    },
+    {
+      index: 1,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Other',
+      role: 'TUISystemInputAssistantView',
+      identifier: 'SystemInputAssistantView',
+      rect: { x: 0, y: 546, width: 402, height: 44 },
+      hittable: true,
+    },
+    {
+      index: 2,
+      depth: 2,
+      parentIndex: 1,
+      type: 'TextField',
+      label: 'Compose',
+      rect: { x: 8, y: 550, width: 300, height: 36 },
+      hittable: true,
+    },
+  ]);
+  const chromeRefs = collectSettleChromeRefs(nodes, undefined);
+
+  assert.equal(chromeRefs.has(refForIdentifier(nodes, 'SystemInputAssistantView')), true);
+  assert.equal(chromeRefs.has(refFor(nodes, 'Compose')), false);
 });
