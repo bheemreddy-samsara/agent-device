@@ -2,8 +2,12 @@ import { isDeepLinkTarget } from '@agent-device/contracts/command';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { resolveAndroidApp } from './app-deployment-resolution.ts';
 import { getAndroidAppState } from './window-state.ts';
+import { runAndroidShell } from './adb.ts';
+import { androidActivityComponent, parseAndroidLaunchComponent } from './app-lifecycle.ts';
 
-/** Resolves an `open` target to an installed package; only an exact package match counts. */
+const INTENT_PACKAGE_RESOLUTION_TIMEOUT_MS = 2_000;
+
+/** Resolves an ADB app open to its package or the native handler of its requested intent. */
 export async function resolveAndroidPackageForOpen(
   device: DeviceInfo,
   openTarget: string | undefined,
@@ -12,7 +16,28 @@ export async function resolveAndroidPackageForOpen(
     return undefined;
   try {
     const resolved = await resolveAndroidApp(device, openTarget);
-    return resolved.type === 'package' ? resolved.value : undefined;
+    if (resolved.type === 'package') return resolved.value;
+    const result = await runAndroidShell(
+      device,
+      [
+        'cmd',
+        'package',
+        'resolve-activity',
+        '--brief',
+        '-a',
+        resolved.value,
+        '-c',
+        'android.intent.category.DEFAULT',
+      ],
+      { allowFailure: true, timeoutMs: INTENT_PACKAGE_RESOLUTION_TIMEOUT_MS },
+    );
+    if (result.exitCode !== 0) return undefined;
+    const component = parseAndroidLaunchComponent(result.stdout);
+    if (!component) return undefined;
+    const packageName = component.split('/')[0];
+    if (!packageName || androidActivityComponent(packageName, component) !== component)
+      return undefined;
+    return packageName;
   } catch {
     return undefined;
   }
