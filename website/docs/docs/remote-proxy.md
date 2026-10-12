@@ -198,6 +198,8 @@ These rules apply to requests made under the lease. To refuse requests that name
 start the daemon with a policy that requires one (`leases.require`, below). The proxy token is shared
 by every client of the proxy, so a host serving several clients through one proxy authenticates each
 client itself and sets each request's tenant, session isolation, and lease before forwarding it.
+Embedding `@agent-device/proxy` with its `authenticate` option does the tenant and session
+isolation part: the proxy sends each client's requests as the tenant `authenticate` returns.
 
 ## Restrict what clients can do
 

@@ -247,3 +247,163 @@ test('an unsupported route answers a bare 404 without reaching the daemon', asyn
   expect(response.headers.get('content-type')).toBeNull();
   expect(upstream.requests).toHaveLength(0);
 });
+
+function proxyAuthenticatingWith(upstreamFetch: DaemonProxyUpstreamFetch) {
+  const seen: Request[] = [];
+  const proxy = createDaemonProxy({
+    upstreamBaseUrl: 'http://daemon.internal:4310',
+    upstreamToken: 'daemon-secret',
+    upstreamFetch,
+    authenticate: async (request) => {
+      seen.push(request);
+      const token = request.headers.get('authorization');
+      if (token === 'Bearer alice-key') return { tenantId: 'alice' };
+      if (token === 'Bearer bob-key') return { tenantId: 'bob' };
+      return null;
+    },
+  });
+  return { proxy, seen };
+}
+
+function forwardedParams(request: Request | undefined): Promise<Record<string, unknown>> {
+  return request!.json().then((body) => (body as { params: Record<string, unknown> }).params);
+}
+
+test('authenticate refuses a caller it returns null for with the unauthorized rpc envelope', async () => {
+  const upstream = recordingUpstream(() => Response.json({}));
+  const { proxy } = proxyAuthenticatingWith(upstream.fetch);
+
+  const response = await proxy.handle(
+    rpcRequest(
+      { jsonrpc: '2.0', id: 9, method: 'agent-device.command' },
+      {
+        headers: { authorization: 'Bearer client-secret' },
+      },
+    ),
+  );
+
+  expect(response.status).toBe(401);
+  expect(await response.json()).toMatchObject({
+    id: 9,
+    error: { code: -32001, data: { code: 'UNAUTHORIZED' } },
+  });
+  expect(upstream.requests).toHaveLength(0);
+});
+
+test('authenticate sees the rpc body and its tenant overwrites the tenant a command declares', async () => {
+  const upstream = recordingUpstream(() => Response.json({ jsonrpc: '2.0', id: 1, result: {} }));
+  const { proxy, seen } = proxyAuthenticatingWith(upstream.fetch);
+
+  const response = await proxy.handle(
+    rpcRequest(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'agent-device.command',
+        params: {
+          command: 'devices',
+          flags: { tenant: 'bob', sessionIsolation: 'none' },
+          meta: { tenantId: 'bob', sessionIsolation: 'none', requestId: 'r1' },
+        },
+      },
+      { headers: { authorization: 'Bearer alice-key' } },
+    ),
+  );
+
+  expect(response.status).toBe(200);
+  expect((await forwardedParams(seen[0])).command).toBe('devices');
+  const params = await forwardedParams(upstream.requests[0]);
+  expect(params.meta).toEqual({ tenantId: 'alice', sessionIsolation: 'tenant', requestId: 'r1' });
+  expect(params.flags).toEqual({ tenant: 'alice', sessionIsolation: 'tenant' });
+  expect(params.token).toBe('daemon-secret');
+});
+
+test('authenticate tenant overwrites the tenant a lease call declares', async () => {
+  const upstream = recordingUpstream(() => Response.json({ jsonrpc: '2.0', id: 1, result: {} }));
+  const { proxy } = proxyAuthenticatingWith(upstream.fetch);
+
+  await proxy.handle(
+    rpcRequest(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'agent_device.lease.allocate',
+        params: { tenantId: 'bob', runId: 'run-1' },
+      },
+      { headers: { authorization: 'Bearer alice-key' } },
+    ),
+  );
+
+  expect((await forwardedParams(upstream.requests[0])).tenantId).toBe('alice');
+});
+
+test('authenticate tenant replaces the tenant header a client sends on artifact routes', async () => {
+  const upstream = recordingUpstream(() => Response.json({ artifacts: [] }));
+  const { proxy } = proxyAuthenticatingWith(upstream.fetch);
+
+  await proxy.handle(
+    new Request(`${PROXY_ORIGIN}/agent-device/artifacts`, {
+      headers: { authorization: 'Bearer alice-key', 'x-agent-device-tenant': 'bob' },
+    }),
+  );
+
+  expect(upstream.requests[0]?.headers.get('x-agent-device-tenant')).toBe('alice');
+});
+
+test('with authenticate, upload tickets carry the caller credential', async () => {
+  const upstream = recordingUpstream(() =>
+    Response.json({
+      ok: true,
+      upload: { url: 'http://127.0.0.1:4310/upload/direct/abc', headers: { 'x-extra': '1' } },
+    }),
+  );
+  const { proxy } = proxyAuthenticatingWith(upstream.fetch);
+
+  const response = await proxy.handle(
+    new Request(`${PROXY_ORIGIN}/agent-device/upload/preflight`, {
+      method: 'POST',
+      headers: { authorization: 'Bearer bob-key' },
+      body: '{}',
+    }),
+  );
+
+  const payload = (await response.json()) as { upload: { headers: Record<string, string> } };
+  expect(payload.upload.headers).toEqual({ 'x-extra': '1', authorization: 'Bearer bob-key' });
+});
+
+test('with authenticate, request diagnostics are served only for the caller tenant sessions', async () => {
+  const upstream = recordingUpstream(() => Response.json({ ok: true }));
+  const { proxy } = proxyAuthenticatingWith(upstream.fetch);
+  const diagnostics = (session: string) =>
+    proxy.handle(
+      new Request(
+        `${PROXY_ORIGIN}/agent-device/sessions/${encodeURIComponent(session)}/requests/r1/diagnostics`,
+        { headers: { authorization: 'Bearer alice-key' } },
+      ),
+    );
+
+  const other = await diagnostics('bob:default');
+  const own = await diagnostics('alice:default');
+
+  expect(other.status).toBe(401);
+  expect(own.status).toBe(200);
+  expect(upstream.requests).toHaveLength(1);
+});
+
+test('without authenticate, the tenant a client declares is forwarded unchanged', async () => {
+  const upstream = recordingUpstream(() => Response.json({ jsonrpc: '2.0', id: 1, result: {} }));
+  const proxy = proxyWith(upstream.fetch);
+
+  await proxy.handle(
+    rpcRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'agent-device.command',
+      params: { command: 'devices', meta: { tenantId: 'bob' } },
+    }),
+  );
+
+  const params = await forwardedParams(upstream.requests[0]);
+  expect(params.meta).toEqual({ tenantId: 'bob' });
+  expect(params.tenantId).toBeUndefined();
+});

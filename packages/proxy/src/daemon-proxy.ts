@@ -27,17 +27,37 @@ import {
  */
 export type DaemonProxyUpstreamFetch = (request: Request) => Promise<Response>;
 
+/**
+ * Authenticates one client request and names the tenant it acts as, or returns `null` to refuse
+ * it. The request carries the client's headers and, for `/rpc`, its JSON body.
+ */
+export type DaemonProxyAuthenticate = (
+  request: Request,
+) => Promise<{ tenantId: string } | null> | { tenantId: string } | null;
+
 export type DaemonProxyOptions = {
   /** Base URL of the upstream agent-device daemon HTTP server. */
   upstreamBaseUrl: string;
   /** Auth token of the upstream daemon. Never leaves the proxy. */
   upstreamToken: string;
-  /** Token proxy clients must present as their daemon auth token. */
-  clientToken: string;
   maxRpcBodyBytes?: number;
   upstreamTimeoutMs?: number;
   upstreamFetch?: DaemonProxyUpstreamFetch;
-};
+} & (
+  | {
+      /** Token proxy clients must present as their daemon auth token. */
+      clientToken: string;
+      authenticate?: undefined;
+    }
+  | {
+      clientToken?: undefined;
+      /**
+       * Replaces the `clientToken` check. Every forwarded request acts as the returned tenant,
+       * with its sessions isolated from other tenants.
+       */
+      authenticate: DaemonProxyAuthenticate;
+    }
+);
 
 export type DaemonProxy = {
   /** Identifies this proxy instance in its health payload, so clients notice a restart. */
@@ -51,7 +71,18 @@ export type DaemonProxy = {
   handle(request: Request): Promise<Response>;
 };
 
-type NormalizedProxyOptions = Required<DaemonProxyOptions>;
+type NormalizedProxyOptions = {
+  upstreamBaseUrl: string;
+  upstreamToken: string;
+  clientToken: string | undefined;
+  authenticate: DaemonProxyAuthenticate | undefined;
+  maxRpcBodyBytes: number;
+  upstreamTimeoutMs: number;
+  upstreamFetch: DaemonProxyUpstreamFetch;
+};
+
+/** The client a request was authenticated as; `tenantId` is set only by `authenticate`. */
+type ProxyCaller = { tenantId?: string };
 
 const DEFAULT_MAX_RPC_BODY_BYTES = 1024 * 1024;
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 5 * 60 * 1000;
@@ -127,8 +158,15 @@ async function handleProxyRequest(
     );
   }
 
-  if (!isAuthorized(request, options.clientToken, rpcBody)) {
+  const caller = await authenticateCaller(request, options, rpcBody);
+  if (!caller) {
     return unauthorizedResponse(route, readJsonRpcId(rpcBody));
+  }
+  if (caller.tenantId && !isRouteWithinTenant(route, caller.tenantId)) {
+    return Response.json(
+      { ok: false, error: 'Session is outside this tenant', code: 'UNAUTHORIZED' },
+      { status: 401 },
+    );
   }
 
   const staleInstance = refuseStaleProxyInstance(
@@ -143,7 +181,44 @@ async function handleProxyRequest(
     return hostPathInstallSourceRefusedResponse(readJsonRpcId(rpcBody));
   }
 
-  return await forwardProxyRequest({ request, route, options, rpcBody });
+  return await forwardProxyRequest({ request, route, options, rpcBody, caller });
+}
+
+async function authenticateCaller(
+  request: Request,
+  options: NormalizedProxyOptions,
+  rpcBody: string | undefined,
+): Promise<ProxyCaller | null> {
+  if (!options.authenticate) {
+    return isAuthorized(request, options.clientToken ?? '', rpcBody) ? {} : null;
+  }
+  const result = await options.authenticate(
+    new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      signal: request.signal,
+      ...(rpcBody !== undefined ? { body: rpcBody } : {}),
+    }),
+  );
+  if (!result) return null;
+  const tenantId = typeof result.tenantId === 'string' ? result.tenantId.trim() : '';
+  if (!tenantId) {
+    throw new AppError('COMMAND_FAILED', 'Proxy authenticate returned no tenantId');
+  }
+  return { tenantId };
+}
+
+/**
+ * The daemon does not partition a tenant it did not attest itself, so the proxy confines the
+ * diagnostics route to the sessions the daemon named beneath `<tenant>:`. Other routes pass.
+ */
+function isRouteWithinTenant(route: string, tenantId: string): boolean {
+  if (!isRequestDiagnosticsRoute(route)) return true;
+  try {
+    return decodeURIComponent(route.split('/')[2] ?? '').startsWith(`${tenantId}:`);
+  } catch {
+    return false;
+  }
 }
 
 async function proxyHealthResponse(
@@ -189,13 +264,14 @@ async function forwardProxyRequest(params: {
   route: string;
   options: NormalizedProxyOptions;
   rpcBody?: string;
+  caller: ProxyCaller;
 }): Promise<Response> {
-  const { request, route, options, rpcBody } = params;
-  const body = resolveUpstreamBody(request, route, rpcBody, options.upstreamToken);
+  const { request, route, options, rpcBody, caller } = params;
+  const body = resolveUpstreamBody(request, route, rpcBody, options.upstreamToken, caller.tenantId);
   const upstreamResponse = await options.upstreamFetch(
     new Request(buildUpstreamUrl(options.upstreamBaseUrl, route, request.url), {
       method: request.method,
-      headers: buildUpstreamHeaders(request.headers, options.upstreamToken, route),
+      headers: buildUpstreamHeaders(request.headers, options.upstreamToken, route, caller.tenantId),
       signal: upstreamSignal(request, options),
       ...(body ? { body, duplex: 'half' as const } : {}),
     }),
@@ -207,7 +283,9 @@ async function forwardProxyRequest(params: {
       request,
       upstreamResponse,
       headers,
-      clientToken: options.clientToken,
+      ticketAuthHeaders: options.authenticate
+        ? readClientAuthHeaders(request.headers)
+        : buildDaemonHttpAuthHeaders(options.clientToken),
     });
   }
   return new Response(upstreamResponse.body, { status: upstreamResponse.status, headers });
@@ -246,12 +324,12 @@ async function rewrittenUploadPreflightResponse(params: {
   request: Request;
   upstreamResponse: Response;
   headers: Headers;
-  clientToken: string;
+  ticketAuthHeaders: Record<string, string>;
 }): Promise<Response> {
-  const { request, upstreamResponse, headers, clientToken } = params;
+  const { request, upstreamResponse, headers, ticketAuthHeaders } = params;
   const text = await upstreamResponse.text();
   headers.set('content-type', upstreamResponse.headers.get('content-type') ?? 'application/json');
-  return new Response(rewriteUploadPreflightResponse(text, request, clientToken), {
+  return new Response(rewriteUploadPreflightResponse(text, request, ticketAuthHeaders), {
     status: upstreamResponse.status,
     headers,
   });
@@ -260,7 +338,7 @@ async function rewrittenUploadPreflightResponse(params: {
 function rewriteUploadPreflightResponse(
   body: string,
   request: Request,
-  clientToken: string,
+  ticketAuthHeaders: Record<string, string>,
 ): string {
   let parsed: unknown;
   try {
@@ -282,7 +360,7 @@ function rewriteUploadPreflightResponse(
     record.upload.headers && typeof record.upload.headers === 'object'
       ? { ...(record.upload.headers as Record<string, unknown>) }
       : {};
-  Object.assign(headers, buildDaemonHttpAuthHeaders(clientToken));
+  Object.assign(headers, ticketAuthHeaders);
 
   return JSON.stringify({
     ...(parsed as Record<string, unknown>),
@@ -292,6 +370,16 @@ function rewriteUploadPreflightResponse(
       headers,
     },
   });
+}
+
+/** The client's own credential, so its upload ticket authenticates as the client did. */
+function readClientAuthHeaders(requestHeaders: Headers): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const name of ['authorization', 'x-agent-device-token']) {
+    const value = requestHeaders.get(name);
+    if (value !== null) headers[name] = value;
+  }
+  return headers;
 }
 
 function rewriteUploadDirectUrl(upstreamUrl: string, request: Request): string | null {
@@ -321,11 +409,14 @@ function rewriteUploadDirectUrl(upstreamUrl: string, request: Request): string |
 function normalizeProxyOptions(options: DaemonProxyOptions): NormalizedProxyOptions {
   const upstreamBaseUrl = normalizeBaseUrl(options.upstreamBaseUrl, 'upstreamBaseUrl');
   const upstreamToken = normalizeToken(options.upstreamToken, 'upstreamToken');
-  const clientToken = normalizeToken(options.clientToken, 'clientToken');
+  const clientToken = options.authenticate
+    ? undefined
+    : normalizeToken(options.clientToken ?? '', 'clientToken');
   return {
     upstreamBaseUrl,
     upstreamToken,
     clientToken,
+    authenticate: options.authenticate,
     maxRpcBodyBytes: options.maxRpcBodyBytes ?? DEFAULT_MAX_RPC_BODY_BYTES,
     upstreamTimeoutMs: options.upstreamTimeoutMs ?? DEFAULT_UPSTREAM_TIMEOUT_MS,
     upstreamFetch: options.upstreamFetch ?? ((request) => fetch(request)),
@@ -416,12 +507,14 @@ function buildUpstreamHeaders(
   requestHeaders: Headers,
   upstreamToken: string,
   route: string,
+  tenantId?: string,
 ): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = requestHeaders.get(name);
     if (value?.trim()) headers.set(name, value);
   }
+  if (tenantId) headers.set(DAEMON_HTTP_TENANT_HEADER, tenantId);
   if (route === '/rpc' && !headers.has('content-type')) {
     headers.set('content-type', 'application/json');
   }
@@ -444,9 +537,10 @@ function resolveUpstreamBody(
   route: string,
   rpcBody: string | undefined,
   upstreamToken: string,
+  tenantId: string | undefined,
 ): BodyInit | null {
   if (request.method === 'GET' || request.method === 'HEAD') return null;
-  if (route === '/rpc') return rewriteRpcToken(rpcBody ?? '', upstreamToken);
+  if (route === '/rpc') return rewriteRpcParams(rpcBody ?? '', upstreamToken, tenantId);
   return request.body;
 }
 
@@ -491,13 +585,32 @@ function resolveRequestToken(request: Request, rpcBody: string | undefined): str
   return '';
 }
 
-function rewriteRpcToken(body: string, upstreamToken: string): string {
+function rewriteRpcParams(body: string, upstreamToken: string, tenantId?: string): string {
   const parsed = JSON.parse(body) as { params?: Record<string, unknown> };
   parsed.params = {
     ...(parsed.params ?? {}),
     token: upstreamToken,
   };
+  if (tenantId) stampRpcTenant(parsed.params, tenantId);
   return JSON.stringify(parsed);
+}
+
+/**
+ * Sets the tenant everywhere the daemon reads it — `meta` for commands, `tenantId` for lease
+ * calls — with tenant session isolation, overwriting whatever the client sent.
+ */
+function stampRpcTenant(params: Record<string, unknown>, tenantId: string): void {
+  params.tenantId = tenantId;
+  params.meta = { ...asRecord(params.meta), tenantId, sessionIsolation: 'tenant' };
+  const flags = asRecord(params.flags);
+  if (flags.tenant !== undefined) flags.tenant = tenantId;
+  if (flags.sessionIsolation !== undefined) flags.sessionIsolation = 'tenant';
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function readJsonRpcToken(body: string): string {
