@@ -107,6 +107,41 @@ test('lease allocation transports the provider configuration the session needs (
   });
 });
 
+test('lease allocation carries the device selectors a proxy daemon picks by', () => {
+  const payload = buildHttpRpcPayload(
+    {
+      token: 'daemon-token',
+      session: 'adc-proxy',
+      command: 'lease_allocate',
+      positionals: [],
+      flags: {
+        platform: 'ios',
+        target: 'tv',
+        device: 'Apple TV',
+        udid: 'SIM-1',
+        serial: 'S-1',
+        iosSimulatorDeviceSet: '/sims',
+        androidDeviceAllowlist: 'S-1',
+      },
+      meta: { requestId: 'lease-req', tenantId: 'proxy', runId: 'proxy-client-1' },
+    },
+    { includeTokenParam: false },
+  );
+
+  assert.deepEqual(payload.params, {
+    session: 'adc-proxy',
+    tenantId: 'proxy',
+    runId: 'proxy-client-1',
+    platform: 'ios',
+    target: 'tv',
+    device: 'Apple TV',
+    udid: 'SIM-1',
+    serial: 'S-1',
+    iosSimulatorDeviceSet: '/sims',
+    androidDeviceAllowlist: 'S-1',
+  });
+});
+
 test('HTTP RPC errors sanitize an untrusted cause before rehydration', () => {
   const secret = 'adc_agent_remote-secret';
   const oversizedCode = `apiKey=${secret} ${'c'.repeat(500)}`;

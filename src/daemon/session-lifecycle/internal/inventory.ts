@@ -184,7 +184,7 @@ function claimedByProjection(
   return owner ? { claimedBy: owner } : {};
 }
 
-async function resolveInventoryDevices(req: DaemonRequest): Promise<DeviceInfo[]> {
+export async function resolveInventoryDevices(req: DaemonRequest): Promise<DeviceInfo[]> {
   const requestedPlatform = req.flags?.platform;
   const devices = await listDeviceInventory(inventoryDeviceQuery(req, requestedPlatform));
   return filterInventoryDevices(devices, req.flags?.platform, req.flags?.target);

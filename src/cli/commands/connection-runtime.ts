@@ -14,17 +14,19 @@ import {
   type DeviceInfo,
 } from '@agent-device/kernel/device';
 import { shouldAgentCdpUseRemoteBridgeUrl } from './agent-cdp.ts';
-import { isInactiveLeaseError } from '@agent-device/contracts/lease-scope';
+import { isInactiveLeaseError, parseLeaseDeviceKey } from '@agent-device/contracts/lease-scope';
 import {
   narrowConnectionPlatform,
   buildConnectionDeviceKey,
   buildRemoteConnectionDaemonState,
   buildRemoteConnectionRequestMetadata,
   hashRemoteConfigFile,
+  leaseDeviceConnectionScope,
   mergeRemoteConnectionRequestMetadata,
   readRemoteConnectionState,
   resolveConnectionDeviceScope,
   writeRemoteConnectionState,
+  type ConnectionDeviceScope,
   type RemoteConnectionState,
   type RemoteConnectionRequestMetadata,
 } from '../../remote/remote-connection-state.ts';
@@ -337,7 +339,7 @@ async function materializeLeaseForCommand(options: {
   });
   nextState = resolvedLeaseState.state;
   if (resolvedLeaseState.device) {
-    applyResolvedDeviceSelector(nextFlags, resolvedLeaseState.device);
+    applyDeviceScopeSelector(nextFlags, resolveConnectionDeviceScope(resolvedLeaseState.device));
   }
   const leaseBackend =
     nextState.leaseBackend ??
@@ -366,14 +368,28 @@ async function materializeLeaseForCommand(options: {
   assertRequestedConnectionTarget(state, nextFlags);
   nextState = { ...nextState, platform: platform.platform };
   nextFlags.platform = platform.platform;
-  const materializedLease = await allocateOrReuseLease(
+  let materializedLease = await allocateOrReuseLease(
     client,
     nextState,
     leaseBackend,
     policy,
     nextFlags,
     options.initialApp,
+    resolvedLeaseState.allocateBySpec,
   );
+  if (resolvedLeaseState.allocateBySpec) {
+    const bound = await bindLeaseNamedDevice({
+      client,
+      state: nextState,
+      flags: nextFlags,
+      leaseBackend,
+      policy,
+      initialApp: options.initialApp,
+      materialized: materializedLease,
+    });
+    nextState = bound.state;
+    materializedLease = bound.materialized;
+  }
   const lease = materializedLease.lease;
   nextFlags.leaseId = lease.leaseId;
   nextFlags.leaseBackend = leaseBackend;
@@ -433,7 +449,14 @@ type ConnectionLeasePolicy = {
     state: RemoteConnectionState;
     flags: CliFlags;
     leaseBackend?: LeaseBackend;
-  }): Promise<{ state: RemoteConnectionState; device?: DeviceInfo }>;
+  }): Promise<ResolvedLeaseState>;
+};
+
+type ResolvedLeaseState = {
+  state: RemoteConnectionState;
+  device?: DeviceInfo;
+  /** The allocation names no device; the device comes from the lease the daemon returns. */
+  allocateBySpec?: boolean;
 };
 
 function connectionLeasePolicyForState(state: RemoteConnectionState): ConnectionLeasePolicy {
@@ -887,6 +910,7 @@ async function allocateOrReuseLease(
   policy: ConnectionLeasePolicy,
   flags: CliFlags,
   initialApp?: string,
+  allocateBySpec?: boolean,
 ): Promise<{ lease: Lease; acquired: boolean }> {
   const connection = buildRemoteConnectionRequestMetadata(state);
   if (state.leaseId && state.leaseBackend === leaseBackend) {
@@ -912,12 +936,15 @@ async function allocateOrReuseLease(
     leaseId: policy.newLeaseId?.(),
     leaseBackend,
     ...connection,
+    ...(allocateBySpec ? { deviceKey: undefined } : {}),
     ttlMs: policy.ttlMs(state),
     platform: state.platform ?? flags.platform,
     target: state.target ?? flags.target,
     device: flags.device,
     udid: flags.udid,
     serial: flags.serial,
+    iosSimulatorDeviceSet: flags.iosSimulatorDeviceSet,
+    androidDeviceAllowlist: flags.androidDeviceAllowlist,
     providerApp: initialApp ?? flags.providerApp,
     providerOsVersion: flags.providerOsVersion,
     providerDeviceType: flags.providerDeviceType,
@@ -940,7 +967,7 @@ async function resolveProxyLeaseState(options: {
   state: RemoteConnectionState;
   flags: CliFlags;
   leaseBackend?: LeaseBackend;
-}): Promise<{ state: RemoteConnectionState; device?: DeviceInfo }> {
+}): Promise<ResolvedLeaseState> {
   if (!proxyLeaseAllocatingCommands.has(options.command)) {
     if (options.state.leaseId && options.state.deviceKey) return { state: options.state };
     throw new AppError(
@@ -948,6 +975,20 @@ async function resolveProxyLeaseState(options: {
       'No active proxy device lease for this session; run open first.',
     );
   }
+  // The service behind a proxy may create or choose the device only when it allocates, so without
+  // an exact identity the request carries the selectors and the lease names the device.
+  if (!options.flags.udid && !options.flags.serial && options.leaseBackend) {
+    return { state: options.state, allocateBySpec: true };
+  }
+  return await resolveProxyLeaseStateLocally(options);
+}
+
+async function resolveProxyLeaseStateLocally(options: {
+  client: AgentDeviceClient;
+  state: RemoteConnectionState;
+  flags: CliFlags;
+  leaseBackend?: LeaseBackend;
+}): Promise<{ state: RemoteConnectionState; device: DeviceInfo }> {
   const device = await resolveSelectedDevice(options.client, options.flags);
   const scope = resolveConnectionDeviceScope(device);
   return {
@@ -963,8 +1004,64 @@ async function resolveProxyLeaseState(options: {
   };
 }
 
-function applyResolvedDeviceSelector(flags: CliFlags, device: DeviceInfo): void {
-  const scope = resolveConnectionDeviceScope(device);
+/**
+ * Takes the device from a lease allocated by spec: the one the reply names, or for a renewed lease
+ * the one its `deviceKey` names. A daemon that predates picking names none, so its lease is released
+ * and the device is picked here and allocated by its key, as before.
+ */
+async function bindLeaseNamedDevice(options: {
+  client: AgentDeviceClient;
+  state: RemoteConnectionState;
+  flags: CliFlags;
+  leaseBackend: LeaseBackend;
+  policy: ConnectionLeasePolicy;
+  initialApp?: string;
+  materialized: { lease: Lease; acquired: boolean };
+}): Promise<{ state: RemoteConnectionState; materialized: { lease: Lease; acquired: boolean } }> {
+  const { client, flags, materialized } = options;
+  const { lease, acquired } = materialized;
+  const named = lease.device ?? (acquired ? undefined : parseLeaseDeviceKey(lease.deviceKey));
+  if (named) {
+    const scope = leaseDeviceConnectionScope(named);
+    applyDeviceScopeSelector(flags, scope);
+    return {
+      state: {
+        ...options.state,
+        deviceKey: lease.deviceKey ?? buildConnectionDeviceKey(scope),
+        platform: scope.platform,
+        target: options.state.target ?? scope.target,
+      },
+      materialized,
+    };
+  }
+  if (acquired) {
+    await client.leases.release({
+      tenant: options.state.tenant,
+      runId: options.state.runId,
+      leaseId: lease.leaseId,
+      leaseBackend: lease.backend,
+      ...mergeRemoteConnectionRequestMetadata(lease, options.state),
+      deviceKey: lease.deviceKey,
+    });
+  }
+  const resolved = await resolveProxyLeaseStateLocally({ ...options, flags });
+  applyDeviceScopeSelector(flags, resolveConnectionDeviceScope(resolved.device));
+  return {
+    state: resolved.state,
+    materialized: acquired
+      ? await allocateOrReuseLease(
+          client,
+          resolved.state,
+          options.leaseBackend,
+          options.policy,
+          flags,
+          options.initialApp,
+        )
+      : materialized,
+  };
+}
+
+function applyDeviceScopeSelector(flags: CliFlags, scope: ConnectionDeviceScope): void {
   flags.platform = scope.platform;
   flags.target = scope.target ?? flags.target;
   if (scope.identityFlag === 'udid') flags.udid = scope.id;

@@ -22,10 +22,12 @@ import {
   type SessionRuntimeHints,
 } from '@agent-device/kernel/contracts';
 import {
+  leaseDeviceKey,
   leaseScopeFromOptions,
   leaseScopeToCommandFlags,
   leaseScopeToConnectionMetadata,
 } from '@agent-device/contracts/lease-scope';
+import type { LeaseDevice } from '@agent-device/contracts/client';
 
 export type RemoteConnectionState = {
   version: 1;
@@ -94,20 +96,28 @@ export type ConnectionDeviceScope = Readonly<{
 }>;
 
 export function resolveConnectionDeviceScope(device: DeviceInfo): ConnectionDeviceScope {
-  const platform = publicPlatformString(device);
-  const leaseBackend = leaseBackendForPlatform(platform);
+  return leaseDeviceConnectionScope({
+    platform: publicPlatformString(device),
+    target: device.target,
+    id: device.id,
+  });
+}
+
+/** The same projection for a device a lease reply names, which is already on the public axis. */
+export function leaseDeviceConnectionScope(device: LeaseDevice): ConnectionDeviceScope {
+  const leaseBackend = leaseBackendForPlatform(device.platform);
   return {
-    platform,
+    platform: device.platform,
     target: device.target,
     leaseBackend,
-    identityFlag: leaseBackend ? deviceIdentityFlag(platform) : undefined,
+    identityFlag: leaseBackend ? deviceIdentityFlag(device.platform) : undefined,
     id: device.id,
   };
 }
 
 /** The `deviceKey` for a resolved device: its identity on the public platform and target axes. */
 export function buildConnectionDeviceKey(scope: ConnectionDeviceScope): string {
-  return `${scope.platform}:${scope.target ?? 'mobile'}:${scope.id}`;
+  return leaseDeviceKey(scope);
 }
 
 /**
