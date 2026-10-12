@@ -31,6 +31,7 @@ import {
 import {
   connectionPlatformConflict,
   hasDeferredMetroConfig,
+  isHostAllocatedLease,
   releaseRemoteConnectionLease,
   releasePreviousLease,
   resolveRequestedLeaseBackend,
@@ -41,6 +42,7 @@ import { writeCommandOutput } from './shared.ts';
 import { shellQuoteIfNeeded } from '@agent-device/kernel/device-shell';
 import type { LeaseBackend } from '@agent-device/kernel/contracts';
 import type { CliFlags } from '@agent-device/contracts/command';
+import type { AgentDeviceClient } from '../../agent-device-client.ts';
 import type { ClientCommandHandler } from './router-types.ts';
 import { resolveConnectContext, type ConnectContext } from './connection-context.ts';
 import {
@@ -338,6 +340,31 @@ export const disconnectCommand: ClientCommandHandler = async ({ flags, client })
   );
   return true;
 };
+
+/**
+ * After a proxy `close`, the daemon has already ended the session's lease, but a host fronting the
+ * daemon only learns that from a release request. The local lease is dropped either way, so the
+ * next `open` allocates instead of heartbeating a lease that no longer exists.
+ */
+export async function releaseProxyLeaseAfterClose(
+  client: AgentDeviceClient,
+  flags: CliFlags,
+): Promise<void> {
+  if (!flags.remoteConfig) return;
+  const stateDir = resolveDaemonPaths(flags.stateDir).baseDir;
+  const state = readRemoteConnectionState({ stateDir, session: flags.session ?? 'default' });
+  if (!state?.leaseId || state.leaseRetainOnClose || isHostAllocatedLease(state)) return;
+  if (connectionProviderCapabilities(state.leaseProvider).leaseKind !== 'proxy') return;
+  try {
+    await releaseRemoteConnectionLease(client, state, flags.daemonAuthToken);
+  } catch {
+    // The session is already closed and its lease already released or expiring.
+  }
+  writeRemoteConnectionState({
+    stateDir,
+    state: { ...state, leaseId: undefined, updatedAt: new Date().toISOString() },
+  });
+}
 
 export const connectionCommand: ClientCommandHandler = async ({ positionals, flags }) => {
   if (positionals[0] !== 'status') {
