@@ -21,6 +21,8 @@ export type LeaseRegistryOptions = {
 export type AllocateLeaseRequest = {
   tenantId: string;
   runId: string;
+  /** A caller-chosen id for a new lease; without it the registry mints one. */
+  leaseId?: string;
   leaseBackend?: LeaseBackend;
   leaseProvider?: string;
   deviceKey?: string;

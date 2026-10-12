@@ -74,15 +74,25 @@ export class LeaseRegistry {
   }
 
   allocateLease(request: AllocateLeaseRequest): DeviceLease {
+    const chosenLeaseId =
+      request.leaseId === undefined ? undefined : normalizeRequiredLeaseId(request.leaseId);
     const normalized = normalizeAllocateLeaseRequest(request);
     this.cleanupExpiredLeases();
     const leaseTtlMs = this.resolveLeaseTtlMs(normalized.ttlMs);
     this.assertHumanControlAdmission(normalized);
     const existingLease = this.refreshExistingRunBinding(normalized, leaseTtlMs);
     if (existingLease) return existingLease;
+    if (chosenLeaseId && this.leases.has(chosenLeaseId)) {
+      throw new AppError('INVALID_ARGS', 'Lease id already names an active lease.', {
+        reason: 'LEASE_ID_IN_USE',
+      });
+    }
     this.assertDeviceAvailable(normalized);
     this.enforceCapacity(normalized.backend);
-    const lease = createDeviceLease(normalized, leaseTtlMs, this.now());
+    const lease = {
+      ...createDeviceLease(normalized, leaseTtlMs, this.now()),
+      ...(chosenLeaseId ? { leaseId: chosenLeaseId } : {}),
+    };
     this.leases.set(lease.leaseId, lease);
     this.bindLease(lease);
     return { ...lease };

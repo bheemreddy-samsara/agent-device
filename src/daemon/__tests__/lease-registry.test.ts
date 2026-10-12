@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { createRequestCanceledError } from '@agent-device/kernel/errors';
+import { AppError, createRequestCanceledError } from '@agent-device/kernel/errors';
 import { LeaseRegistry } from '../lease-registry.ts';
 import {
   HUMAN_CONTROL_LEASE_REQUEST,
@@ -27,6 +27,34 @@ test('allocateLease creates lease and enforces tenant/run validation', () => {
   assert.throws(
     () => registry.allocateLease({ tenantId: 'tenant-a', runId: 'bad run id' }),
     /Invalid run id/,
+  );
+});
+
+test('allocateLease keeps a caller-chosen lease id and refuses one an active lease holds', () => {
+  const registry = new LeaseRegistry();
+  const chosen = 'ABCDEF0123456789abcdef0123456789';
+  const lease = registry.allocateLease({ tenantId: 'tenant-a', runId: 'run-1', leaseId: chosen });
+  assert.equal(lease.leaseId, chosen.toLowerCase());
+  assert.equal(registry.heartbeatLease({ leaseId: lease.leaseId }).leaseId, lease.leaseId);
+
+  assert.throws(
+    () => registry.allocateLease({ tenantId: 'tenant-b', runId: 'run-2', leaseId: chosen }),
+    (error: unknown) =>
+      error instanceof AppError &&
+      error.code === 'INVALID_ARGS' &&
+      error.details?.reason === 'LEASE_ID_IN_USE',
+  );
+  assert.throws(
+    () => registry.allocateLease({ tenantId: 'tenant-b', runId: 'run-2', leaseId: 'not-hex' }),
+    (error: unknown) => error instanceof AppError && error.code === 'INVALID_ARGS',
+  );
+
+  assert.equal(registry.releaseLease({ leaseId: lease.leaseId }).released, true);
+  const reused = registry.allocateLease({ tenantId: 'tenant-b', runId: 'run-2', leaseId: chosen });
+  assert.equal(reused.leaseId, lease.leaseId);
+  assert.notEqual(
+    registry.allocateLease({ tenantId: 'tenant-c', runId: 'run-3' }).leaseId,
+    lease.leaseId,
   );
 });
 
