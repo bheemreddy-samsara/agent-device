@@ -103,6 +103,7 @@ export default defineConfig({
           include: [
             'src/**/*.test.ts',
             'packages/*/src/**/*.test.ts',
+            'scripts/replays/*.test.ts',
             // The maestro conformance projection is test-tree code beside its harness; its own
             // test stays in the fast lane rather than the node:test conformance script.
             'packages/maestro/test/conformance/conformance-selector-projection.test.ts',
