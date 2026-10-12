@@ -325,3 +325,82 @@ test('editable text hosted inside a keyboard-owned subtree survives classificati
   assert.equal(chromeRefs.has(refForIdentifier(nodes, 'SystemInputAssistantView')), true);
   assert.equal(chromeRefs.has(refFor(nodes, 'Compose')), false);
 });
+
+// The window pass exempts app content above the keys, and the keyboard-owned subtree walk must
+// not outrank that exemption: an app's UITextField.inputAssistantItem bar button renders UNDER
+// the system assistant view and declares no keyboard-owned role, so it stays an app control —
+// while a system prediction cell beside it, which owns its chrome by role wherever it sits,
+// still collapses.
+test('app inputAssistantItem buttons under the assistant view keep the accessory exemption', () => {
+  const nodes = attachRefs([
+    {
+      index: 0,
+      depth: 0,
+      type: 'Application',
+      label: 'Example',
+      rect: { x: 0, y: 0, width: 402, height: 874 },
+    },
+    {
+      index: 1,
+      depth: 1,
+      parentIndex: 0,
+      type: 'Window',
+      label: 'Keyboard Window',
+      rect: { x: 0, y: 300, width: 402, height: 574 },
+    },
+    {
+      index: 2,
+      depth: 2,
+      parentIndex: 1,
+      type: 'Other',
+      role: 'TUISystemInputAssistantView',
+      label: 'Assistant Bar',
+      rect: { x: 0, y: 300, width: 402, height: 44 },
+    },
+    {
+      index: 3,
+      depth: 3,
+      parentIndex: 2,
+      type: 'Button',
+      label: 'Paste',
+      rect: { x: 8, y: 306, width: 60, height: 32 },
+      hittable: true,
+    },
+    {
+      index: 4,
+      depth: 3,
+      parentIndex: 2,
+      type: 'Button',
+      role: 'TUIPredictionViewCell',
+      label: 'keep',
+      rect: { x: 200, y: 306, width: 60, height: 32 },
+      hittable: true,
+    },
+    {
+      index: 5,
+      depth: 2,
+      parentIndex: 1,
+      type: 'Keyboard',
+      label: 'Keyboard',
+      rect: { x: 0, y: 360, width: 402, height: 514 },
+    },
+    {
+      index: 6,
+      depth: 3,
+      parentIndex: 5,
+      type: 'Key',
+      label: 'q',
+      rect: { x: 0, y: 380, width: 39, height: 54 },
+    },
+  ]);
+  const chromeRefs = collectSettleChromeRefs(nodes, undefined);
+
+  assert.equal(
+    chromeRefs.has(refFor(nodes, 'Paste')),
+    false,
+    'the app-provided assistant-item button is exempt, not re-claimed through the assistant subtree',
+  );
+  assert.equal(chromeRefs.has(refFor(nodes, 'keep')), true);
+  assert.equal(chromeRefs.has(refFor(nodes, 'Assistant Bar')), true);
+  assert.equal(chromeRefs.has(refFor(nodes, 'q')), true);
+});

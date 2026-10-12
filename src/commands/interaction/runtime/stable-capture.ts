@@ -92,6 +92,35 @@ export async function runStableCaptureLoop(
   let lastCapture: CapturedSnapshot | undefined;
   let quietSinceMs = start;
   let requiredQuietMs = quietMs;
+  let lastQuietWindowBaseline: StableCaptureSignal | undefined;
+  let lastQuietWindowSignal: StableCaptureSignal | undefined;
+  // The broad-replacement verdict is a pure function of the armed baseline, the requested
+  // window, and this candidate signal, and the window it sets only latches upward — so the
+  // verdict cannot change while both inputs hold. Rebuilding the chrome-free projection (a
+  // full withoutSettleChrome pass plus a second signal) is owed on baseline arming (it can
+  // land after the first capture) and on candidate change, not on every 300ms poll of a
+  // quiet screen.
+  const nextQuietWindow = (
+    snapshot: Parameters<typeof stableCaptureSignal>[0],
+    baseline: StableCaptureSignal | undefined,
+    signal: StableCaptureSignal,
+  ): number => {
+    if (
+      baseline === lastQuietWindowBaseline &&
+      stableCaptureSignalsEqual(lastQuietWindowSignal, signal)
+    ) {
+      return requiredQuietMs;
+    }
+    lastQuietWindowBaseline = baseline;
+    lastQuietWindowSignal = signal;
+    return stableCaptureNextQuietWindowMs({
+      baseline,
+      snapshot,
+      appBundleId: session?.appBundleId,
+      requestedQuietMs: quietMs,
+      currentQuietMs: requiredQuietMs,
+    });
+  };
   while (now(runtime) < deadlineMs) {
     const capture = await captureStableSignalWithinDeadline(
       runtime,
@@ -118,13 +147,7 @@ export async function runStableCaptureLoop(
       session?.appBundleId,
     );
     const signal = stableCaptureSignal(capture.snapshot);
-    requiredQuietMs = stableCaptureNextQuietWindowMs({
-      baseline: transitionBaseline,
-      snapshot: capture.snapshot,
-      appBundleId: session?.appBundleId,
-      requestedQuietMs: quietMs,
-      currentQuietMs: requiredQuietMs,
-    });
+    requiredQuietMs = nextQuietWindow(capture.snapshot, transitionBaseline, signal);
     preferredBackend ??= preferredSnapshotBackendForVerdict(capture.snapshot.snapshotQuality);
     const nowMs = now(runtime);
     const recoveredDeadlineMs = extendedDeadlineAfterPrivateAxRecovery({

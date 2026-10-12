@@ -143,24 +143,31 @@ function collectKeyboardChrome(nodes: SnapshotNode[]): SettleChrome {
   }
   // Preserve app-owned accessory controls hosted above the keyboard: they were
   // swept in by the whole-window pass but are not keyboard chrome.
-  for (const index of collectKeyboardAccessoryIndexes(
+  const accessoryExemptIndexes = collectKeyboardAccessoryIndexes(
     nodes,
     byIndex,
     windowIndexes,
     containerIndexes,
     containerSubtreeIndexes,
-  )) {
+  );
+  for (const index of accessoryExemptIndexes) {
     chromeIndexes.delete(index);
   }
   // Keyboard-owned classes the projection flattened out of every reachable subtree are chrome
-  // by their own declaration, so the app-accessory guard above never exempts them. An editable
-  // text node inside one of them is the same inputAccessoryView guard in disguise: an app that
-  // hosts a text field in its own input view keeps it, as it does under the window pass.
+  // by their own declaration — but the walk may NOT outrank the app-accessory exemption above:
+  // an app's `UITextField.inputAssistantItem` bar buttons render UNDER the system assistant
+  // view, above the keys, and the window pass just exempted them; re-claiming them through the
+  // assistant's subtree would hide real app controls from the settle diff. An exempted node
+  // only re-joins chrome when IT declares a keyboard-owned role (a prediction cell is
+  // system-owned wherever it sits); an app node under an owned host stays exempt. In the
+  // flattened interactive shape there is no window anchor, the exemption is empty, and the
+  // walk claims the key plane exactly as the container-descendant walk always did.
   for (const index of collectOwnedKeyboardChromeIndexes(
     nodes,
     byIndex,
     ownedSubtreeRootIndexes,
     containerSubtreeIndexes,
+    accessoryExemptIndexes,
   )) {
     chromeIndexes.add(index);
   }
@@ -179,37 +186,67 @@ function collectKeyboardChrome(nodes: SnapshotNode[]): SettleChrome {
 }
 
 /**
- * The subtree under each keyboard-owned-class root, minus editable text the app hosts inside it
- * outside the keyboard container. A keyboard's own `Key` nodes never trip that guard — the walk
- * claims them with their own subtree roots even when a stripped field re-parented them — and an
- * app that hosts its whole composer inside its input view still loses every key, exactly as the
- * container-descendant walk always did.
+ * The subtree under each keyboard-owned-class root, minus two app-content guards: indexes the
+ * app-accessory exemption already granted (an app's `inputAssistantItem` bar buttons ride the
+ * system assistant view above the keys), and editable text the app hosts inside an owned root
+ * outside the keyboard container, with its subtree. A keyboard's own `Key` nodes trip neither —
+ * they sit inside the container subtree, which the accessory pass never exempts — and the
+ * flattened interactive shape carries no window anchor, so the exemption is empty there and the
+ * walk claims the whole key plane exactly as the container-descendant walk always did.
  */
 function collectOwnedKeyboardChromeIndexes(
   nodes: SnapshotNode[],
   byIndex: Map<number, SnapshotNode>,
   ownedSubtreeRootIndexes: ReadonlySet<number>,
   containerSubtreeIndexes: ReadonlySet<number>,
+  accessoryExemptIndexes: ReadonlySet<number>,
 ): Set<number> {
   const chromeIndexes = collectSubtreeIndexes(nodes, byIndex, ownedSubtreeRootIndexes);
-  for (const node of nodes) {
-    if (
-      chromeIndexes.has(node.index) &&
-      EDITABLE_TEXT_TYPES.has(normalizeType(node.type ?? '')) &&
-      !containerSubtreeIndexes.has(node.index)
-    ) {
-      chromeIndexes.delete(node.index);
-      for (const descendant of nodes) {
-        if (
-          chromeIndexes.has(descendant.index) &&
-          hasAncestorIn(descendant, byIndex, new Set([node.index]))
-        ) {
-          chromeIndexes.delete(descendant.index);
-        }
-      }
-    }
+  // An exempted node re-joins chrome only when IT declares a keyboard-owned role: a system
+  // prediction cell is chrome wherever it sits, while an app's `inputAssistantItem` bar button
+  // under the assistant view declares no owned role and keeps its exemption.
+  for (const index of accessoryExemptIndexes) {
+    if (!ownedSubtreeRootIndexes.has(index)) chromeIndexes.delete(index);
+  }
+  for (const index of collectHostedEditableTextIndexes(
+    nodes,
+    byIndex,
+    chromeIndexes,
+    containerSubtreeIndexes,
+  )) {
+    chromeIndexes.delete(index);
   }
   return chromeIndexes;
+}
+
+/**
+ * Editable text the app hosts under an owned root outside the keyboard container, and the
+ * chrome claimed beneath it — the inputAccessoryView guard in disguise: an app that rides its
+ * own composer on the assistant host keeps the field it is typing into.
+ */
+function collectHostedEditableTextIndexes(
+  nodes: SnapshotNode[],
+  byIndex: Map<number, SnapshotNode>,
+  chromeIndexes: ReadonlySet<number>,
+  containerSubtreeIndexes: ReadonlySet<number>,
+): Set<number> {
+  const dropped = new Set<number>();
+  const hostedTextIndexes = new Set(
+    nodes
+      .filter(
+        (node) =>
+          chromeIndexes.has(node.index) &&
+          EDITABLE_TEXT_TYPES.has(normalizeType(node.type ?? '')) &&
+          !containerSubtreeIndexes.has(node.index),
+      )
+      .map((node) => node.index),
+  );
+  for (const node of nodes) {
+    if (!chromeIndexes.has(node.index)) continue;
+    if (hasAncestorIn(node, byIndex, hostedTextIndexes)) dropped.add(node.index);
+  }
+  for (const index of hostedTextIndexes) dropped.add(index);
+  return dropped;
 }
 
 /**

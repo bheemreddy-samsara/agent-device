@@ -10,6 +10,7 @@ import type { RawSnapshotNode } from '@agent-device/kernel/snapshot';
  * enabled) is verbatim.
  *
  * The keyboard surfaces arrive flattened beside app content: app nodes 0-30,
+ * the floating home-indicator toolbar the window capture also reports (31),
  * the system `inputView` host frame (32), the QuickType assistant bar (33-39),
  * the `[Keyboard]` plane (40) with its layout wrapper (41) and keys (42-79),
  * and the dock's "Next keyboard" / "Dictate" buttons (80-82). This is exactly
