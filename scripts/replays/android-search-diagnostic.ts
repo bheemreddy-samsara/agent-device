@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { runCmdSync } from '@agent-device/host-kit/command';
-import { normalizeError } from '@agent-device/kernel/errors';
+import { captureReplayCommand } from './replay-command-evidence.ts';
 import { prepareAndroidSearch } from './android-search-preparation.ts';
 
 const [serial, outputDir, stateDir, traceMarker] = process.argv.slice(2);
@@ -38,32 +37,15 @@ function capture(
     preparing && !cleanup ? startedAt + 40_000 - Date.now() : Number.POSITIVE_INFINITY,
   );
   if (remaining <= 0) throw new Error('Native diagnostic wall-clock budget exhausted');
-  const commandStartedAt = Date.now();
-  let result;
-  let failure;
-  try {
-    result = runCmdSync(executable, args, {
-      allowFailure: true,
-      timeoutMs: Math.min(budgetMs, remaining),
-      maxBuffer: 8 * 1024 * 1024,
-    });
-  } catch (error) {
-    failure = normalizeError(error);
-    result = { exitCode: -1, stdout: '', stderr: String(error) };
-  }
-  fs.writeFileSync(path.join(outputDir, `${name}.stdout.txt`), result.stdout);
-  fs.writeFileSync(path.join(outputDir, `${name}.stderr.txt`), result.stderr);
-  if (name !== 'replay') probesSucceeded &&= result.exitCode === 0;
-  commands.push({
+  const { result, record } = captureReplayCommand({
     name,
     executable,
     args,
-    exitCode: result.exitCode,
-    failure,
-    startedAt: commandStartedAt,
-    finishedAt: Date.now(),
+    outputDir,
     timeoutMs: Math.min(budgetMs, remaining),
   });
+  if (name !== 'replay') probesSucceeded &&= result.exitCode === 0;
+  commands.push(record);
   return result;
 }
 

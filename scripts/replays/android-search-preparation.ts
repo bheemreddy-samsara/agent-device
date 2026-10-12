@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { runCmdSync } from '@agent-device/host-kit/command';
-import { normalizeError } from '@agent-device/kernel/errors';
+import { captureReplayCommand } from './replay-command-evidence.ts';
 
 const knownProvider = 'com.google.android.settings.intelligence';
 const knownFingerprint =
@@ -161,31 +160,14 @@ function capture(
   timeoutMs: number,
 ) {
   const { serial, outputDir } = input;
-  const commandStartedAt = Date.now();
-  let result;
-  let failure;
-  try {
-    result = runCmdSync('adb', ['-s', serial, ...args], {
-      allowFailure: true,
-      timeoutMs,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-  } catch (error) {
-    failure = normalizeError(error);
-    result = { exitCode: -1, stdout: '', stderr: String(error) };
-  }
-  fs.writeFileSync(path.join(outputDir, `${name}.stdout.txt`), result.stdout);
-  fs.writeFileSync(path.join(outputDir, `${name}.stderr.txt`), result.stderr);
-  preparation.commands.push({
+  const { result, record } = captureReplayCommand({
     name,
     executable: 'adb',
     args: ['-s', serial, ...args],
-    exitCode: result.exitCode,
-    startedAt: commandStartedAt,
-    finishedAt: Date.now(),
+    outputDir,
     timeoutMs,
-    failure,
   });
+  preparation.commands.push(record);
   return result;
 }
 

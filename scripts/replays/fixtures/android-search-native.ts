@@ -33,8 +33,7 @@ export type Scenario = {
   preflightCost?: number;
 };
 
-export async function runSearchFixture(scenario: Scenario = {}, diagnostic = true) {
-  const cwd = await mkdtempForTest('android-search-actor-');
+function createNativeFixture(cwd: string, scenario: Scenario) {
   fs.mkdirSync(path.join(cwd, 'bin'));
   fs.writeFileSync(path.join(cwd, 'clock'), '1000000');
   fs.writeFileSync(path.join(cwd, 'package.txt'), scenario.state ?? packageState);
@@ -100,6 +99,32 @@ process.exitCode = Number(process.env.REPLAY_EXIT);
   fs.mkdirSync(output, { recursive: true });
   fs.writeFileSync(path.join(cwd, 'artifacts/variant.json'), '{"head":"source-variant"}');
   const marker = path.join(output, 'owned');
+  return { output, marker, preload };
+}
+
+function fixtureEnvironment(cwd: string, preload: string, scenario: Scenario) {
+  return {
+    PATH: `${cwd}/bin:${process.env.PATH}`,
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(preload).href}`]
+      .filter(Boolean)
+      .join(' '),
+    REPLAY_EXIT: String(scenario.replayExit ?? 0),
+    PROBE_EXIT: String(scenario.probeExit ?? 0),
+    CATEGORIES: String(scenario.categories ?? true),
+    MASK: scenario.mask ?? '786432',
+    TRANSITION: String(scenario.transition ?? false),
+    RECHECK_AT: scenario.transition ? '3' : '2',
+    PROVIDER: scenario.resolvedProvider ?? provider,
+    FINGERPRINT: scenario.identity ?? fingerprint,
+    PACKAGE_EXIT: String(scenario.packageExit ?? 0),
+    FINGERPRINT_EXIT: String(scenario.fingerprintExit ?? 0),
+    PREFLIGHT_COST: String(scenario.preflightCost ?? 1000),
+  };
+}
+
+export async function runSearchFixture(scenario: Scenario = {}, diagnostic = true) {
+  const cwd = await mkdtempForTest('android-search-actor-');
+  const { output, marker, preload } = createNativeFixture(cwd, scenario);
   const result = runCmdSync(
     process.execPath,
     [
@@ -117,23 +142,7 @@ process.exitCode = Number(process.env.REPLAY_EXIT);
       cwd,
       allowFailure: true,
       timeoutMs: 10_000,
-      env: {
-        PATH: `${cwd}/bin:${process.env.PATH}`,
-        NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(preload).href}`]
-          .filter(Boolean)
-          .join(' '),
-        REPLAY_EXIT: String(scenario.replayExit ?? 0),
-        PROBE_EXIT: String(scenario.probeExit ?? 0),
-        CATEGORIES: String(scenario.categories ?? true),
-        MASK: scenario.mask ?? '786432',
-        TRANSITION: String(scenario.transition ?? false),
-        RECHECK_AT: scenario.transition ? '3' : '2',
-        PROVIDER: scenario.resolvedProvider ?? provider,
-        FINGERPRINT: scenario.identity ?? fingerprint,
-        PACKAGE_EXIT: String(scenario.packageExit ?? 0),
-        FINGERPRINT_EXIT: String(scenario.fingerprintExit ?? 0),
-        PREFLIGHT_COST: String(scenario.preflightCost ?? 1000),
-      },
+      env: fixtureEnvironment(cwd, preload, scenario),
     },
   );
   const summary = JSON.parse(
