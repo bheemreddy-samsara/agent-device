@@ -4,9 +4,11 @@ import { AppError } from '@agent-device/kernel/errors';
 
 const resolveAndroidApp = vi.hoisted(() => vi.fn());
 const getAndroidAppState = vi.hoisted(() => vi.fn());
+const runAndroidShell = vi.hoisted(() => vi.fn());
 
 vi.mock('./app-deployment-resolution.ts', () => ({ resolveAndroidApp }));
 vi.mock('./window-state.ts', () => ({ getAndroidAppState }));
+vi.mock('./adb.ts', () => ({ runAndroidShell }));
 
 const { resolveAndroidPackageForOpen, inferAndroidPackageAfterOpen } =
   await import('./open-target-resolution.ts');
@@ -36,11 +38,86 @@ test('resolveAndroidPackageForOpen returns the resolved package for a package ma
   await expect(resolveAndroidPackageForOpen(androidDevice, 'demo')).resolves.toBe(
     'com.example.demo',
   );
+  expect(runAndroidShell).not.toHaveBeenCalled();
 });
 
-test('resolveAndroidPackageForOpen ignores an intent resolution', async () => {
-  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+test('resolveAndroidPackageForOpen retains the native requested intent package without adopting foreground Search', async () => {
+  const deployment = await vi.importActual<typeof import('./app-deployment-resolution.ts')>(
+    './app-deployment-resolution.ts',
+  );
+  resolveAndroidApp.mockImplementationOnce(deployment.resolveAndroidApp);
 
+  runAndroidShell.mockResolvedValue({
+    stdout: 'priority=0 preferredOrder=0 match=0x108000\ncom.android.settings/.Settings\n',
+    stderr: '',
+    exitCode: 0,
+  });
+  getAndroidAppState.mockResolvedValue({
+    package: 'com.google.android.settings.intelligence',
+    activity: '.search.SearchActivity',
+  });
+  await expect(resolveAndroidPackageForOpen(androidDevice, 'settings')).resolves.toBe(
+    'com.android.settings',
+  );
+  expect(runAndroidShell).toHaveBeenCalledWith(
+    androidDevice,
+    [
+      'cmd',
+      'package',
+      'resolve-activity',
+      '--brief',
+      '-a',
+      'android.settings.SETTINGS',
+      '-c',
+      'android.intent.category.DEFAULT',
+    ],
+    { allowFailure: true, timeoutMs: 2_000 },
+  );
+  expect(getAndroidAppState).not.toHaveBeenCalled();
+});
+
+test.each([
+  'No activity found',
+  'com.android.settings/Invalid-Class',
+  'wrong-package/.Settings',
+  '/data/apps/settings.apk',
+  'warning /not/a/component',
+  'com.android.settings/',
+])(
+  'intent package ownership refuses malformed or unresolved native component %s',
+  async (stdout) => {
+    resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+    runAndroidShell.mockResolvedValue({ stdout, stderr: '', exitCode: 0 });
+    await expect(resolveAndroidPackageForOpen(androidDevice, 'settings')).resolves.toBeUndefined();
+    expect(getAndroidAppState).not.toHaveBeenCalled();
+  },
+);
+
+test('intent package ownership does not adopt a component from a failed native resolution', async () => {
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockResolvedValue({
+    stdout: 'com.android.settings/.Settings',
+    stderr: '',
+    exitCode: 1,
+  });
+  await expect(resolveAndroidPackageForOpen(androidDevice, 'settings')).resolves.toBeUndefined();
+});
+
+test('intent package ownership reads its native handler rather than assuming the Settings package', async () => {
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockResolvedValue({
+    stdout: 'com.vendor.settings/org.vendor.Settings$Panel',
+    stderr: '',
+    exitCode: 0,
+  });
+  await expect(resolveAndroidPackageForOpen(androidDevice, 'settings')).resolves.toBe(
+    'com.vendor.settings',
+  );
+});
+
+test('intent resolution retains unknown ownership on an ADB failure', async () => {
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockRejectedValue(new AppError('COMMAND_FAILED', 'ADB unavailable'));
   await expect(resolveAndroidPackageForOpen(androidDevice, 'settings')).resolves.toBeUndefined();
 });
 
