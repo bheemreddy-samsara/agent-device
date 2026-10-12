@@ -20,6 +20,9 @@ import { createExpiredProviderLeaseReleaser } from '../provider-lease-expiry.ts'
 import { createRequestHandler } from '../request-router.ts';
 import type { RequestRouterDeps } from '../request-router.ts';
 import { getLeaseRegistryExecutionLocks } from '../request-execution-scope.ts';
+import { endLeaseSessions } from '../lease-lifecycle.ts';
+import { existingSessionExecutionLockKeys } from '../request-binding.ts';
+import { withRequestExecutionLockKeys } from '../request-execution-locks.ts';
 import { stopSessionAppLog, teardownSessionResources } from '../session-teardown.ts';
 import { resolveDaemonSessionTeardownTimeoutMs } from '../session-teardown-budget.ts';
 import { finalizeDaemonSessionApplicationLifecycle } from '../application-lifecycle-recovery.ts';
@@ -88,6 +91,7 @@ import type {
 import type { HostDiagnostics } from '@agent-device/contracts/host-diagnostics';
 
 const DAEMON_LEASE_RELEASE_TIMEOUT_MS = 1_000;
+const LEASE_EXPIRY_SWEEP_INTERVAL_MS = 1_000;
 const DAEMON_PNG_WORKER_TERMINATE_TIMEOUT_MS = 1_000;
 const DAEMON_PROVIDER_RELEASE_DRAIN_TIMEOUT_MS = 2_000;
 // An orphaned `simctl recordVideo` releases the host-wide recording lock only after it finishes
@@ -454,13 +458,22 @@ export async function startDaemonRuntime(
     maxLeaseTtlMs: parseIntegerEnv(env.AGENT_DEVICE_LEASE_MAX_TTL_MS),
     onLeaseExpired: (lease) => {
       void expiredProviderLeaseReleaser.release(lease);
+      void endSessionsForLease(lease.leaseId, 'LEASE_EXPIRED');
     },
   });
+  // The registry only notices an expired lease when something calls it; this sweep ends an
+  // abandoned lease (and, through `onLeaseExpired`, its session and claim) without a later request.
+  const leaseExpirySweep = setInterval(
+    () => leaseRegistry.consumeExpiredLeases(),
+    LEASE_EXPIRY_SWEEP_INTERVAL_MS,
+  );
+  leaseExpirySweep.unref();
   const dispatchRequest = createRequestHandler({
     logPath,
     token,
     sessionStore,
     leaseRegistry,
+    endSessionsForLease: async (leaseId) => await endSessionsForLease(leaseId, 'LEASE_RELEASED'),
     appLogAdmissionLedger,
     audioProbeAdmissionLedger,
     perfCaptureAdmissionLedger,
@@ -558,6 +571,36 @@ export async function startDaemonRuntime(
     // holds the session back to retry. The reaper runs it once the expiry is committed to.
   };
 
+  const endSessionsForLease = async (
+    leaseId: string,
+    reason: 'LEASE_RELEASED' | 'LEASE_EXPIRED',
+  ): Promise<void> => {
+    if (shuttingDown) return;
+    await withDaemonDiagnosticsScope({ logPath }, async () => {
+      try {
+        await endLeaseSessions({
+          leaseId,
+          reason,
+          sessionStore,
+          withSessionLocks: async (ref, task) =>
+            await withRequestExecutionLockKeys(
+              getLeaseRegistryExecutionLocks(leaseRegistry),
+              existingSessionExecutionLockKeys(ref.address, ref.session.device.id),
+              task,
+            ),
+          teardownSession: settleIdleExpiredSession,
+        });
+      } catch (error) {
+        emitDiagnostic({
+          level: 'warn',
+          phase: 'leased_session_end_failed',
+          data: { leaseId, reason, error: error instanceof Error ? error.message : String(error) },
+        });
+      }
+    });
+    idleReap.noteActivity();
+  };
+
   const sessionIdleExpiry = createSessionIdleExpiry({
     sessionStore,
     idleExpiryMs: resolveSessionIdleExpiryMs(env),
@@ -637,6 +680,8 @@ export async function startDaemonRuntime(
       const httpServer = await createDaemonHttpServer({
         handleRequest,
         leaseRegistry,
+        endSessionsForLease: async (leaseId) =>
+          await endSessionsForLease(leaseId, 'LEASE_RELEASED'),
         token,
         retainArtifacts,
         env,
@@ -795,6 +840,7 @@ export async function startDaemonRuntime(
   const shutdown = async (shutdownOptions: { exitCode?: number; cause?: unknown } = {}) => {
     idleReap.cancel();
     sessionIdleExpiry.cancel();
+    clearInterval(leaseExpirySweep);
     if (shuttingDown) return;
     shuttingDown = true;
     stopMetadataLossWatch();
