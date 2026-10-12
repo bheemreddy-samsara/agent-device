@@ -1,0 +1,210 @@
+import { test, vi } from 'vitest';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import type { Lease } from '@agent-device/contracts/client';
+import {
+  connectionWorkspace,
+  createTestClient,
+  type LeaseAllocateRequest,
+  type LeaseReleaseRequest,
+  seedConnectionState,
+  unexpectedCommandCall,
+} from './remote-connection.fixtures.ts';
+
+vi.mock('../metro/client-metro-companion.ts', () => ({
+  stopMetroCompanion: vi.fn(),
+}));
+
+vi.mock('../client/client-react-devtools-companion.ts', () => ({
+  stopReactDevtoolsCompanion: vi.fn(),
+}));
+
+import { materializeRemoteConnectionForCommand } from '../cli/commands/connection-runtime.ts';
+import { readRemoteConnectionState } from '../remote/remote-connection-state.ts';
+
+const IPHONE_SIMULATOR = {
+  platform: 'ios',
+  target: 'mobile',
+  kind: 'simulator',
+  id: 'SIM-LOCAL',
+  name: 'iPhone 17',
+  booted: true,
+  identifiers: { udid: 'SIM-LOCAL' },
+  ios: { udid: 'SIM-LOCAL' },
+} as const;
+
+function proxyWorkspace(prefix: string, seed: { leaseId?: string; deviceKey?: string } = {}) {
+  const workspace = connectionWorkspace(prefix);
+  fs.writeFileSync(
+    workspace.remoteConfigPath,
+    JSON.stringify({ daemonBaseUrl: 'https://daemon.example' }),
+  );
+  seedConnectionState({
+    stateDir: workspace.stateDir,
+    state: {
+      session: 'adc-proxy',
+      remoteConfigPath: workspace.remoteConfigPath,
+      daemon: { baseUrl: 'https://daemon.example' },
+      tenant: 'proxy',
+      runId: 'proxy-client-1',
+      leaseProvider: 'proxy',
+      clientId: 'client-1',
+      ...(seed.leaseId
+        ? { leaseId: seed.leaseId, leaseBackend: 'ios-instance', platform: 'ios' }
+        : {}),
+      ...(seed.deviceKey ? { deviceKey: seed.deviceKey } : {}),
+    },
+  });
+  const flags = {
+    json: true,
+    help: false,
+    version: false,
+    stateDir: workspace.stateDir,
+    remoteConfig: workspace.remoteConfigPath,
+    daemonBaseUrl: 'https://daemon.example',
+    tenant: 'proxy',
+    runId: 'proxy-client-1',
+    session: 'adc-proxy',
+    platform: 'ios',
+  } as const;
+  return { ...workspace, flags };
+}
+
+function grantedLease(request: LeaseAllocateRequest, extra: Partial<Lease> = {}): Lease {
+  return {
+    leaseId: 'lease-1',
+    tenantId: request.tenant,
+    runId: request.runId,
+    backend: request.leaseBackend ?? 'ios-instance',
+    leaseProvider: request.leaseProvider,
+    clientId: request.clientId,
+    deviceKey: request.deviceKey,
+    ...extra,
+  };
+}
+
+test('proxy open without an exact device allocates by its selectors and keeps the device the lease names', async () => {
+  const { tempRoot, stateDir, flags } = proxyWorkspace('agent-device-proxy-by-spec-');
+  const requests: LeaseAllocateRequest[] = [];
+
+  const materialized = await materializeRemoteConnectionForCommand({
+    command: 'open',
+    flags: { ...flags, device: 'iPhone 17', target: 'mobile', iosSimulatorDeviceSet: '/sims' },
+    client: createTestClient({
+      // No device exists until the service behind the proxy allocates one.
+      listDevices: unexpectedCommandCall,
+      allocate: async (request) => {
+        requests.push(request);
+        return grantedLease(request, {
+          deviceKey: 'ios:mobile:SIM-REMOTE',
+          device: { platform: 'ios', target: 'mobile', id: 'SIM-REMOTE', name: 'iPhone 17' },
+        });
+      },
+    }),
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.deviceKey, undefined);
+  assert.equal(requests[0]?.platform, 'ios');
+  assert.equal(requests[0]?.target, 'mobile');
+  assert.equal(requests[0]?.device, 'iPhone 17');
+  assert.equal(requests[0]?.iosSimulatorDeviceSet, '/sims');
+  assert.equal(materialized.flags.udid, 'SIM-REMOTE');
+  assert.equal(materialized.connection?.deviceKey, 'ios:mobile:SIM-REMOTE');
+  const state = readRemoteConnectionState({ stateDir, session: 'adc-proxy' });
+  assert.equal(state?.deviceKey, 'ios:mobile:SIM-REMOTE');
+  assert.equal(state?.leaseId, 'lease-1');
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
+
+test('a later open on the live lease uses the device its key names instead of picking again', async () => {
+  const { tempRoot, flags } = proxyWorkspace('agent-device-proxy-by-spec-renew-', {
+    leaseId: 'lease-1',
+    deviceKey: 'ios:mobile:SIM-REMOTE',
+  });
+  const heartbeats: string[] = [];
+
+  const materialized = await materializeRemoteConnectionForCommand({
+    command: 'open',
+    flags: { ...flags, device: 'iPhone 17' },
+    client: createTestClient({
+      // Another simulator with the same name must not replace the leased one.
+      listDevices: async () => [IPHONE_SIMULATOR],
+      allocate: unexpectedCommandCall,
+      heartbeat: async (request) => {
+        heartbeats.push(request.deviceKey ?? '');
+        return {
+          leaseId: request.leaseId,
+          tenantId: 'proxy',
+          runId: 'proxy-client-1',
+          backend: 'ios-instance',
+          leaseProvider: 'proxy',
+          clientId: 'client-1',
+          deviceKey: 'ios:mobile:SIM-REMOTE',
+        };
+      },
+    }),
+  });
+
+  assert.deepEqual(heartbeats, ['ios:mobile:SIM-REMOTE']);
+  assert.equal(materialized.flags.udid, 'SIM-REMOTE');
+  assert.equal(materialized.connection?.deviceKey, 'ios:mobile:SIM-REMOTE');
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
+
+test('a daemon whose lease names no device gets that lease released and the device picked locally', async () => {
+  const { tempRoot, stateDir, flags } = proxyWorkspace('agent-device-proxy-by-spec-old-');
+  const requests: LeaseAllocateRequest[] = [];
+  const releases: LeaseReleaseRequest[] = [];
+
+  const materialized = await materializeRemoteConnectionForCommand({
+    command: 'open',
+    flags: { ...flags, device: 'iPhone 17' },
+    client: createTestClient({
+      listDevices: async () => [IPHONE_SIMULATOR],
+      allocate: async (request) => {
+        requests.push(request);
+        return grantedLease(request, { leaseId: `lease-${requests.length}` });
+      },
+      release: async (request) => {
+        releases.push(request);
+        return { released: true };
+      },
+    }),
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0]?.deviceKey, undefined);
+  assert.equal(releases.length, 1);
+  assert.equal(releases[0]?.leaseId, 'lease-1');
+  assert.equal(releases[0]?.deviceKey, undefined);
+  assert.equal(requests[1]?.deviceKey, 'ios:mobile:SIM-LOCAL');
+  assert.equal(materialized.flags.leaseId, 'lease-2');
+  assert.equal(materialized.flags.udid, 'SIM-LOCAL');
+  assert.equal(readRemoteConnectionState({ stateDir, session: 'adc-proxy' })?.leaseId, 'lease-2');
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
+
+test('proxy open with an exact udid still picks locally and allocates that device once', async () => {
+  const { tempRoot, flags } = proxyWorkspace('agent-device-proxy-by-spec-exact-');
+  const requests: LeaseAllocateRequest[] = [];
+
+  const materialized = await materializeRemoteConnectionForCommand({
+    command: 'open',
+    flags: { ...flags, udid: 'SIM-LOCAL' },
+    client: createTestClient({
+      listDevices: async () => [IPHONE_SIMULATOR],
+      allocate: async (request) => {
+        requests.push(request);
+        return grantedLease(request);
+      },
+      release: unexpectedCommandCall,
+    }),
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.deviceKey, 'ios:mobile:SIM-LOCAL');
+  assert.equal(requests[0]?.udid, 'SIM-LOCAL');
+  assert.equal(materialized.flags.udid, 'SIM-LOCAL');
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});

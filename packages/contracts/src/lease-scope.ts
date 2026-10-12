@@ -1,5 +1,7 @@
 import type { LeaseBackend } from '@agent-device/kernel/contracts';
+import { DEVICE_TARGETS, isPublicPlatform } from '@agent-device/kernel/device';
 import { stripUndefined } from '@agent-device/kernel/record';
+import type { LeaseDevice } from './client-lease.ts';
 import type { CloudProviderProfileFields } from './remote-config-fields.ts';
 import type { CommandFlags } from './command-flags.ts';
 
@@ -215,9 +217,15 @@ export function leaseScopeToLeaseRpcParams(
  * producer and the daemon's consumer read the SAME list and cannot drop a sibling the provider needs.
  */
 const LEASE_ALLOCATE_PROVIDER_FLAG_KEYS = [
-  // Device selection the lease-lifecycle provider needs to create the session.
+  // Device selection the lease-lifecycle provider needs to create the session, and a proxy daemon
+  // needs to pick the device when the request names no `deviceKey`.
   'platform',
+  'target',
   'device',
+  'udid',
+  'serial',
+  'iosSimulatorDeviceSet',
+  'androidDeviceAllowlist',
   // The Cloud provider profile fields; pinned exhaustive against that vocabulary below.
   'providerApp',
   'providerOsVersion',
@@ -294,6 +302,37 @@ export function buildLeaseDiagnosticsContext(
     clientId: leaseScope.clientId,
   });
   return Object.keys(context).length > 0 ? context : undefined;
+}
+
+/** The `deviceKey` a proxy lease binds a device under: its public platform, target, and id. */
+export function leaseDeviceKey(device: Pick<LeaseDevice, 'platform' | 'target' | 'id'>): string {
+  return `${device.platform}:${device.target ?? 'mobile'}:${device.id}`;
+}
+
+/** The device a {@link leaseDeviceKey} names, or `undefined` for a key it did not build. */
+export function parseLeaseDeviceKey(deviceKey: string | undefined): LeaseDevice | undefined {
+  const match = /^([^:]+):([^:]+):(.+)$/.exec(deviceKey ?? '');
+  if (!match) return undefined;
+  const [, platform, target, id] = match;
+  if (!isPublicPlatform(platform) || !isDeviceTarget(target)) return undefined;
+  return { platform, target, id: id! };
+}
+
+/** The device a lease reply names, or `undefined` when the reply names none or a malformed one. */
+export function readLeaseDevice(value: unknown): LeaseDevice | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { platform, target, id, name } = value as Record<string, unknown>;
+  if (!isPublicPlatform(platform) || typeof id !== 'string' || id.length === 0) return undefined;
+  return stripUndefined({
+    platform,
+    target: isDeviceTarget(target) ? target : undefined,
+    id,
+    name: typeof name === 'string' && name.length > 0 ? name : undefined,
+  });
+}
+
+function isDeviceTarget(value: unknown): value is NonNullable<LeaseDevice['target']> {
+  return (DEVICE_TARGETS as readonly unknown[]).includes(value);
 }
 
 export function isProxyLeaseScope(scope: LeaseScope): boolean {

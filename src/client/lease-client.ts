@@ -1,4 +1,5 @@
 import type { HumanControlHold, Lease } from '@agent-device/contracts/client';
+import { readLeaseDevice } from '@agent-device/contracts/lease-scope';
 import type { InternalRequestOptions } from '@agent-device/contracts/command';
 import { AppError } from '@agent-device/kernel/errors';
 import { INTERNAL_COMMANDS } from '@agent-device/command-registry/catalog';
@@ -75,6 +76,7 @@ function normalizeLease(data: Record<string, unknown>): Lease {
   if (!isRecord(rawLease)) {
     throw new Error('Invalid lease response from daemon');
   }
+  const device = readLeaseDevice(data.device);
   return {
     leaseId: readRequiredString(rawLease, 'leaseId'),
     tenantId: readRequiredString(rawLease, 'tenantId'),
@@ -84,6 +86,7 @@ function normalizeLease(data: Record<string, unknown>): Lease {
     clientId: readOptionalString(rawLease, 'clientId'),
     deviceKey: readOptionalString(rawLease, 'deviceKey'),
     ...(rawLease.retainOnClose === true ? { retainOnClose: true } : {}),
+    ...(device ? { device } : {}),
     createdAt: typeof rawLease.createdAt === 'number' ? rawLease.createdAt : undefined,
     heartbeatAt: typeof rawLease.heartbeatAt === 'number' ? rawLease.heartbeatAt : undefined,
     expiresAt: typeof rawLease.expiresAt === 'number' ? rawLease.expiresAt : undefined,
