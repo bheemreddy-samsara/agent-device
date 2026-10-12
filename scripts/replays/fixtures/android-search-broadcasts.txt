@@ -1,0 +1,25 @@
+      BroadcastRecord{6b135e3 android.intent.action.PACKAGE_CHANGED/u0} to user 0
+      Intent { act=android.intent.action.PACKAGE_CHANGED dat=package:com.google.android.settings.intelligence flg=0x45000010 (has extras) }
+        extras: Bundle[{android.intent.extra.changed_component_name=com.google.android.settings.intelligence.modules.battery.impl.usage.BootBroadcastReceiver, android.intent.extra.DONT_KILL_APP=false, android.intent.extra.UID=10145, android.intent.extra.changed_component_name_list=[com.google.android.settings.intelligence.modules.battery.impl.usage.BootBroadcastReceiver], android.intent.extra.user_handle=0}]
+      caller=null null pid=614 uid=1000
+      enqueueClockTime=2026-10-12 20:20:12.252 dispatchClockTime=2026-10-12 20:20:12.439
+      dispatchTime=-15s254ms (+187ms since enq) receiverTime=--
+      BroadcastRecord{a820e6e android.intent.action.BOOT_COMPLETED/u0} to user 0
+      Intent { act=android.intent.action.BOOT_COMPLETED flg=0x89000010 (has extras) }
+        extras: Bundle[{android.intent.extra.user_handle=0}]
+      FAILURE scheduled +176ms terminal +66ms (-1) #98: (manifest)
+        priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false
+        ActivityInfo:
+          name=com.google.android.settings.intelligence.modules.battery.impl.usage.BootBroadcastReceiver
+          packageName=com.google.android.settings.intelligence
+          enabled=true exported=true directBootAware=false
+          launchMode=LAUNCH_MULTIPLE flags=0x10000 privateFlags=0x0 theme=0x0
+          resizeMode=RESIZE_MODE_RESIZEABLE
+          knownActivityEmbeddingCerts={}
+        reason: onApplicationCleanupLocked
+      BroadcastRecord{1f473ba android.intent.action.PACKAGE_CHANGED/u0} to user 0
+      Intent { act=android.intent.action.PACKAGE_CHANGED dat=package:com.google.android.settings.intelligence flg=0x45000010 pkg=android (has extras) }
+        extras: Bundle[{android.intent.extra.changed_component_name=com.google.android.settings.intelligence.modules.battery.impl.usage.PeriodicJobReceiver, android.intent.extra.DONT_KILL_APP=false, android.intent.extra.UID=10145, android.intent.extra.changed_component_name_list=[com.google.android.settings.intelligence.modules.battery.impl.usage.PeriodicJobReceiver], android.intent.extra.user_handle=0, android.intent.extra.VISIBILITY_ALLOW_LIST=[10095, 10098, 10100, 10101, 10103, 10105, 10106, 10107, 10108, 10112, 10113, 10120, 10127, 10131, 10134, 10137, 10138, 10139, 10140, 10141, 10142, 10144, 10145, 10146, 10147, 10148, 10149, 10150, 10152, 10169, 10173, 10178, 10179, 10182, 10183, 10187, 10196, 10197, 10198, 10199, 10200, 10201, 10202, 10204, 10207, 10209, 10210, 10217]}]
+      caller=null null pid=614 uid=1000
+      enqueueClockTime=2026-10-12 20:20:12.259 dispatchClockTime=2026-10-12 20:20:12.895
+      dispatchTime=-15s60ms (+636ms since enq) finishTime=-14s454ms (+606ms since disp)

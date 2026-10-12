@@ -16,7 +16,7 @@ on:
         options: [normal, enabled, disabled]
         default: normal
       android_diagnostic:
-        description: 'Android-only search diagnostic after comparison timing; use enabled or disabled'
+        description: 'Android-only Search setup validation; use enabled or disabled'
         type: boolean
         default: false
 
