@@ -11,7 +11,7 @@ import { AppError } from '@agent-device/kernel/errors';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   resolveAndroidSerialAllowlist,
-  resolveIosSimulatorDeviceSetPath,
+  resolveRequestIosSimulatorDeviceSetPath,
 } from '@agent-device/kernel/device-isolation';
 import { withDiagnosticTimer } from '@agent-device/host-kit/diagnostics';
 import {
@@ -210,7 +210,7 @@ export function buildDeviceInventoryRequestFromFlags(
     );
   }
   const iosSimulatorSetPath = resolveAppleSimulatorSetPathForSelector({
-    simulatorSetPath: resolveIosSimulatorDeviceSetPath(flags.iosSimulatorDeviceSet),
+    simulatorSetPath: resolveRequestIosSimulatorDeviceSetPath(flags.iosSimulatorDeviceSet),
     platform,
     target: flags.target,
   });

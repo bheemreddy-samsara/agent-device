@@ -1,4 +1,4 @@
-import { beforeEach, test, vi } from 'vitest';
+import { afterEach, beforeEach, test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 
 const mockFindIosSimulatorInstalledApp = vi.fn();
@@ -95,6 +95,10 @@ async function resolveTargetDevice(
     async () => await resolveTargetDeviceInContext(...args),
   );
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
   mockFindIosSimulatorInstalledApp.mockReset();
@@ -593,6 +597,39 @@ test('resolveTargetDevice keeps simulator-set scope separate from the macOS host
 
   assert.equal(requests[0]?.iosSimulatorSetPath, '/tmp/isolated-set');
   assert.equal(requests[1]?.iosSimulatorSetPath, undefined);
+});
+
+test('resolveTargetDevice discovers simulators in the daemon operator set when the request names none', async () => {
+  vi.stubEnv('AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET', '/tmp/operator-set');
+  const requests: DeviceInventoryRequest[] = [];
+  await withTestDeviceInventory(
+    {
+      local: async (request) => {
+        requests.push(request);
+        return [simulator];
+      },
+    },
+    async () => {
+      const result = await resolveTargetDeviceInContext({ platform: 'ios' });
+      assert.equal(result.id, simulator.id);
+    },
+  );
+
+  assert.equal(requests[0]?.iosSimulatorSetPath, '/tmp/operator-set');
+});
+
+test('resolveTargetDevice refuses a request naming another set than the daemon operator set before discovery', async () => {
+  vi.stubEnv('AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET', '/tmp/operator-set');
+
+  const err = await resolveTargetDevice({
+    platform: 'ios',
+    iosSimulatorDeviceSet: '/tmp/other-set',
+  }).catch((error) => error);
+
+  assert.ok(err instanceof AppError);
+  assert.equal(err.code, 'INVALID_ARGS');
+  assert.equal(err.details?.reason, 'ios_simulator_device_set_outside_daemon_set');
+  assert.equal(mockListAppleDevices.mock.calls.length, 0);
 });
 
 async function expectDeviceNotFound(action: () => Promise<unknown>): Promise<void> {
