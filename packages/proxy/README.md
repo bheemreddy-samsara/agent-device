@@ -5,7 +5,8 @@ The proxy behind `agent-device proxy`, as a library. Embed it in your own gatewa
 
 The proxy:
 
-- authenticates clients with a token you choose, and never exposes the daemon's own token;
+- authenticates clients with a token you choose, or with your own check, and never exposes the
+  daemon's own token;
 - forwards only the routes a remote client needs: `/health`, `/rpc`, uploads, artifacts, and
   request diagnostics;
 - refuses install sources that name a file on the daemon host;
@@ -89,13 +90,36 @@ const proxy = createDaemonProxy({
 `upstreamFetch` receives a `Request` addressed to `upstreamBaseUrl` and must resolve with the
 daemon's `Response`. Abort the exchange when `request.signal` aborts.
 
+### Authenticate each client yourself
+
+One `clientToken` is shared by every client. To give each client its own credential, pass
+`authenticate` instead. It receives each client request (with its JSON body on `/rpc`) and returns
+the tenant the client acts as, or `null` to refuse it with a 401:
+
+```ts
+const proxy = createDaemonProxy({
+  upstreamBaseUrl: 'http://127.0.0.1:4310',
+  upstreamToken: daemonToken,
+  authenticate: async (request) => {
+    const account = await accounts.findByApiKey(request.headers.get('authorization'));
+    return account ? { tenantId: account.id } : null;
+  },
+});
+```
+
+The proxy then sends every request to the daemon as that tenant, whatever tenant the client named,
+and isolates its sessions from other tenants' sessions. A tenant id is 1-128 letters, numbers, dots,
+underscores or hyphens. Upload tickets carry the client's own `authorization` or
+`x-agent-device-token` header, so the upload is authenticated the same way.
+
 ## Options
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `upstreamBaseUrl` | required | Base URL of the daemon's HTTP server. |
 | `upstreamToken` | required | The daemon's auth token. |
-| `clientToken` | required | Token clients must send as their daemon auth token. |
+| `clientToken` | required without `authenticate` | Token clients must send as their daemon auth token. |
+| `authenticate` | none | Authenticates each client and names its tenant; replaces `clientToken`. |
 | `upstreamFetch` | global `fetch` | Sends one request to the daemon. |
 | `maxRpcBodyBytes` | 1 MiB | Larger `/rpc` bodies get a 400 response. |
 | `upstreamTimeoutMs` | 5 minutes | Longest time one daemon request may take, including its body. |
