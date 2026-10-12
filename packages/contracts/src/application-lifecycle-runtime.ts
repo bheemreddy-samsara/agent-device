@@ -57,6 +57,7 @@ export type ApplicationLifecycleExecution = Readonly<{
 /** Semantic target resolution used before an application open. */
 export type OpenTargetResolutionInput = Readonly<{
   target?: string;
+  launchArgs?: readonly string[];
   currentAppBundleId?: string;
   surface: SessionSurface;
   /** `open --foreground` asks the admitted Apple binding to inspect its exact target. */

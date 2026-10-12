@@ -180,6 +180,7 @@ export async function prepareOpenCommandDetails(params: {
     surface,
     openTarget,
     existingAppBundleId: existingSession?.appBundleId,
+    launchArgs: req.flags?.launchArgs,
     foreground,
   });
   if (runtimeHintPlan.clearRemovedRuntimeHints) {
@@ -216,11 +217,13 @@ async function resolvePreparedOpenIdentity(params: {
   surface: SessionSurface;
   openTarget: string | undefined;
   existingAppBundleId?: string;
+  launchArgs?: readonly string[];
   foreground: boolean;
 }): Promise<{ appBundleId?: string; appName?: string }> {
   const { runtime, surface, openTarget, existingAppBundleId, foreground } = params;
   const resolved = await runtime.operations.resolveOpenTarget({
     target: openTarget,
+    launchArgs: params.launchArgs,
     currentAppBundleId: existingAppBundleId,
     surface,
     foreground,

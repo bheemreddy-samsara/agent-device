@@ -66,13 +66,44 @@ test('resolveAndroidPackageForOpen retains the native requested intent package w
       'package',
       'resolve-activity',
       '--brief',
-      '-a',
-      'android.settings.SETTINGS',
       '-c',
       'android.intent.category.DEFAULT',
+      '-a',
+      'android.settings.SETTINGS',
     ],
     { allowFailure: true, timeoutMs: 2_000 },
   );
+  expect(getAndroidAppState).not.toHaveBeenCalled();
+});
+
+test('intent launch and ownership resolve the same overriding component arguments', async () => {
+  const { openAndroidApp } = await import('./app-lifecycle.ts');
+  const launchArgs = ['-n', 'com.example.app/.MainActivity'];
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockImplementation(async (_device, args: string[]) => ({
+    stdout: args.includes('com.example.app/.MainActivity')
+      ? 'com.example.app/.MainActivity'
+      : 'com.android.settings/.Settings',
+    stderr: '',
+    exitCode: 0,
+  }));
+
+  await openAndroidApp(androidDevice, 'settings', { launchArgs });
+  await expect(resolveAndroidPackageForOpen(androidDevice, 'settings', launchArgs)).resolves.toBe(
+    'com.example.app',
+  );
+  const commands = runAndroidShell.mock.calls.map((call) => call[1]);
+  const intentArgs = ['-a', 'android.settings.SETTINGS', ...launchArgs];
+  expect(commands[0]).toEqual(['am', 'start', '-W', ...intentArgs]);
+  expect(commands[1]).toEqual([
+    'cmd',
+    'package',
+    'resolve-activity',
+    '--brief',
+    '-c',
+    'android.intent.category.DEFAULT',
+    ...intentArgs,
+  ]);
   expect(getAndroidAppState).not.toHaveBeenCalled();
 });
 
@@ -100,7 +131,12 @@ test('intent package ownership does not adopt a component from a failed native r
     stderr: '',
     exitCode: 1,
   });
-  await expect(resolveAndroidPackageForOpen(androidDevice, 'settings')).resolves.toBeUndefined();
+  await expect(
+    resolveAndroidPackageForOpen(androidDevice, 'settings', [
+      '-n',
+      'com.example.app/.MainActivity',
+    ]),
+  ).resolves.toBeUndefined();
 });
 
 test('intent package ownership reads its native handler rather than assuming the Settings package', async () => {
