@@ -185,6 +185,10 @@ export async function runCli(argv: string[], deps: CliDeps = DEFAULT_CLI_DEPS): 
           }),
         });
         await dispatchCliCommand(ctx, client, replayTestReporterRuntime, commandProgress);
+        if (command === 'close') {
+          const { releaseProxyLeaseAfterClose } = await import('./cli/commands/connection.ts');
+          await releaseProxyLeaseAfterClose(client, ctx.effectiveFlags);
+        }
       } catch (error) {
         await handleRunCliFailure(error, ctx, logTailStopper);
       } finally {

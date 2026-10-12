@@ -41,6 +41,8 @@ export type RemoteConnectionState = {
   runId: string;
   leaseId?: string;
   leaseBackend?: LeaseBackend;
+  /** The daemon keeps this lease when its session closes; whoever allocated it ends it. */
+  leaseRetainOnClose?: true;
   leaseProvider?: string;
   deviceKey?: string;
   clientId?: string;
@@ -476,6 +478,7 @@ function isRemoteConnectionState(value: unknown): value is RemoteConnectionState
       'deviceKey',
       'clientId',
     ]) &&
+    (record.leaseRetainOnClose === undefined || record.leaseRetainOnClose === true) &&
     isOptionalRemoteConnectionDaemonState(record.daemon)
   );
 }
