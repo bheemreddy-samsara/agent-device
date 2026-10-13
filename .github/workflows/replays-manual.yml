@@ -1,11 +1,11 @@
-name: Round 25 Private iOS Bootstrap Phases
+name: Round 28 Private iOS Bootstrap Phases
 on:
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: round25-ios-bootstrap-${{ github.ref }}
+  group: round28-ios-bootstrap-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   ios-bootstrap-phases:
@@ -98,18 +98,18 @@ jobs:
       - name: Install temporary phase instrumentation
         run: |
           set -euo pipefail
-          mkdir -p test/artifacts/round25-ios-bootstrap
-          cat > test/artifacts/round25-ios-bootstrap/instrument.py <<'ROUND25_HELPER'
+          mkdir -p test/artifacts/round28-ios-bootstrap
+          cat > test/artifacts/round28-ios-bootstrap/instrument.py <<'ROUND28_HELPER'
           import pathlib, json, hashlib, subprocess
           root=pathlib.Path.cwd()
-          out=root/'test/artifacts/round25-ios-bootstrap'
+          out=root/'test/artifacts/round28-ios-bootstrap'
           out.mkdir(parents=True,exist_ok=True)
           head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           assert head=='ce260138b8838fee2c18cdf023663f0d2de349f7',head
           baseline={}
           patches={}
           def trace(phase,detail='{}'):
-              return f'(globalThis as any).__round25Trace?.({json.dumps(phase)}, {detail});'
+              return f'(globalThis as any).__round28Trace?.({json.dumps(phase)}, {detail});'
           def edit(file,old,new):
               if file not in patches:
                   patches[file]=(root/file).read_text()
@@ -165,15 +165,15 @@ jobs:
           (out/'baseline.json').write_text(json.dumps({'head':head,'sha256':baseline},indent=2)+'\n')
           (out/'instrumented.json').write_text(json.dumps({file:hashlib.sha256((root/file).read_bytes()).hexdigest() for file in patches},indent=2)+'\n')
           (out/'instrumentation.diff').write_bytes(subprocess.check_output(['git','diff','--',*patches]))
-          ROUND25_HELPER
-          cat > test/artifacts/round25-ios-bootstrap/preload.cjs <<'ROUND25_HELPER'
+          ROUND28_HELPER
+          cat > test/artifacts/round28-ios-bootstrap/preload.cjs <<'ROUND28_HELPER'
           'use strict';
           const fs = require('node:fs');
           const path = require('node:path');
-          const directory = path.join(process.cwd(), 'test/artifacts/round25-ios-bootstrap');
+          const directory = path.join(process.cwd(), 'test/artifacts/round28-ios-bootstrap');
           const args = process.argv.slice(1);
-          const ownPrepare = args[0] === 'src/bin.ts' && args[1] === 'prepare' && args[2] === 'ios-runner';
-          const ownDaemon = typeof args[0] === 'string' && args[0].endsWith('/src/daemon.ts');
+          const ownPrepare = args[0] === path.resolve(process.cwd(), 'src/bin.ts') && args[1] === 'prepare' && args[2] === 'ios-runner';
+          const ownDaemon = args[0] === path.resolve(process.cwd(), 'src/daemon.ts');
           if (ownPrepare || ownDaemon) {
             const output = path.join(directory, `trace-${process.pid}.ndjson`);
             let writesFailed = 0;
@@ -188,7 +188,7 @@ jobs:
               }
               return result;
             }
-            globalThis.__round25Trace = function(phase, details = {}) {
+            globalThis.__round28Trace = function(phase, details = {}) {
               try {
                 const record = {phase, pid: process.pid, ppid: process.ppid, wall: new Date().toISOString(), wallMs: Date.now(), monotonicNs: process.hrtime.bigint().toString(), details};
                 if (phase === 'client_cleanup_start' || phase === 'client_startup_verdict_end') record.metadata = metadata();
@@ -197,16 +197,16 @@ jobs:
             };
             // The known command is a whitelist, rather than recording arbitrary arguments/options.
             const allowed = ownDaemon ? [args[0]] : ['src/bin.ts', 'prepare', 'ios-runner', '--platform', 'ios', '--udid', args[6], '--timeout', args[8], '--json'];
-            globalThis.__round25Trace('process_before_esm_import', {command: ownDaemon ? 'daemon' : 'public_prepare', argv: allowed, nodeVersion: process.version});
+            globalThis.__round28Trace('process_before_esm_import', {command: ownDaemon ? 'daemon' : 'public_prepare', argv: allowed, nodeVersion: process.version});
             process.on('exit', code => {
-              globalThis.__round25Trace('process_exit', {code, writesFailed});
+              globalThis.__round28Trace('process_exit', {code, writesFailed});
               if (writesFailed) { try { fs.appendFileSync(path.join(directory, 'diagnostic-failures.ndjson'), JSON.stringify({pid:process.pid,writesFailed})+'\n'); } catch {} }
             });
           }
-          ROUND25_HELPER
-          cat > test/artifacts/round25-ios-bootstrap/observe.py <<'ROUND25_HELPER'
+          ROUND28_HELPER
+          cat > test/artifacts/round28-ios-bootstrap/observe.py <<'ROUND28_HELPER'
           import pathlib, subprocess, os, sys, time, json, threading, datetime
-          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          out=pathlib.Path('test/artifacts/round28-ios-bootstrap')
           state=pathlib.Path(os.environ['AGENT_DEVICE_STATE_DIR'])
           command=['node','--experimental-strip-types','src/bin.ts','prepare','ios-runner','--platform','ios','--udid',sys.argv[1],'--timeout',os.environ['AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS'],'--json']
           env=os.environ.copy()
@@ -236,7 +236,10 @@ jobs:
           with (out/'observer.ndjson').open('w') as observations:
               while child.poll() is None:
                   try:
-                      records=[json.loads(line) for line in (out/f'trace-{child.pid}.ndjson').read_text().splitlines()]
+                      try:
+                          records=[json.loads(line) for line in (out/f'trace-{child.pid}.ndjson').read_text().splitlines()]
+                      except FileNotFoundError:
+                          records=[]
                       spawns=[r for r in records if r['phase']=='owned_child_spawned']
                       if spawns and owned is None:
                           owned=spawns[0]['details']['childPid']
@@ -244,8 +247,14 @@ jobs:
                           identity=subprocess.run(['ps','-p',str(owned),'-o','pid=,ppid=,lstart=,command='],capture_output=True,text=True,timeout=2)
                           (out/'owned-child-identity.json').write_text(json.dumps({'pid':owned,'expectedParent':child.pid,'psExit':identity.returncode,'identity':identity.stdout.strip(),'spawnTrace':spawns[0]},indent=2)+'\n')
                       current=snapshot()
-                      if current!=last:
-                          observations.write(json.dumps({'wall':datetime.datetime.now(datetime.timezone.utc).isoformat(),'monotonicNs':time.monotonic_ns(),'publicPid':child.pid,'ownedPid':owned,'metadata':current})+'\n');observations.flush();last=current
+                      alive=None
+                      if owned is not None:
+                          try: os.kill(owned,0);alive=True
+                          except ProcessLookupError: alive=False
+                          except PermissionError: alive=None
+                      observed={'metadata':current,'ownedPid':owned,'ownedAlive':alive}
+                      if observed!=last:
+                          observations.write(json.dumps({'wall':datetime.datetime.now(datetime.timezone.utc).isoformat(),'monotonicNs':time.monotonic_ns(),'publicPid':child.pid,'ownedPid':owned,'ownedAlive':alive,'metadata':current})+'\n');observations.flush();last=observed
                   except FileNotFoundError: pass
                   except Exception as error:
                       with (out/'observer-errors.ndjson').open('a') as errors: errors.write(json.dumps({'type':type(error).__name__})+'\n')
@@ -254,33 +263,77 @@ jobs:
           for thread in threads: thread.join()
           (out/'command-result.json').write_text(json.dumps({'exitCode':code,'durationMs':(time.monotonic_ns()-start)/1e6,'ownedPid':owned,'finalMetadata':snapshot()},indent=2)+'\n')
           sys.exit(code if code>=0 else 128-code)
-          ROUND25_HELPER
-          node --check test/artifacts/round25-ios-bootstrap/preload.cjs
+          ROUND28_HELPER
+          cat > test/artifacts/round28-ios-bootstrap/selfcheck.py <<'ROUND28_HELPER'
+          import pathlib, subprocess, tempfile, os, json, sys, hashlib
+          origin=pathlib.Path.cwd()
+          helper=pathlib.Path(__file__).resolve().with_name('preload.cjs')
+          node=sys.argv[1] if len(sys.argv)>1 else 'node'
+          output=pathlib.Path(__file__).resolve().with_name('preload-selfcheck.json')
+          fixture=pathlib.Path(tempfile.mkdtemp(prefix='round28-preload-dummy-')).resolve()
+          trace=fixture/'test/artifacts/round28-ios-bootstrap'
+          trace.mkdir(parents=True)
+          dummy="console.log(JSON.stringify({pid:process.pid,ppid:process.ppid,traceInstalled:typeof globalThis.__round28Trace==='function'}));\n"
+          for name in ['src/bin.ts','src/daemon.ts','wrong/bin.ts','other/src/daemon.ts']:
+              entry=fixture/name;entry.parent.mkdir(parents=True,exist_ok=True);entry.write_text(dummy)
+          args=['prepare','ios-runner','--platform','ios','--udid','round28-dummy','--timeout','420000','--json']
+          cases=[('public-relative','src/bin.ts',args,True,'public_prepare'),('public-absolute',str(fixture/'src/bin.ts'),args,True,'public_prepare'),('wrong-public-entry','wrong/bin.ts',args,False,None),('wrong-subcommand','src/bin.ts',['other',*args[1:]],False,None),('wrong-prepare-target','src/bin.ts',['prepare','other',*args[2:]],False,None),('own-daemon-relative','src/daemon.ts',[],True,'daemon'),('own-daemon-absolute',str(fixture/'src/daemon.ts'),[],True,'daemon'),('other-daemon-entry','other/src/daemon.ts',[],False,None)]
+          results=[]
+          try:
+              for name,entry,arguments,admitted,kind in cases:
+                  for p in trace.glob('trace-*.ndjson'): p.unlink()
+                  env=os.environ.copy()
+                  env.pop('AGENT_DEVICE_STATE_DIR',None)
+                  env['NODE_OPTIONS']=(env.get('NODE_OPTIONS','')+' --require '+str(helper)).strip()
+                  command=[node,'--experimental-strip-types',entry,*arguments]
+                  process=subprocess.Popen(command,cwd=fixture,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+                  stdout,stderr=process.communicate(timeout=15)
+                  info=json.loads(stdout)
+                  files=list(trace.glob('trace-*.ndjson'))
+                  records=[json.loads(line) for p in files for line in p.read_text().splitlines()]
+                  checks={'exit':process.returncode==0,'pid':info['pid']==process.pid,'installation':info['traceInstalled']==admitted,'traceCount':len(files)==int(admitted)}
+                  if admitted:
+                      assert len(records)==2, {'case':name,'checks':checks,'records':records,'stdout':stdout,'stderr':stderr}
+                      expected_argv=['src/bin.ts',*args] if kind=='public_prepare' else [str(fixture/'src/daemon.ts')]
+                      checks.update({'preloadPhase':records[0]['phase']=='process_before_esm_import','tracePid':all(r['pid']==process.pid for r in records),'parent':records[0]['ppid']==os.getpid(),'command':records[0]['details']['command']==kind,'whitelist':records[0]['details']['argv']==expected_argv,'exitPhase':records[-1]['phase']=='process_exit','writes':records[-1]['details']['writesFailed']==0})
+                  result={'case':name,'actualCommand':command,'expectedAdmission':admitted,'pid':process.pid,'stdout':stdout,'stderr':stderr,'checks':checks,'records':records}
+                  results.append(result)
+                  assert all(checks.values()),result
+              assert pathlib.Path.cwd()==origin
+          finally:
+              output.write_text(json.dumps({'nodeVersion':subprocess.check_output([node,'--version'],text=True).strip(),'node':node,'fixture':str(fixture),'originCwd':str(origin),'returnedToOwnCwd':pathlib.Path.cwd()==origin,'helperSha256':hashlib.sha256(helper.read_bytes()).hexdigest(),'noRepositoryCodeExecuted':True,'noDaemonStateConfigured':True,'cases':results},indent=2)+'\n')
+          print('PASS: eight actual dummy Node invocations; public and daemon admission, negative controls, PID and argv whitelist')
+          ROUND28_HELPER
+          node --check test/artifacts/round28-ios-bootstrap/preload.cjs
           python3 - <<'PYVALIDATE'
           import ast,pathlib
-          for name in ['instrument.py','observe.py']:
-              ast.parse((pathlib.Path('test/artifacts/round25-ios-bootstrap')/name).read_text())
+          for name in ['instrument.py','observe.py','selfcheck.py']:
+              ast.parse((pathlib.Path('test/artifacts/round28-ios-bootstrap')/name).read_text())
           PYVALIDATE
-          python3 test/artifacts/round25-ios-bootstrap/instrument.py
+          python3 test/artifacts/round28-ios-bootstrap/instrument.py
           git diff --check
           python3 - <<'CHECKJS'
           import json, subprocess, pathlib
-          files=json.loads(pathlib.Path('test/artifacts/round25-ios-bootstrap/instrumented.json').read_text())
+          files=json.loads(pathlib.Path('test/artifacts/round28-ios-bootstrap/instrumented.json').read_text())
           for file in files:
               subprocess.run(['node','--experimental-strip-types','--check',file],check=True)
           CHECKJS
-          printf '%s\n' '${{ github.sha }}' > test/artifacts/round25-ios-bootstrap/workflow-head.txt
-          node --version > test/artifacts/round25-ios-bootstrap/node-version.txt
+          printf '%s\n' '${{ github.sha }}' > test/artifacts/round28-ios-bootstrap/workflow-head.txt
+          node --version > test/artifacts/round28-ios-bootstrap/node-version.txt
+      - name: Verify preload admission with selected Node on isolated dummy entries
+        run: |
+          set -euo pipefail
+          python3 test/artifacts/round28-ios-bootstrap/selfcheck.py
       - name: Measure original public iOS prepare once
         run: |
           pnpm clean:daemon
-          python3 test/artifacts/round25-ios-bootstrap/observe.py "${{ steps.ios-simulator.outputs.simulator-udid }}"
+          python3 test/artifacts/round28-ios-bootstrap/observe.py "${{ steps.ios-simulator.outputs.simulator-udid }}"
       - name: Preserve daemon log and request diagnostics before cleanup
         if: always()
         run: |
           python3 - <<'PRESERVE'
           import pathlib,shutil
-          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          out=pathlib.Path('test/artifacts/round28-ios-bootstrap')
           out.mkdir(parents=True,exist_ok=True)
           log=pathlib.Path('.tmp/agent-device-state/daemon.log')
           if log.exists(): shutil.copyfile(log,out/'daemon-before-owner-cleanup.log')
@@ -291,7 +344,7 @@ jobs:
         if: always()
         run: |
           set +e
-          OUT=test/artifacts/round25-ios-bootstrap
+          OUT=test/artifacts/round28-ios-bootstrap
           mkdir -p "$OUT"
           node --experimental-strip-types src/bin.ts daemon stop --state-dir "$AGENT_DEVICE_STATE_DIR" --clean --json > "$OUT/cleanup-daemon.json" 2> "$OUT/cleanup-daemon.stderr"
           DAEMON_EXIT=$?
@@ -306,7 +359,7 @@ jobs:
           SIM_LIST_EXIT=$?
           python3 - "$DAEMON_EXIT" "$SIM_EXIT" "$SIM_LIST_EXIT" <<'CLEANUP'
           import json,sys,pathlib,os
-          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          out=pathlib.Path('test/artifacts/round28-ios-bootstrap')
           state=pathlib.Path(os.environ['AGENT_DEVICE_STATE_DIR'])
           out.joinpath('cleanup-final.json').write_text(json.dumps({'daemonStopExit':int(sys.argv[1]),'simulatorShutdownExit':int(sys.argv[2]),'simulatorListExit':int(sys.argv[3]),'infoExists':(state/'daemon.json').exists(),'lockExists':(state/'daemon.lock').exists()},indent=2)+'\n')
           CLEANUP
@@ -323,7 +376,7 @@ jobs:
         run: |
           python3 - <<'DIGESTS'
           import pathlib,hashlib,json
-          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          out=pathlib.Path('test/artifacts/round28-ios-bootstrap')
           out.mkdir(parents=True,exist_ok=True)
           data={str(p.relative_to(out)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.rglob('*')) if p.is_file() and p.name!='digests.json'}
           out.joinpath('digests.json').write_text(json.dumps(data,indent=2)+'\n')
@@ -332,6 +385,6 @@ jobs:
         if: always()
         uses: ./.github/actions/upload-agent-device-artifacts
         with:
-          artifact-name: round25-ios-bootstrap-artifacts
+          artifact-name: round28-ios-bootstrap-artifacts
           agent-state-dir: ${{ env.AGENT_DEVICE_STATE_DIR }}
           runner-derived-path: ${{ env.AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH }}
