@@ -5,7 +5,7 @@ import type {
   SnapshotKeyboardBandFact,
 } from '@agent-device/kernel/snapshot';
 import { containsPoint, isPositiveFiniteRect } from '@agent-device/kernel/rect';
-import { isAndroidInputMethodNode } from './android-input-ownership.ts';
+import { IOS_KEYBOARD_SURFACE_ROLES, isAndroidInputMethodNode } from './android-input-ownership.ts';
 import { normalizeType } from './snapshot-text.ts';
 
 /**
@@ -106,12 +106,8 @@ function isKeyboardAnchorNode(node: RawSnapshotNode): boolean {
  * iOS names the keyboard's own surface elements by accessibility role, and the interactive projection
  * flattens them beside app content, so ancestry cannot reach them. The dock strip is the clearest
  * case: its buttons sit below the reported keys, inside the band, and are the keyboard rather than
- * app content waiting behind it.
+ * app content waiting behind it. The table is shared with the settle chrome classifier.
  */
-const IOS_KEYBOARD_SURFACE_ROLES: ReadonlySet<string> = new Set([
-  'UIKeyboardDockItemButton',
-  'UIAccessibilityElementKBKey',
-]);
 
 /** Every node the keyboard owns, whether or not it contributes geometry to the band. */
 function isKeyboardSurfaceNode(node: RawSnapshotNode): boolean {

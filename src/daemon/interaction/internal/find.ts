@@ -7,6 +7,7 @@ import {
 } from '@agent-device/selectors';
 import { runNodePipelineStages } from '@agent-device/selectors/selector-pipeline';
 import { SELECTOR_PIPELINE_POLICIES } from '@agent-device/selectors/selector-pipeline-policy';
+import { coveredInteractionDetails } from '@agent-device/selectors/interaction-error';
 import {
   centerOfRect,
   type SnapshotKeyboardBandFact,
@@ -422,11 +423,7 @@ function rejectCoveredFindMatch(match: ResolvedMatch, interaction: string): Daem
   return errorResponse(
     'COMMAND_FAILED',
     `Matched element ${match.ref} is covered by another visible element and cannot ${interaction} safely`,
-    {
-      ref: `@${blockedNode.ref}`,
-      interactionBlocked: blockedNode.interactionBlocked,
-      hint: 'Use a different visible target, scroll it clear of the overlay, or inspect with snapshot/screenshot before retrying.',
-    },
+    coveredInteractionDetails(blockedNode),
   );
 }
 

@@ -5,7 +5,6 @@ import {
   publicPlatformString,
   type DeviceInfo,
 } from '@agent-device/kernel/device';
-import { errorResponse, type DaemonFailureResponse } from '@agent-device/kernel/contracts';
 import { resolveAndroidSerialAllowlist } from '@agent-device/kernel/device-isolation';
 import { admitRuntimeUse } from '../runtime-admission.ts';
 import type { RuntimeCommandHandlerParams } from '../session-runtime-admission.ts';
@@ -17,24 +16,11 @@ function sortedAndroidSerialAllowlist(value: string | undefined): string[] | und
   return allowlist ? [...allowlist].sort() : undefined;
 }
 
-function appstateUnsupportedResponse(
-  device: DeviceInfo,
-  hint: string | undefined,
-): DaemonFailureResponse {
-  return errorResponse(
-    'UNSUPPORTED_OPERATION',
-    device.platform === 'web'
-      ? 'appstate is not supported on web.'
-      : 'appstate is not supported on this device',
-    undefined,
-    hint ? { hint } : undefined,
-  );
-}
-
 /**
  * The foreground app a device runtime reports for a non-session target. Apple devices never
  * answer here — they require the session the runner is attached to — so only runtimes whose owner
- * admits `appState` (Android today) get their readiness warmed and queried.
+ * admits `appState` (the local Android and HarmonyOS runtimes on devices and emulators, and the
+ * Limrun Android runtime today) get their readiness warmed and queried.
  */
 export async function queryDeviceRuntimeAppState(
   params: RuntimeCommandHandlerParams,
@@ -50,7 +36,6 @@ export async function queryDeviceRuntimeAppState(
     inspectFacts: params.inspectFacts,
     platformServices: params.platformServices,
     bindDevice: params.bindDevice,
-    unavailableResponse: (unavailable) => appstateUnsupportedResponse(device, unavailable.hint),
   });
   if (admitted.type === 'response') return admitted.response;
   const runtime = admitted.runtime;

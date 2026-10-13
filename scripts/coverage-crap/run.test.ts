@@ -5,6 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { run } from './run.ts';
+import {
+  beginStderrCapture,
+  beginStdoutCapture,
+} from '../../src/__tests__/test-utils/stream-capture.ts';
 
 // The verdict is what CI enforces on a PR, so these run the real entrypoint against a real git
 // repo, a real fallow and hand-built coverage reports — a stub of fallow could not prove that
@@ -48,8 +52,6 @@ type CoverageOptions = Readonly<{
   hits?: number;
   /** Emit a count no execution can produce, which the sanitizer drops with the whole record. */
   corrupt?: boolean;
-  /** Record the file with no functions in it, as a run over a deleted function's file reports. */
-  noFunctions?: boolean;
 }>;
 
 function istanbulRecord(file: string, options: CoverageOptions): Record<string, unknown> {
@@ -58,19 +60,17 @@ function istanbulRecord(file: string, options: CoverageOptions): Record<string, 
   return {
     path: path.join(repo, file),
     statementMap: { 0: { start: line(from), end: line(to) } },
-    fnMap: options.noFunctions
-      ? {}
-      : {
-          0: {
-            name: 'score',
-            decl: { start: line(from), end: line(from) },
-            loc: { start: line(from), end: line(to) },
-            line: from,
-          },
-        },
+    fnMap: {
+      0: {
+        name: 'score',
+        decl: { start: line(from), end: line(from) },
+        loc: { start: line(from), end: line(to) },
+        line: from,
+      },
+    },
     branchMap: {},
     s: { 0: options.corrupt ? -1 : (options.hits ?? 0) },
-    f: options.noFunctions ? {} : { 0: options.hits ?? 0 },
+    f: { 0: options.hits ?? 0 },
     b: {},
   };
 }
@@ -102,43 +102,15 @@ function commit(message: string): void {
 
 // The entrypoint writes reports and reads the job summary, so each case needs the stream capture as
 // well as the exit code: `code: 0` with a "no trustworthy verdict" body is the failure mode here.
-//
-// Restoring means putting back the descriptor, not a function of the same name. `process.stdout`
-// inherits `write` from its prototype, so a saved-and-reassigned property would leave an own
-// property shadowing the prototype's, and `bind` would have handed back a bound copy no later
-// `delete` could undo.
-type CapturedStream = Readonly<{
-  target: NodeJS.WriteStream;
-  key: 'write';
-  descriptor: PropertyDescriptor | undefined;
-}>;
-
 function capture(fn: () => number): { code: number; out: string } {
-  const chunks: string[] = [];
-  const restore: CapturedStream[] = [];
-  const collect = (chunk: string | Uint8Array): boolean => {
-    chunks.push(String(chunk));
-    return true;
-  };
-  for (const target of [process.stdout, process.stderr]) {
-    restore.push({
-      target,
-      key: 'write',
-      descriptor: Object.getOwnPropertyDescriptor(target, 'write'),
-    });
-    Object.defineProperty(target, 'write', {
-      value: collect,
-      writable: true,
-      configurable: true,
-    });
-  }
+  const stdoutCapture = beginStdoutCapture();
+  const stderrCapture = beginStderrCapture();
   try {
-    return { code: fn(), out: chunks.join('') };
+    const code = fn();
+    return { code, out: stdoutCapture.read() + stderrCapture.read() };
   } finally {
-    for (const { target, key, descriptor } of restore) {
-      if (descriptor) Object.defineProperty(target, key, descriptor);
-      else delete (target as unknown as Record<string, unknown>)[key];
-    }
+    stdoutCapture.restore();
+    stderrCapture.restore();
   }
 }
 
@@ -246,19 +218,27 @@ test('editing a function that already scores too high blocks, even though the sc
 test("the score of an untouched file is not this change's verdict", () => {
   // Half of this is the exit code: the map holds `src/debt.ts` at CRAP 42 and the run is still green,
   // which only happens if fallow filtered its findings by this diff rather than scoring the repo.
-  // The other half is that diff itself, since a flag that silently went missing would score
-  // everything and a diff built from the wrong range would look just as clean.
+  // The diff reaches fallow on stdin and never through the checkout, so seed the artifact an
+  // earlier release wrote with a scope charging the untouched debt file: a gate that read that
+  // file again would report `src/debt.ts:1` at 42 and exit 1, and one that rewrote it would leave
+  // different content behind. Scoping on stdin does neither.
   writeCoverage({ 'src/debt.ts': {}, 'src/clean.ts': { hits: 4 } });
   write('src/clean.ts', `${TRIVIAL}export const also_trivial = 2;\n`);
   commit('clean edit, debt left alone');
+  const staleDiff = [
+    'diff --git a/src/debt.ts b/src/debt.ts',
+    '--- a/src/debt.ts',
+    '+++ b/src/debt.ts',
+    '@@ -1,0 +1,1 @@',
+    '+export const planted = 1;',
+  ].join('\n');
+  write('coverage/fallow-crap.diff', staleDiff);
 
   const { code, out } = check(['--base', HEADS[0]!]);
 
   assert.equal(code, 0);
   assert.doesNotMatch(out, /src\/debt\.ts:1/);
-  const scoped = fs.readFileSync(path.join(repo, 'coverage/fallow-crap.diff'), 'utf8');
-  assert.match(scoped, /^\+\+\+ b\/src\/clean\.ts$/m);
-  assert.doesNotMatch(scoped, /^\+\+\+ b\/src\/debt\.ts$/m);
+  assert.equal(fs.readFileSync(path.join(repo, 'coverage/fallow-crap.diff'), 'utf8'), staleDiff);
 });
 
 test('a pure rename does not touch the functions that moved with the file', () => {
@@ -289,12 +269,12 @@ test('a rename that also edits the body owes the edited lines', () => {
 });
 
 test('deleting lines from a debt function does not charge the function that survives them', () => {
-  // Measured, not assumed: fallow's `--diff-file` index holds added lines only, so a hunk that is
+  // Measured, not assumed: fallow's diff-scoping index holds added lines only, so a hunk that is
   // nothing but removals contributes no line to intersect a function's span with, and this run
-  // agrees rather than overriding it. Removing code retires debt instead of adding it, which is the
-  // rule the whole-file and pure-rename exemptions already follow — the residual is deliberate: a
-  // deletion that leaves an untested complex function standing is not charged here, and `--all`
-  // still lists it on main. Pinned so a change to either layer's scoping has to say so.
+  // agrees rather than overriding it — the same reason the whole-file and pure-rename exemptions
+  // exist. The residual is deliberate and not free: a deletion can even raise a surviving
+  // function's CRAP by removing lines that used to be covered, and that new debt shows up only in
+  // `--all`. Pinned so a change to either layer's scoping has to say so.
   writeCoverage({ 'src/debt.ts': { span: [1, 13] }, 'src/clean.ts': { hits: 4 } });
   write('src/debt.ts', DEBT.replace('    total += 1;\n', ''));
   commit('delete a line inside the debt function');
@@ -309,11 +289,10 @@ test('deleting lines from a debt function does not charge the function that surv
   assert.match(backlog.out, /\| `src\/debt\.ts:1` score \| 42\.0 \| 6 \| 0% \|/);
 });
 
-test('lines added elsewhere in a file do not charge a function whose own lines did not change', () => {
-  // Scoping is per function span, not per file, so a one-line edit in a large module does not
-  // inherit every debt score inside it. Here the file has added lines — `helper` is rewritten and
-  // another export appears below the function — and the function lost one line, yet none of the
-  // added lines fall in its span, so it is not this change's verdict.
+test('lines added below a debt function do not charge it, though the diff also deleted one inside', () => {
+  // The per-span half of the boundary: scoping is per function span, not per file, so a module is
+  // not charged for the debt it merely contains. `score` loses one line here and the file gains two
+  // below it, and because none of the added lines land inside the span, none of them charge it.
   writeCoverage({ 'src/debt.ts': { span: [1, 13] }, 'src/clean.ts': { hits: 4 } });
   write(
     'src/debt.ts',
@@ -329,15 +308,23 @@ test('lines added elsewhere in a file do not charge a function whose own lines d
   assert.match(backlog.out, /\| `src\/debt\.ts:1` score \| 42\.0 \| 6 \| 0% \|/);
 });
 
-test('deleting the debt function altogether is retiring it, not a change to it', () => {
-  writeCoverage({ 'src/debt.ts': { noFunctions: true }, 'src/clean.ts': { hits: 4 } });
+test('a deleted function takes its score with it, out of both scopes', () => {
+  // The stronger fixture, and the reason the exemption is structural rather than the diff filter
+  // again: the map still records `score` at 42 from a coverage run that predates the deletion, yet
+  // neither scope reports it, because scoring walks the source and the source no longer holds the
+  // function. The two cases above pin debt that IS scored and is held back by scoping; this one
+  // pins debt that no longer exists in either scope even while the map claims it.
+  writeCoverage({ 'src/debt.ts': { span: [1, 14] }, 'src/clean.ts': { hits: 4 } });
   write('src/debt.ts', TRIVIAL);
-  commit('replace the debt function with a constant');
+  commit('delete the debt function, leave the map recording it');
 
   const { code, out } = check(['--base', HEADS[0]!]);
 
   assert.equal(code, 0);
   assert.match(out, /no touched function\(s\) at or above 30/);
+  const backlog = check(['--all']);
+  assert.equal(backlog.code, 0);
+  assert.match(backlog.out, /no function\(s\) at or above 30/);
 });
 
 test('a touched file the sanitizer dropped as corrupt yields no verdict', () => {

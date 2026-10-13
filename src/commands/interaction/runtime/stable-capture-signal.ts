@@ -60,8 +60,8 @@ export function stableCaptureSignalsHaveBroadReplacement(
   right: StableCaptureSignal,
 ): boolean {
   // A backend transition must reset the ordinary quiet window, but it must not conceal a broad
-  // semantic replacement. Both signals already carry the same visible XCTest projection, and the
-  // transition baseline is only armed for XCTest sessions.
+  // semantic replacement. Both signals carry the same chrome-free visible projection the settle
+  // diff collapses, and the transition baseline is only armed for XCTest sessions.
   if (!left || left.nodes.length === 0 || right.nodes.length === 0) return false;
   const remainingIdentities = new Map<string, number>();
   for (const node of left.nodes) {
