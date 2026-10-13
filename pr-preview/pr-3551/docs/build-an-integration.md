@@ -235,7 +235,7 @@ await stopMetroTunnel({
 
 Use `agent-device/remote-config` for profile loading and path resolution, `agent-device/metro` for Metro preparation, reload, and tunnel lifecycle, and `agent-device/contracts` when a server consumer needs daemon request or runtime contract types. For bridged remote Metro, `proxyBaseUrl` is the bridge origin and `publicBaseUrl` is optional; the bridge descriptor supplies cloud iOS wildcard HTTPS hints and Android runtime-route hints. `reloadMetro()` calls Metro's `/reload` endpoint, matching the terminal `r` reload path for connected React Native apps.
 
-`stopMetroTunnel()` only returns once the companion is gone. If the companion belongs to another user — you started it with `sudo`, for example — the call fails with that pid, and the profile keeps tracking it so a later stop retries the same process instead of starting a second companion beside it. Stop the surviving process as its owner (`sudo kill <pid>`) and run `stopMetroTunnel()` again.
+`stopMetroTunnel()` releases a companion once per consumer, so it only returns once the companion is gone when it releases the last one. If that companion belongs to another user — you started it with `sudo`, for example — the call fails with its pid, and the profile keeps tracking it so a later stop retries the same process instead of starting a second companion beside it. Stop the surviving process as its owner (`sudo kill <pid>`) and run `stopMetroTunnel()` again.
 
 ## Selector helpers
 
