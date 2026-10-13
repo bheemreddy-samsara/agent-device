@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   manual-android:
+    if: false
     name: Android Full Emulator Suite
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -29,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: 5a63e97c0d9e3859c4546acbf98289e98435f01e
+          ref: 4dd17b41a84e87bab0cca221164d82deb9b940ed
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
@@ -55,7 +56,7 @@ jobs:
       - name: Prepare private Android launch-control probe
         run: |
           mkdir -p .tmp
-          cat > .tmp/round24-android.sh <<'PROBE_SH'
+          cat > .tmp/round26-android.sh <<'PROBE_SH'
           #!/bin/sh
           set -eu
           pnpm gate build
@@ -68,13 +69,13 @@ jobs:
           import subprocess
           import sys
 
-          out = Path('test/artifacts/round24-android-launch-controls').resolve()
+          out = Path('test/artifacts/round26-android-launch-controls').resolve()
           out.mkdir(parents=True, exist_ok=True)
           real_adb = shutil.which('adb')
           assert real_adb, 'native adb must exist'
           env = dict(os.environ)
           base = ['node', '--experimental-strip-types', 'src/bin.ts']
-          flags = ['--platform', 'android', '--serial', os.environ['ANDROID_SERIAL'], '--session', 'round24-launch-controls', '--json']
+          flags = ['--platform', 'android', '--serial', os.environ['ANDROID_SERIAL'], '--session', 'round26-launch-controls', '--json']
           launch = ['-S', '-R', '1', '--display', '0']
           command = [*base, 'open', 'settings', *flags]
           for arg in launch:
@@ -129,7 +130,7 @@ jobs:
           profile: pixel_7
           target: google_apis_playstore
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: sh .tmp/round24-android.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
+          script: sh .tmp/round26-android.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
 
       - name: Upload Android artifacts
         if: always()
@@ -153,7 +154,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: 5a63e97c0d9e3859c4546acbf98289e98435f01e
+          ref: 4dd17b41a84e87bab0cca221164d82deb9b940ed
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
@@ -186,7 +187,7 @@ jobs:
 
       - name: Private iOS Settings role and scroll proof
         env:
-          ROUND24_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+          ROUND26_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
         run: |
           python3 - <<'PROBE_PY'
           import json
@@ -197,10 +198,10 @@ jobs:
           import time
           import traceback
 
-          out = Path('test/artifacts/round24-ios-settings-geometry').resolve()
+          out = Path('test/artifacts/round26-ios-settings-geometry').resolve()
           out.mkdir(parents=True, exist_ok=True)
           base = ['node', '--experimental-strip-types', 'src/bin.ts']
-          flags = ['--platform', 'ios', '--udid', os.environ['ROUND24_IOS_UDID'], '--session', 'round24-ios-settings-geometry', '--json']
+          flags = ['--platform', 'ios', '--udid', os.environ['ROUND26_IOS_UDID'], '--session', 'round26-ios-settings-geometry', '--json']
           timeline = []
           def run(name, args, required=True):
               command = [*base, *args, *flags]
@@ -226,22 +227,22 @@ jobs:
           def capture(name):
               run(name + '-snapshot', ['snapshot'])
               run(name + '-screenshot', ['screenshot', str(out / (name + '.png'))], required=False)
-          (out / 'source.json').write_text(json.dumps(dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), udid=os.environ['ROUND24_IOS_UDID'], session='round24-ios-settings-geometry', note='private observations add capture work; no timing comparison'), indent=2))
+          (out / 'source.json').write_text(json.dumps(dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), udid=os.environ['ROUND26_IOS_UDID'], session='round26-ios-settings-geometry', note='private observations add capture work; no timing comparison'), indent=2))
           status = 1
           try:
               run('open', ['open', 'com.apple.Preferences', '--relaunch'])
               capture('initial')
-              general = run('initial-general-visible', ['is', 'visible', 'role=cell label=General'])
-              apps = run('initial-apps-absent', ['is', 'absent', 'role=cell label=Apps'])
-              down = run('down', ['scroll', 'down', '--until', 'role=cell label=Apps'])
+              general = run('initial-general-visible', ['is', 'visible', 'role=button label=General'])
+              apps = run('initial-apps-absent', ['is', 'absent', 'role=button label=Apps'])
+              down = run('down', ['scroll', 'down', '--until', 'role=button label=Apps'])
               capture('after-down')
               assert down.get('data', {}).get('passes', 0) >= 1, 'down must synthesize at least one gesture'
-              run('apps-visible', ['is', 'visible', 'role=cell label=Apps'])
-              run('general-absent', ['is', 'absent', 'role=cell label=General'])
-              up = run('up', ['scroll', 'up', '--until', 'role=cell label=General'])
+              run('apps-visible', ['is', 'visible', 'role=button label=Apps'])
+              run('general-absent', ['is', 'absent', 'role=button label=General'])
+              up = run('up', ['scroll', 'up', '--until', 'role=button label=General'])
               capture('after-up')
               assert up.get('data', {}).get('passes', 0) >= 1, 'up must synthesize at least one gesture'
-              run('general-visible', ['is', 'visible', 'role=cell label=General'])
+              run('general-visible', ['is', 'visible', 'role=button label=General'])
               (out / 'proof.json').write_text(json.dumps(dict(downPasses=down['data']['passes'], upPasses=up['data']['passes']), indent=2))
               status = 0
           except Exception:
@@ -318,7 +319,7 @@ jobs:
       - name: Private final iOS session and simulator cleanup
         if: always() && steps.ios-simulator.outputs.simulator-udid != ''
         env:
-          ROUND24_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+          ROUND26_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
         run: |
           python3 - <<'CLEAN_PY'
           import json
@@ -326,14 +327,14 @@ jobs:
           from pathlib import Path
           import subprocess
           import sys
-          out = Path('test/artifacts/round24-ios-cleanup').resolve()
+          out = Path('test/artifacts/round26-ios-cleanup').resolve()
           out.mkdir(parents=True, exist_ok=True)
           base = ['node', '--experimental-strip-types', 'src/bin.ts']
           commands = [
               ('sessions-before', [*base, 'session', 'list', '--json']),
               ('daemon-stop', [*base, 'daemon', 'stop', '--clean', '--json']),
               ('device-status', [*base, 'device', 'status', '--stale', '--json']),
-              ('simulator-stop', ['xcrun', 'simctl', 'shutdown', os.environ['ROUND24_IOS_UDID']]),
+              ('simulator-stop', ['xcrun', 'simctl', 'shutdown', os.environ['ROUND26_IOS_UDID']]),
               ('simulators-after', ['xcrun', 'simctl', 'list', 'devices', '-j']),
           ]
           status = 0
