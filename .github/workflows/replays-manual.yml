@@ -29,7 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: 3800feaefe6bf8627d7394c4495fbe8960ec8f40
+          ref: d06caa81b79a5451ac62da5e5cb52b7eabf85f51
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
@@ -55,7 +55,7 @@ jobs:
       - name: Prepare private Android launch-control probe
         run: |
           mkdir -p .tmp
-          cat > .tmp/round21-android.sh <<'PROBE_SH'
+          cat > .tmp/round23-android.sh <<'PROBE_SH'
           #!/bin/sh
           set -eu
           pnpm gate build
@@ -68,44 +68,18 @@ jobs:
           import subprocess
           import sys
 
-          out = Path('test/artifacts/round21-android-launch-controls').resolve()
+          out = Path('test/artifacts/round23-android-launch-controls').resolve()
           out.mkdir(parents=True, exist_ok=True)
-          wrapper_dir = Path('.tmp/round21-adb').resolve()
-          wrapper_dir.mkdir(parents=True, exist_ok=True)
           real_adb = shutil.which('adb')
           assert real_adb, 'native adb must exist'
-          wrapper = r"""#!/usr/bin/env python3
-          import json
-          import os
-          from pathlib import Path
-          import subprocess
-          import sys
-          import time
-          args = sys.argv[1:]
-          out = Path(os.environ['ROUND21_PROBE_OUTPUT'])
-          name = str(time.time_ns()) + '-' + str(os.getpid())
-          (out / (name + '-argv.json')).write_text(json.dumps(args))
-          selected = any('resolve-activity' in arg or ('am' in arg and 'start' in arg) for arg in args)
-          if selected:
-              result = subprocess.run([REAL_ADB, *args], capture_output=True)
-              (out / (name + '-stdout.txt')).write_bytes(result.stdout)
-              (out / (name + '-stderr.txt')).write_bytes(result.stderr)
-              (out / (name + '-exit.txt')).write_text(str(result.returncode))
-              sys.stdout.buffer.write(result.stdout)
-              sys.stderr.buffer.write(result.stderr)
-              sys.exit(result.returncode if result.returncode >= 0 else 128-result.returncode)
-          os.execv(REAL_ADB, [REAL_ADB, *args])
-          """.replace('REAL_ADB', repr(real_adb))
-          (wrapper_dir / 'adb').write_text(wrapper)
-          (wrapper_dir / 'adb').chmod(0o755)
-          env = dict(os.environ, PATH=str(wrapper_dir)+os.pathsep+os.environ['PATH'], ROUND21_PROBE_OUTPUT=str(out))
+          env = dict(os.environ)
           base = ['node', '--experimental-strip-types', 'src/bin.ts']
-          flags = ['--platform', 'android', '--serial', os.environ['ANDROID_SERIAL'], '--session', 'round21-launch-controls', '--json']
+          flags = ['--platform', 'android', '--serial', os.environ['ANDROID_SERIAL'], '--session', 'round23-launch-controls', '--json']
           launch = ['-S', '-R', '1', '--display', '0']
           command = [*base, 'open', 'settings', *flags]
           for arg in launch:
               command += ['--launch-args', arg]
-          (out / 'source.json').write_text(json.dumps(dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),command=command,realAdb=real_adb,wrapper=str(wrapper_dir/'adb'),note='private argv/output observer; may perturb timings')))
+          (out / 'source.json').write_text(json.dumps(dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),command=command,realAdb=real_adb,note='native execution unmodified; SDK PATH preparation can select SDK adb; no native argv observer claim')))
           status = 1
           try:
               result = subprocess.run(command, env=env, capture_output=True)
@@ -155,7 +129,7 @@ jobs:
           profile: pixel_7
           target: google_apis_playstore
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: sh .tmp/round21-android.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
+          script: sh .tmp/round23-android.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
 
       - name: Upload Android artifacts
         if: always()
@@ -179,7 +153,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: 3800feaefe6bf8627d7394c4495fbe8960ec8f40
+          ref: d06caa81b79a5451ac62da5e5cb52b7eabf85f51
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
@@ -209,6 +183,80 @@ jobs:
         run: |
           pnpm clean:daemon
           node --experimental-strip-types src/bin.ts prepare ios-runner --platform ios --udid "${{ steps.ios-simulator.outputs.simulator-udid }}" --timeout "$AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS" --json
+
+      - name: Private iOS Settings role and scroll proof
+        env:
+          ROUND23_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+        run: |
+          python3 - <<'PROBE_PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import time
+          import traceback
+
+          out = Path('test/artifacts/round23-ios-settings-geometry').resolve()
+          out.mkdir(parents=True, exist_ok=True)
+          base = ['node', '--experimental-strip-types', 'src/bin.ts']
+          flags = ['--platform', 'ios', '--udid', os.environ['ROUND23_IOS_UDID'], '--session', 'round23-ios-settings-geometry', '--json']
+          timeline = []
+          def run(name, args, required=True):
+              command = [*base, *args, *flags]
+              started = time.time_ns()
+              result = subprocess.run(command, capture_output=True)
+              (out / (name + '.stdout')).write_bytes(result.stdout)
+              (out / (name + '.stderr')).write_bytes(result.stderr)
+              (out / (name + '.exit')).write_text(str(result.returncode))
+              timeline.append(dict(name=name, command=command, startedNs=started, endedNs=time.time_ns(), exit=result.returncode))
+              (out / 'timeline.json').write_text(json.dumps(timeline, indent=2))
+              sys.stdout.buffer.write(result.stdout)
+              sys.stderr.buffer.write(result.stderr)
+              if required and result.returncode != 0:
+                  raise RuntimeError(f'{name} failed with original exit {result.returncode}')
+              if result.returncode == 0:
+                  response = json.loads(result.stdout)
+                  if required:
+                      assert response.get('success') is True, response
+                      if args[0] == 'is':
+                          assert response.get('data', {}).get('pass') is True, response
+                  return response
+              return None
+          def capture(name):
+              run(name + '-snapshot', ['snapshot'])
+              run(name + '-screenshot', ['screenshot', str(out / (name + '.png'))], required=False)
+          (out / 'source.json').write_text(json.dumps(dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(), udid=os.environ['ROUND23_IOS_UDID'], session='round23-ios-settings-geometry', note='private observations add capture work; no timing comparison'), indent=2))
+          status = 1
+          try:
+              run('open', ['open', 'com.apple.Preferences', '--relaunch'])
+              capture('initial')
+              general = run('initial-general-visible', ['is', 'visible', 'role=cell label=General'])
+              apps = run('initial-apps-absent', ['is', 'absent', 'role=cell label=Apps'])
+              down = run('down', ['scroll', 'down', '--until', 'role=cell label=Apps'])
+              capture('after-down')
+              assert down.get('data', {}).get('passes', 0) >= 1, 'down must synthesize at least one gesture'
+              run('apps-visible', ['is', 'visible', 'role=cell label=Apps'])
+              run('general-absent', ['is', 'absent', 'role=cell label=General'])
+              up = run('up', ['scroll', 'up', '--until', 'role=cell label=General'])
+              capture('after-up')
+              assert up.get('data', {}).get('passes', 0) >= 1, 'up must synthesize at least one gesture'
+              run('general-visible', ['is', 'visible', 'role=cell label=General'])
+              (out / 'proof.json').write_text(json.dumps(dict(downPasses=down['data']['passes'], upPasses=up['data']['passes']), indent=2))
+              status = 0
+          except Exception:
+              (out / 'probe-failure.txt').write_text(traceback.format_exc())
+              traceback.print_exc()
+              try:
+                  capture('failure')
+              except Exception:
+                  (out / 'failure-capture-error.txt').write_text(traceback.format_exc())
+          finally:
+              closed = run('close', ['close'], required=False)
+              if status == 0 and closed is None:
+                  status = 1
+          sys.exit(status)
+          PROBE_PY
 
       - name: Run iOS simulator replay suite
         uses: ./.github/actions/run-gate
@@ -266,6 +314,38 @@ jobs:
             test/artifacts/replays-ios-device
             --report-junit
             test/artifacts/replays-ios-device.junit.xml
+
+      - name: Private final iOS session and simulator cleanup
+        if: always() && steps.ios-simulator.outputs.simulator-udid != ''
+        env:
+          ROUND23_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+        run: |
+          python3 - <<'CLEAN_PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          out = Path('test/artifacts/round23-ios-cleanup').resolve()
+          out.mkdir(parents=True, exist_ok=True)
+          base = ['node', '--experimental-strip-types', 'src/bin.ts']
+          commands = [
+              ('sessions-before', [*base, 'session', 'list', '--json']),
+              ('daemon-stop', [*base, 'daemon', 'stop', '--clean', '--json']),
+              ('device-status', [*base, 'device', 'status', '--stale', '--json']),
+              ('simulator-stop', ['xcrun', 'simctl', 'shutdown', os.environ['ROUND23_IOS_UDID']]),
+              ('simulators-after', ['xcrun', 'simctl', 'list', 'devices', '-j']),
+          ]
+          status = 0
+          for name, command in commands:
+              result = subprocess.run(command, capture_output=True)
+              (out / (name + '.stdout')).write_bytes(result.stdout)
+              (out / (name + '.stderr')).write_bytes(result.stderr)
+              (out / (name + '.exit')).write_text(str(result.returncode))
+              if name in ('daemon-stop', 'simulator-stop') and result.returncode != 0:
+                  status = result.returncode
+          sys.exit(status)
+          CLEAN_PY
 
       - name: Upload iOS artifacts
         if: always()
