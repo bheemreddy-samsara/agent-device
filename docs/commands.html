@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.66c0f413d5.js"></script>
+<script defer src="/agent-device/static/js/index.c8f7fab672.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -453,6 +453,7 @@ restart; reconnect and take the hold again. See <a href="/agent-device/docs/remo
 <li><code>is absent</code> passes only when the selector has zero matches in one readable, complete, settled, unscoped, full-depth capture. It does not mean hidden: <code>--scope</code> and <code>--depth</code> are rejected, and sparse, unreadable, truncated, or unsettled captures fail.</li>
 <li>Predicates that name one element (all except <code>exists</code> and <code>absent</code>) and <code>get attrs</code> fail with <code>AMBIGUOUS_MATCH</code> when the selector matches more than one node; that is not a missing element. <code>error.details.matches</code> has the count, and up to five candidate <code>@ref</code>s are listed, pinned to <code>error.details.refsGeneration</code>, so you can act on one directly. Without a stored tree (a sparse capture), only the count is reported. See <a href="/agent-device/docs/selectors#find-an-element" class="rp-link">Selectors</a>.</li>
 <li>On iOS, React Native text appears as two nodes with the same label. Selectors that must resolve one element (<code>is</code>, <code>get attrs</code>, <code>screenshot --crop-on</code>, replay) treat the pair as one; <code>find ... list</code> and <code>snapshot --json</code> show both.</li>
+<li>On the web, on-screen text the browser cannot hand an action to (static text, a <code>status</code> announcement) is in the tree and readable by <code>wait text</code>, <code>find text</code>, <code>get text</code>, and <code>text=</code>, but carries no <code>@ref</code> and has no rect: <code>find ... list</code> prints it as <code>(no ref)</code>, and it is never a tap target. Such text is published on <code>value</code>, so <code>value=&quot;X&quot;</code> can match page text as well as a field holding that text, and a predicate that needs one element then reports <code>AMBIGUOUS_MATCH</code>; use <code>text=</code> for page text, or add <code>editable=true</code> to name the field.</li>
 <li>The first read after <code>scroll</code>, <code>swipe</code>, or <code>gesture swipe</code> waits for two captures to agree. When that proves something about the gesture, <code>is</code>, <code>get</code>, <code>find</code>, <code>wait</code>, interactions that captured it, and <code>snapshot</code> add a warning, and all but <code>snapshot</code> report <code>postGestureOutcome</code> (<code>{ &quot;kind&quot;, &quot;gesture&quot;: { &quot;action&quot;, &quot;positionals&quot; } }</code>) in <code>data</code> or <code>error.details</code>:
 <ul>
 <li><code>kind: &quot;unsettled&quot;</code>: the screen was still changing. A miss is not proof of absence; read again. <code>is absent</code> refuses with <code>observation: &quot;unsettled&quot;</code>, and <code>wait absent</code> keeps polling.</li>
