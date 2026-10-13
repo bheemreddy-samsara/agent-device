@@ -5,6 +5,7 @@ import {
   buildRemoteTempArtifactPath,
 } from '@agent-device/contracts/daemon-http';
 import { AppError } from '@agent-device/kernel/errors';
+import { leaseScopeFromRequest } from '@agent-device/contracts/lease-scope';
 import type { DaemonArtifact, DaemonRequest, DaemonResponse } from '../daemon/daemon-request.ts';
 import {
   appendRecordingExtensionWhenMissing,
@@ -127,6 +128,7 @@ async function prepareRemoteInstallPackage(
     baseUrl: info.baseUrl!,
     token: info.token,
     platform: req.flags?.platform,
+    leaseId: leaseScopeFromRequest(req).leaseId,
     onProgress,
     signal,
   });
@@ -226,6 +228,7 @@ async function prepareRemoteInstallSource(
     baseUrl: info.baseUrl!,
     token: info.token,
     platform: req.flags?.platform,
+    leaseId: leaseScopeFromRequest(req).leaseId,
     onProgress,
     signal,
   });
