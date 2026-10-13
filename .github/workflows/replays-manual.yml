@@ -1,93 +1,57 @@
-name: Replay Manual
-
-# Parked here by #1781 A1. Both suites failed every scheduled run from 2026-07-24 on — the
-# Android suite inside full-tier scenarios that had never executed end to end, the iOS suite
-# on varying steps — so on a schedule they only produced noise. Manual dispatch keeps them
-# runnable while they are being repaired; `pnpm check:gate-manifest` reports the checks they
-# declare as manual-only (scripts/gate/declarations.ts) so the missing owner stays visible.
-# Move these jobs back into replays-nightly.yml once a dispatch run is green.
-
+name: Round 25 Private iOS Bootstrap Phases
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
   actions: read
-
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  group: round25-ios-bootstrap-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  manual-android:
-    name: Android Full Emulator Suite
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      AGENT_DEVICE_STATE_DIR: ${{ github.workspace }}/.tmp/android-e2e-state
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Setup toolchain
-        uses: ./.github/actions/setup-node-pnpm
-
-      - name: Setup Android replay host
-        id: android-replay-host
-        uses: ./.github/actions/setup-android-replay-host
-        with:
-          package-helpers: 'true'
-
-      - name: Restore Android fixture APK
-        id: fixture-app
-        uses: ./.github/actions/setup-fixture-app
-        with:
-          platform: android
-          install: 'false'
-          require-artifact: 'true'
-
-      - name: Mark Android emulator setup complete
-        id: android-setup
-        run: echo "seconds=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Run Android full emulator suite
-        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
-        with:
-          api-level: 36
-          arch: x86_64
-          profile: pixel_7
-          target: google_apis_playstore
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: sh scripts/replays/android-manual.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
-
-      - name: Upload Android artifacts
-        if: always()
-        uses: ./.github/actions/upload-agent-device-artifacts
-        with:
-          artifact-name: replay-nightly-android-artifacts
-          agent-state-dir: ${{ env.AGENT_DEVICE_STATE_DIR }}
-
-  manual-ios:
-    name: iOS Replay Suite
+  ios-bootstrap-phases:
+    name: Private ce260 iOS Bootstrap Phases
     runs-on: macos-26
-    timeout-minutes: 80
+    timeout-minutes: 60
     env:
       IOS_RUNTIME_VERSION: '26.2'
-      AGENT_DEVICE_XCUITEST_ARCHS: 'arm64'
       AGENT_DEVICE_STATE_DIR: ${{ github.workspace }}/.tmp/agent-device-state
       AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH: ${{ github.workspace }}/.tmp/ios-runner-derived
       AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS: '420000'
+      AGENT_DEVICE_XCUITEST_INCLUDE_UNIT_TESTS: '1'
+      AGENT_DEVICE_XCUITEST_ARCHS: 'arm64'
       AGENT_DEVICE_IOS_APP_EVENT_URL_TEMPLATE: agent-device-test-app:///automation?event={event}&payload={payload}
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
+      - name: Checkout exact frozen source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ce260138b8838fee2c18cdf023663f0d2de349f7
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
         with:
           cache-dependency-path: |
             pnpm-lock.yaml
             examples/test-app/pnpm-lock.yaml
+
+      - name: Select iOS runner XCTests
+        id: xctest-impact
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            git fetch origin "$BASE_SHA" --depth=1 || echo 'Base fetch failed; XCTest selection will fail open.'
+          fi
+          node --experimental-strip-types scripts/apple-ci-impact.ts xctest
+
+      - name: Establish host focus canary
+        id: host-focus-canary
+        run: |
+          set -euo pipefail
+          osascript -e 'tell application "Finder" to activate'
+          sleep 1
+          FRONTMOST="$(osascript -e 'tell application "System Events" to get bundle identifier of first application process whose frontmost is true')"
+          test "$FRONTMOST" = "com.apple.finder"
+          mkdir -p .tmp
+          echo "$FRONTMOST" > .tmp/ios-host-focus-before
 
       - name: Restore and build iOS XCTest runner
         uses: ./.github/actions/setup-apple-runner-build
@@ -106,72 +70,268 @@ jobs:
           runtime-version: ${{ env.IOS_RUNTIME_VERSION }}
           preferred-device-name: iPhone 17 Pro
 
-      - name: Preflight iOS runner through public CLI
+      - name: Run targeted iOS runner XCTest regressions
+        id: ios-xctest
+        if: steps.xctest-impact.outputs.run != 'false'
+        run: |
+          set -euo pipefail
+          XCTESTRUN_PATH="$(find "$AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
+          test -n "$XCTESTRUN_PATH"
+          IOS_PR_TEST_ARGS=()
+          IOS_PR_TEST_IDS="$(node --experimental-strip-types scripts/check-xctest-selection.ts --ios-pr-tests)"
+          while IFS= read -r test_id; do
+            IOS_PR_TEST_ARGS+=("-only-testing:$test_id")
+          done <<< "$IOS_PR_TEST_IDS"
+          test "${#IOS_PR_TEST_ARGS[@]}" -gt 0
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN_PATH" \
+            -destination "platform=iOS Simulator,id=${{ steps.ios-simulator.outputs.simulator-udid }}" \
+            "${IOS_PR_TEST_ARGS[@]}" 2>&1 | tee /tmp/agent-device-runner-regressions.log
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const log = readFileSync("/tmp/agent-device-runner-regressions.log", "utf8");
+            if (!/\] AGENT_DEVICE_RUNNER_OPTIONAL_PROBE_WAIT_COMPLETED$/m.test(log)) {
+              throw new Error("Optional observation ended the runner test before its wait completed");
+            }
+          '
+
+      - name: Install temporary phase instrumentation
+        run: |
+          set -euo pipefail
+          mkdir -p test/artifacts/round25-ios-bootstrap
+          cat > test/artifacts/round25-ios-bootstrap/instrument.py <<'ROUND25_HELPER'
+          import pathlib, json, hashlib, subprocess
+          root=pathlib.Path.cwd()
+          out=root/'test/artifacts/round25-ios-bootstrap'
+          out.mkdir(parents=True,exist_ok=True)
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert head=='ce260138b8838fee2c18cdf023663f0d2de349f7',head
+          baseline={}
+          patches={}
+          def trace(phase,detail='{}'):
+              return f'(globalThis as any).__round25Trace?.({json.dumps(phase)}, {detail});'
+          def edit(file,old,new):
+              if file not in patches:
+                  patches[file]=(root/file).read_text()
+                  baseline[file]=hashlib.sha256((root/file).read_bytes()).hexdigest()
+              assert patches[file].count(old)==1,(file,old,patches[file].count(old))
+              patches[file]=patches[file].replace(old,new)
+          def around(file,line,phase,detail='{}'):
+              edit(file,line,trace(phase+'_start')+'\n'+line+'\n'+trace(phase+'_end',detail))
+          f='src/daemon.ts'
+          edit(f,'void startDaemonRuntime({',trace('source_entry_evaluated')+'\nvoid startDaemonRuntime({')
+          edit(f,"  composeDeps: async (input) =>\n    (await import('./daemon-composition.ts')).createDaemonRuntimeDeps(input),", "  composeDeps: async (input) => {\n"+trace('composition_import_start')+"\n    const composition = await import('./daemon-composition.ts');\n"+trace('composition_import_end')+"\n    return composition.createDaemonRuntimeDeps(input);\n  },")
+          f='src/bin.ts'
+          edit(f,'runEntry(\n',trace('client_source_entry_evaluated')+'\nrunEntry(\n')
+          f='src/daemon/server/daemon-runtime.ts'
+          edit(f,'  const env = options.env ?? process.env;',trace('runtime_entry')+'\n  const env = options.env ?? process.env;')
+          edit(f,'  const deps = await options.composeDeps({',trace('compose_start')+'\n  const deps = await options.composeDeps({')
+          edit(f,'  const appLogAdmissionLedger = createAppLogAdmissionLedger();',trace('compose_end')+'\n  const appLogAdmissionLedger = createAppLogAdmissionLedger();')
+          around(f,'  const daemonIdentity = readCurrentOwnerIdentity();','identity','{identity: daemonIdentity}')
+          around(f,'  const daemonCodeSignature = resolveDaemonCodeSignature();','signature')
+          around(f,'  const acquisition = await tryAcquireDaemonRegistration(daemonPaths);','registration','{status: acquisition.status}')
+          edit(f,'    await deps.ownerLifecycle.configureForDaemonLock({',trace('owner_configuration_start')+'\n    await deps.ownerLifecycle.configureForDaemonLock({')
+          edit(f,'    const legacyMarkerRecovery = await deps.ownerLifecycle.recoverLegacyAppLogMarkers(sessionsDir);',trace('owner_configuration_end')+'\n'+trace('startup_recovery_start')+'\n'+trace('legacy_marker_recovery_start')+'\n    const legacyMarkerRecovery = await deps.ownerLifecycle.recoverLegacyAppLogMarkers(sessionsDir);\n'+trace('legacy_marker_recovery_end'))
+          edit(f,'    await recoverAppLogResourcesAfterDaemonLock({',trace('app_log_recovery_start')+'\n    await recoverAppLogResourcesAfterDaemonLock({')
+          edit(f,'    await reapOwnedProcessRecordsAtStartup(deps.ownedProcessRecords, {',trace('app_log_recovery_end')+'\n'+trace('owned_process_reap_start')+'\n    await reapOwnedProcessRecordsAtStartup(deps.ownedProcessRecords, {')
+          edit(f,'    await deps.cleanupManagedWebOrphans({',trace('owned_process_reap_end')+'\n'+trace('web_orphan_cleanup_start')+'\n    await deps.cleanupManagedWebOrphans({')
+          edit(f,'    // Marker-gated lifecycle recovery owns test-IME orphan repair.',trace('web_orphan_cleanup_end')+'\n    // Marker-gated lifecycle recovery owns test-IME orphan repair.')
+          edit(f,'    const opened = await openDaemonServers();',trace('startup_recovery_end')+'\n'+trace('server_listen_start')+'\n    const opened = await openDaemonServers();\n'+trace('server_listen_end'))
+          around(f,'    publishDaemonInfo(socketPort, httpPort);','publication')
+          f='src/daemon-composition.ts'
+          around(f,'  const providerComposition = await createDaemonProviderRuntimeComposition(env);','providers')
+          around(f,"  const { createDaemonPlatformServices } = await import('./platform-runtime-daemon-services.ts');",'platform_services_import')
+          around(f,"  const { createClaimRecoveryGateway } = await import('./platform-runtime-claim-recovery.ts');",'claim_recovery_import')
+          f='src/provider-device-runtimes.ts'
+          around(f,'  const bundled = await createDefaultProviderRuntimeComposition(env);','bundled_providers')
+          around(f,'    const plugins = await loadProviderPlugins(env, RESERVED_PLUGIN_PROVIDERS);','provider_plugins_load')
+          # Promise.all order and await positions remain intact; observer callbacks add timing perturbation.
+          for spec in ['./plugins/load.ts','./plugins/manifest.ts','@agent-device/provider-limrun','./sdk/limrun-runtime-dependencies.ts']:
+              old='import('+repr(spec)+')'
+              phase='provider_import:'+spec
+              new='('+trace(phase+'_start')[:-1]+', '+old+'.then((value) => { '+trace(phase+'_end')+' return value; }))'
+              edit(f,old,new)
+          f='src/daemon-client/daemon-client-lifecycle.ts'
+          around(f,'  const deadline = Date.now() + DAEMON_STARTUP_TIMEOUT_MS;','client_deadline','{deadline, budgetMs: DAEMON_STARTUP_TIMEOUT_MS}')
+          around(f,'    launch = startDaemon(settings);','client_spawn','{childPid: launch.pid, startTime: launch.startTime}')
+          around(f,'  const startup = await waitForDaemonStartup(deadline, settings, launch);','client_startup_verdict','{kind: startup.kind, childPid: launch.pid}')
+          edit(f,'  const cleanup = await stopAndRetireDaemon({\n    paths: settings.paths,\n    observed: launch.readIdentity(),',trace('client_cleanup_start','{childPid: launch.pid}')+'\n  const cleanup = await stopAndRetireDaemon({\n    paths: settings.paths,\n    observed: launch.readIdentity(),')
+          edit(f,'  const joined = await joinStartup(launch);',trace('client_cleanup_end','{childPid: launch.pid, status: cleanup.status}')+'\n  const joined = await joinStartup(launch);')
+          # Earlier ownership proof: this marks the returned spawn PID before birth-time lookup.
+          f='packages/daemon-contracts/src/daemon-registration-owner.ts'
+          edit(f,'    const boundPaths = { ...input.paths };',trace('owned_child_spawned','{childPid: monitored.pid}')+'\n    const boundPaths = { ...input.paths };')
+          for file,content in patches.items():
+              (root/file).write_text(content)
+          (out/'baseline.json').write_text(json.dumps({'head':head,'sha256':baseline},indent=2)+'\n')
+          (out/'instrumented.json').write_text(json.dumps({file:hashlib.sha256((root/file).read_bytes()).hexdigest() for file in patches},indent=2)+'\n')
+          (out/'instrumentation.diff').write_bytes(subprocess.check_output(['git','diff','--',*patches]))
+          ROUND25_HELPER
+          cat > test/artifacts/round25-ios-bootstrap/preload.cjs <<'ROUND25_HELPER'
+          'use strict';
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const directory = path.join(process.cwd(), 'test/artifacts/round25-ios-bootstrap');
+          const args = process.argv.slice(1);
+          const ownPrepare = args[0] === 'src/bin.ts' && args[1] === 'prepare' && args[2] === 'ios-runner';
+          const ownDaemon = typeof args[0] === 'string' && args[0].endsWith('/src/daemon.ts');
+          if (ownPrepare || ownDaemon) {
+            const output = path.join(directory, `trace-${process.pid}.ndjson`);
+            let writesFailed = 0;
+            function metadata() {
+              const state = process.env.AGENT_DEVICE_STATE_DIR;
+              const result = {};
+              for (const [name, suffix] of [['lockOwner', 'daemon.lock/owner.json'], ['info', 'daemon.json']]) {
+                try {
+                  const value = JSON.parse(fs.readFileSync(path.join(state, suffix), 'utf8'));
+                  result[name] = Object.fromEntries(['pid', 'startTime', 'processStartTime', 'acquiredAtMs', 'version', 'codeOrigin', 'codeSignature', 'socketPort', 'httpPort'].filter(key => value[key] !== undefined).map(key => [key, value[key]]));
+                } catch (error) { result[name] = {readError: typeof error.code === 'string' ? error.code : 'UNKNOWN'}; }
+              }
+              return result;
+            }
+            globalThis.__round25Trace = function(phase, details = {}) {
+              try {
+                const record = {phase, pid: process.pid, ppid: process.ppid, wall: new Date().toISOString(), wallMs: Date.now(), monotonicNs: process.hrtime.bigint().toString(), details};
+                if (phase === 'client_cleanup_start' || phase === 'client_startup_verdict_end') record.metadata = metadata();
+                fs.appendFileSync(output, JSON.stringify(record) + '\n');
+              } catch { writesFailed++; }
+            };
+            // The known command is a whitelist, rather than recording arbitrary arguments/options.
+            const allowed = ownDaemon ? [args[0]] : ['src/bin.ts', 'prepare', 'ios-runner', '--platform', 'ios', '--udid', args[6], '--timeout', args[8], '--json'];
+            globalThis.__round25Trace('process_before_esm_import', {command: ownDaemon ? 'daemon' : 'public_prepare', argv: allowed, nodeVersion: process.version});
+            process.on('exit', code => {
+              globalThis.__round25Trace('process_exit', {code, writesFailed});
+              if (writesFailed) { try { fs.appendFileSync(path.join(directory, 'diagnostic-failures.ndjson'), JSON.stringify({pid:process.pid,writesFailed})+'\n'); } catch {} }
+            });
+          }
+          ROUND25_HELPER
+          cat > test/artifacts/round25-ios-bootstrap/observe.py <<'ROUND25_HELPER'
+          import pathlib, subprocess, os, sys, time, json, threading, datetime
+          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          state=pathlib.Path(os.environ['AGENT_DEVICE_STATE_DIR'])
+          command=['node','--experimental-strip-types','src/bin.ts','prepare','ios-runner','--platform','ios','--udid',sys.argv[1],'--timeout',os.environ['AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS'],'--json']
+          env=os.environ.copy()
+          env['NODE_OPTIONS']=(env.get('NODE_OPTIONS','')+' --require '+str((out/'preload.cjs').resolve())).strip()
+          start=time.monotonic_ns()
+          child=subprocess.Popen(command,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+          (out/'command.json').write_text(json.dumps({'command':command,'publicPid':child.pid,'observerPid':os.getpid(),'wall':datetime.datetime.now(datetime.timezone.utc).isoformat(),'monotonicNs':start},indent=2)+'\n')
+          def forward(stream,target,file):
+              with (out/file).open('wb') as capture:
+                  while True:
+                      block=stream.read1(65536)
+                      if not block: break
+                      capture.write(block);capture.flush()
+                      target.buffer.write(block);target.buffer.flush()
+          threads=[threading.Thread(target=forward,args=(child.stdout,sys.stdout,'prepare.stdout')),threading.Thread(target=forward,args=(child.stderr,sys.stderr,'prepare.stderr'))]
+          for thread in threads: thread.start()
+          def snapshot():
+              result={}
+              for name,suffix in [('lockOwner','daemon.lock/owner.json'),('info','daemon.json')]:
+                  try:
+                      value=json.loads((state/suffix).read_text())
+                      result[name]={key:value[key] for key in ['pid','startTime','processStartTime','acquiredAtMs','version','codeOrigin','codeSignature','socketPort','httpPort'] if key in value}
+                  except Exception as error: result[name]={'readError':type(error).__name__}
+              return result
+          owned=None
+          last=None
+          with (out/'observer.ndjson').open('w') as observations:
+              while child.poll() is None:
+                  try:
+                      records=[json.loads(line) for line in (out/f'trace-{child.pid}.ndjson').read_text().splitlines()]
+                      spawns=[r for r in records if r['phase']=='owned_child_spawned']
+                      if spawns and owned is None:
+                          owned=spawns[0]['details']['childPid']
+                          # Read-only lookup of the exact direct child, never broad process hunting.
+                          identity=subprocess.run(['ps','-p',str(owned),'-o','pid=,ppid=,lstart=,command='],capture_output=True,text=True,timeout=2)
+                          (out/'owned-child-identity.json').write_text(json.dumps({'pid':owned,'expectedParent':child.pid,'psExit':identity.returncode,'identity':identity.stdout.strip(),'spawnTrace':spawns[0]},indent=2)+'\n')
+                      current=snapshot()
+                      if current!=last:
+                          observations.write(json.dumps({'wall':datetime.datetime.now(datetime.timezone.utc).isoformat(),'monotonicNs':time.monotonic_ns(),'publicPid':child.pid,'ownedPid':owned,'metadata':current})+'\n');observations.flush();last=current
+                  except FileNotFoundError: pass
+                  except Exception as error:
+                      with (out/'observer-errors.ndjson').open('a') as errors: errors.write(json.dumps({'type':type(error).__name__})+'\n')
+                  time.sleep(0.25)
+          code=child.wait()
+          for thread in threads: thread.join()
+          (out/'command-result.json').write_text(json.dumps({'exitCode':code,'durationMs':(time.monotonic_ns()-start)/1e6,'ownedPid':owned,'finalMetadata':snapshot()},indent=2)+'\n')
+          sys.exit(code if code>=0 else 128-code)
+          ROUND25_HELPER
+          node --check test/artifacts/round25-ios-bootstrap/preload.cjs
+          python3 - <<'PYVALIDATE'
+          import ast,pathlib
+          for name in ['instrument.py','observe.py']:
+              ast.parse((pathlib.Path('test/artifacts/round25-ios-bootstrap')/name).read_text())
+          PYVALIDATE
+          python3 test/artifacts/round25-ios-bootstrap/instrument.py
+          git diff --check
+          python3 - <<'CHECKJS'
+          import json, subprocess, pathlib
+          files=json.loads(pathlib.Path('test/artifacts/round25-ios-bootstrap/instrumented.json').read_text())
+          for file in files:
+              subprocess.run(['node','--experimental-strip-types','--check',file],check=True)
+          CHECKJS
+          printf '%s\n' '${{ github.sha }}' > test/artifacts/round25-ios-bootstrap/workflow-head.txt
+          node --version > test/artifacts/round25-ios-bootstrap/node-version.txt
+      - name: Measure original public iOS prepare once
         run: |
           pnpm clean:daemon
-          node --experimental-strip-types src/bin.ts prepare ios-runner --platform ios --udid "${{ steps.ios-simulator.outputs.simulator-udid }}" --timeout "$AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS" --json
-
-      - name: Run iOS simulator replay suite
-        uses: ./.github/actions/run-gate
-        with:
-          gate: replay-ios
-          args: |
-            --udid
-            ${{ steps.ios-simulator.outputs.simulator-udid }}
-            --retries
-            2
-            --artifacts-dir
-            test/artifacts/replays-ios-simulator
-            --report-junit
-            test/artifacts/replays-ios-simulator.junit.xml
-
-      - name: Fetch current fixture app
-        id: fixture-app
-        uses: ./.github/actions/setup-fixture-app
-        with:
-          install: 'false'
-
-      - name: Report fixture cache source
+          python3 test/artifacts/round25-ios-bootstrap/observe.py "${{ steps.ios-simulator.outputs.simulator-udid }}"
+      - name: Preserve daemon log and request diagnostics before cleanup
+        if: always()
         run: |
-          echo "Fixture app source: ${{ steps.fixture-app.outputs.source }}" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Prove selector drag reaches its destination on iOS
+          python3 - <<'PRESERVE'
+          import pathlib,shutil
+          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          out.mkdir(parents=True,exist_ok=True)
+          log=pathlib.Path('.tmp/agent-device-state/daemon.log')
+          if log.exists(): shutil.copyfile(log,out/'daemon-before-owner-cleanup.log')
+          for base in [pathlib.Path('.agent-device/logs'),pathlib.Path.home()/'.agent-device/logs']:
+              if base.exists(): shutil.copytree(base,out/('request-logs-workspace' if base.parts[0]=='.agent-device' else 'request-logs-home'),dirs_exist_ok=True)
+          PRESERVE
+      - name: Clean owned daemon and simulator and retain final state
+        if: always()
         run: |
-          xcrun simctl install "${{ steps.ios-simulator.outputs.simulator-udid }}" "${{ steps.fixture-app.outputs.app-path }}"
-          node --experimental-strip-types src/bin.ts replay examples/test-app/replays/drag.ad --platform ios --udid "${{ steps.ios-simulator.outputs.simulator-udid }}" --session nightly-ios-target-drag --json
-
-      - name: Run full fixture-backed iOS simulator E2E
-        env:
-          AGENT_DEVICE_FIXTURE_APP_ID: ${{ steps.fixture-app.outputs.app-id }}
-          AGENT_DEVICE_FIXTURE_APP_PATH: ${{ steps.fixture-app.outputs.app-path }}
-          AGENT_DEVICE_IOS_E2E: '1'
-          AGENT_DEVICE_IOS_E2E_TIER: full
-          AGENT_DEVICE_IOS_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+          set +e
+          OUT=test/artifacts/round25-ios-bootstrap
+          mkdir -p "$OUT"
+          node --experimental-strip-types src/bin.ts daemon stop --state-dir "$AGENT_DEVICE_STATE_DIR" --clean --json > "$OUT/cleanup-daemon.json" 2> "$OUT/cleanup-daemon.stderr"
+          DAEMON_EXIT=$?
+          UDID="${{ steps.ios-simulator.outputs.simulator-udid }}"
+          if [ -n "$UDID" ]; then
+            xcrun simctl shutdown "$UDID" > "$OUT/cleanup-simulator.stdout" 2> "$OUT/cleanup-simulator.stderr"
+            SIM_EXIT=$?
+          else
+            SIM_EXIT=125
+          fi
+          xcrun simctl list devices -j > "$OUT/final-simulators.json"
+          SIM_LIST_EXIT=$?
+          python3 - "$DAEMON_EXIT" "$SIM_EXIT" "$SIM_LIST_EXIT" <<'CLEANUP'
+          import json,sys,pathlib,os
+          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          state=pathlib.Path(os.environ['AGENT_DEVICE_STATE_DIR'])
+          out.joinpath('cleanup-final.json').write_text(json.dumps({'daemonStopExit':int(sys.argv[1]),'simulatorShutdownExit':int(sys.argv[2]),'simulatorListExit':int(sys.argv[3]),'infoExists':(state/'daemon.json').exists(),'lockExists':(state/'daemon.lock').exists()},indent=2)+'\n')
+          CLEANUP
+          test "$DAEMON_EXIT" -eq 0 && test "$SIM_EXIT" -eq 0 && test "$SIM_LIST_EXIT" -eq 0
+      - name: Assert host focus retained
+        if: always()
         run: |
-          pnpm gate build
-          node --experimental-strip-types scripts/node-test-tmpdir.ts --test test/integration/smoke-ios-simulator-coverage.test.ts test/integration/smoke-ios-simulator.test.ts
-
-      - name: Run iOS physical device replay suite
-        if: env.IOS_UDID != ''
-        env:
-          IOS_UDID: ${{ vars.IOS_UDID }}
-        uses: ./.github/actions/run-gate
-        with:
-          gate: replay-ios-device
-          args: |
-            --udid
-            ${{ env.IOS_UDID }}
-            --retries
-            2
-            --artifacts-dir
-            test/artifacts/replays-ios-device
-            --report-junit
-            test/artifacts/replays-ios-device.junit.xml
-
-      - name: Upload iOS artifacts
+          set -euo pipefail
+          test "$(cat .tmp/ios-host-focus-before)" = "com.apple.finder"
+          FRONTMOST="$(osascript -e 'tell application "System Events" to get bundle identifier of first application process whose frontmost is true')"
+          test "$FRONTMOST" = "com.apple.finder"
+      - name: Hash private diagnostic artifacts
+        if: always()
+        run: |
+          python3 - <<'DIGESTS'
+          import pathlib,hashlib,json
+          out=pathlib.Path('test/artifacts/round25-ios-bootstrap')
+          out.mkdir(parents=True,exist_ok=True)
+          data={str(p.relative_to(out)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.rglob('*')) if p.is_file() and p.name!='digests.json'}
+          out.joinpath('digests.json').write_text(json.dumps(data,indent=2)+'\n')
+          DIGESTS
+      - name: Upload private iOS diagnostics
         if: always()
         uses: ./.github/actions/upload-agent-device-artifacts
         with:
-          artifact-name: replay-nightly-ios-artifacts
+          artifact-name: round25-ios-bootstrap-artifacts
           agent-state-dir: ${{ env.AGENT_DEVICE_STATE_DIR }}
           runner-derived-path: ${{ env.AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH }}
