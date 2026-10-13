@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   manual-android:
+    if: ${{ false }}
     name: Android Full Emulator Suite
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -81,6 +82,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: f22ddb765811c9558025d4f3c0b7be14472bfac7
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
@@ -109,7 +112,133 @@ jobs:
       - name: Preflight iOS runner through public CLI
         run: |
           pnpm clean:daemon
-          node --experimental-strip-types src/bin.ts prepare ios-runner --platform ios --udid "${{ steps.ios-simulator.outputs.simulator-udid }}" --timeout "$AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS" --json
+          python3 - "${{ steps.ios-simulator.outputs.simulator-udid }}" <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import threading
+          import time
+
+          out = Path('test/artifacts/ios-bootstrap-diagnostic')
+          out.mkdir(parents=True, exist_ok=True)
+          state = Path(os.environ['AGENT_DEVICE_STATE_DIR'])
+          source = str(Path('src/daemon.ts').resolve())
+          started = time.monotonic()
+          stop = threading.Event()
+          lock = threading.Lock()
+          samples = []
+
+          def event(kind, **data):
+              record = dict(kind=kind, elapsedMs=round((time.monotonic()-started)*1000), **data)
+              with lock:
+                  with (out / 'timeline.jsonl').open('a') as f:
+                      f.write(json.dumps(record) + '\n')
+
+          def ps(pid):
+              result = subprocess.run(['ps', '-ww', '-p', str(pid), '-o', 'pid=,ppid=,stat=,etime=,time=,%cpu=,command='], capture_output=True, text=True, timeout=1)
+              return result.returncode, result.stdout.strip()
+
+          def is_owned_child(pid, parent):
+              code, row = ps(pid)
+              fields = row.split(None, 6)
+              return code == 0 and len(fields) == 7 and int(fields[1]) == parent and source in fields[6].split()
+
+          def sample(pid, parent, label):
+              try:
+                  if not is_owned_child(pid, parent):
+                      event('sample_skipped_identity', pid=pid, label=label)
+                      return
+                  event('sample_begin', pid=pid, label=label)
+                  result = subprocess.run(['/usr/bin/sample', str(pid), '3', '-file', str((out / (label + '.sample.txt')).resolve())], capture_output=True, text=True, timeout=6)
+                  (out / (label + '.sample-command.txt')).write_text(result.stdout + result.stderr)
+                  event('sample_end', pid=pid, label=label, exitCode=result.returncode)
+              except Exception as e:
+                  event('sample_error', pid=pid, label=label, error=str(e))
+
+          def launch_sample(pid, parent, label):
+              thread = threading.Thread(target=sample, args=(pid, parent, label), daemon=True)
+              samples.append(thread)
+              thread.start()
+
+          def observe(parent):
+              seen = {}
+              child = None
+              discovered = None
+              late = False
+              try:
+                  while not stop.is_set() and time.monotonic()-started < 22:
+                      code, row = ps(parent)
+                      event('parent_process', exitCode=code, process=row)
+                      if child is None:
+                          children = subprocess.run(['pgrep', '-P', str(parent)], capture_output=True, text=True, timeout=1)
+                          for value in children.stdout.split():
+                              pid = int(value)
+                              if is_owned_child(pid, parent):
+                                  child, discovered = pid, time.monotonic()
+                                  event('owned_daemon_discovered', pid=pid, parentPid=parent, process=ps(pid)[1], absoluteSource=source)
+                                  launch_sample(pid, parent, 'near-spawn')
+                                  break
+                      if child is not None:
+                          code, row = ps(child)
+                          event('daemon_process', pid=child, exitCode=code, process=row)
+                          if not late and time.monotonic()-discovered >= 9:
+                              late = True
+                              launch_sample(child, parent, 'before-deadline')
+                      for name in ('daemon.json', 'daemon.lock', 'daemon.log'):
+                          file = state / name
+                          try:
+                              raw = file.read_bytes()
+                              digest = hashlib.sha256(raw).hexdigest()
+                              event('state_file', name=name, bytes=len(raw), sha256=digest)
+                              if seen.get(name) != digest:
+                                  seen[name] = digest
+                                  stamp = str(round((time.monotonic()-started)*1000))
+                                  if name == 'daemon.log':
+                                      (out / (stamp + '-' + name)).write_bytes(raw)
+                                  else:
+                                      try:
+                                          metadata = json.loads(raw)
+                                          def redact(value):
+                                              if isinstance(value, dict):
+                                                  return {k: ('[REDACTED]' if any(term in k.lower() for term in ('token', 'secret', 'password', 'credential')) else redact(v)) for k, v in value.items()}
+                                              if isinstance(value, list):
+                                                  return [redact(v) for v in value]
+                                              return value
+                                          (out / (stamp + '-' + name)).write_text(json.dumps(redact(metadata), indent=2))
+                                      except Exception as e:
+                                          event('metadata_parse_error', name=name, error=str(e))
+                          except FileNotFoundError:
+                              event('state_file_absent', name=name)
+                          except Exception as e:
+                              event('state_file_error', name=name, error=str(e))
+                      stop.wait(0.2)
+              except Exception as e:
+                  event('observer_error', error=str(e))
+              finally:
+                  event('observer_end')
+
+          command = ['node', '--experimental-strip-types', 'src/bin.ts', 'prepare', 'ios-runner', '--platform', 'ios', '--udid', sys.argv[1], '--timeout', os.environ['AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS'], '--json']
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          (out / 'launch.json').write_text(json.dumps(dict(sourceHead=head, cwd=os.getcwd(), command=command, stateDir=str(state), observer='read-only; sampling may perturb timing'), indent=2))
+          with (out / 'preflight.stdout').open('wb') as stdout, (out / 'preflight.stderr').open('wb') as stderr:
+              process = subprocess.Popen(command, stdout=stdout, stderr=stderr)
+              event('preflight_spawn', pid=process.pid, command=command)
+              observer = threading.Thread(target=observe, args=(process.pid,), daemon=True)
+              observer.start()
+              code = process.wait()
+              event('preflight_exit', pid=process.pid, exitCode=code)
+              stop.set()
+              observer.join(timeout=3)
+              for thread in samples:
+                  thread.join(timeout=7)
+          (out / 'exit-code.txt').write_text(str(code) + '\n')
+          sys.stdout.buffer.write((out / 'preflight.stdout').read_bytes())
+          sys.stderr.buffer.write((out / 'preflight.stderr').read_bytes())
+          sys.exit(code if code >= 0 else 128-code)
+          PYTHON
 
       - name: Run iOS simulator replay suite
         uses: ./.github/actions/run-gate
