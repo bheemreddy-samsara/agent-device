@@ -27,7 +27,7 @@ jobs:
       AGENT_DEVICE_STATE_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api36-state
       AGENT_DEVICE_CLAIMS_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api36-claims
       OWNED_AVD_NAME: pr3555-round33-api36
-      XDG_RUNTIME_DIR: ${{ runner.temp }}/pr3555-round33-api36-runtime
+      XDG_RUNTIME_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api36-runtime
       MEASUREMENT_DEADLINE_UTC: ${{ inputs.deadline_utc }}
       MEASUREMENT_DISPATCH_UTC: ${{ inputs.dispatch_started_utc }}
     steps:
@@ -500,7 +500,7 @@ jobs:
       AGENT_DEVICE_STATE_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api23-state
       AGENT_DEVICE_CLAIMS_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api23-claims
       OWNED_AVD_NAME: pr3555-round33-api23
-      XDG_RUNTIME_DIR: ${{ runner.temp }}/pr3555-round33-api23-runtime
+      XDG_RUNTIME_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api23-runtime
       MEASUREMENT_DEADLINE_UTC: ${{ inputs.deadline_utc }}
       MEASUREMENT_DISPATCH_UTC: ${{ inputs.dispatch_started_utc }}
     steps:
