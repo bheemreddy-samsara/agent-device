@@ -151,13 +151,16 @@ test.each([
   ['settings', 'com.vendor.settings'],
   ['com.example.app', 'com.example.app'],
 ])('Android relaunch of %s closes its resolved package %s', async (target, appBundleId) => {
-  const { calls, lifecycle } = createLifecycle({ openedAppBundleId: appBundleId });
+  const { calls, interactorResolutions, lifecycle } = createLifecycle({
+    openedAppBundleId: appBundleId,
+  });
 
   const outcome = await lifecycle.openApplication(
     openInput({ target, positionals: [target], appBundleId, relaunch: true }),
   );
 
   expect(calls.slice(0, 2)).toEqual([`close:${appBundleId}`, `open:${target}`]);
+  expect(new Set(interactorResolutions)).toEqual(new Set([appBundleId]));
   expect(outcome.appBundleId).toBe(appBundleId);
 });
 
