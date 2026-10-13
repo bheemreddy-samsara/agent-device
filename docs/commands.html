@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.b471d8709f.js"></script>
+<script defer src="/agent-device/static/js/index.f854ac82e9.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -740,6 +740,7 @@ hardware keys) still start a stopped app.</li>
 <li><code>agent-device</code> global flags work before or after <code>react-devtools</code>. Put <code>--</code> before downstream flags only when they share an <code>agent-device</code> global flag name.</li>
 <li>Development builds connect to the DevTools daemon on port 8097. If an Android emulator or device cannot reach the host, run <code>adb reverse tcp:8097 tcp:8097</code>. Android <code>open</code> of a local Metro URL with a port sets up host reachability; for app/package launches, run <code>adb reverse tcp:8081 tcp:8081</code> if the app cannot reach Metro.</li>
 <li>Remote bridge sessions (Android and iOS) work through the same command; the CLI keeps a tunnel to the remote DevTools daemon alive until <code>react-devtools stop</code> or <code>disconnect</code>. See <a href="/agent-device/docs/debugging-profiling#remote-bridge-sessions" class="rp-link">Remote bridge sessions</a> for the iOS relaunch order and supported React Native versions.</li>
+<li><code>react-devtools stop</code> reports the tunnel&#x27;s pid and keeps tracking it when it cannot confirm the tunnel exited — it belongs to another user, for example — instead of starting a second one on the next run. Stop that process as its owner and run <code>react-devtools stop</code> again.</li>
 <li>For cross-platform validation, use separate sessions/devices and restart <code>react-devtools</code> between iOS and Android runs.</li>
 </ul>
 <div class="rp-codeblock language-bash"><div class="rp-codeblock__content"><div class="rp-codeblock__content__scroll-container rp-scrollbar rp-scrollbar--always"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0" data-lang="bash"><code><span class="line"><span style="color:var(--shiki-token-function)">agent-device</span><span style="color:var(--shiki-token-string)"> react-native</span><span style="color:var(--shiki-token-string)"> dismiss-overlay</span></span>
