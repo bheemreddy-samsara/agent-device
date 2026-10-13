@@ -3,11 +3,8 @@ import type { DeviceInfo } from '@agent-device/kernel/device';
 import { resolveAndroidApp } from './app-deployment-resolution.ts';
 import { getAndroidAppState } from './window-state.ts';
 import { runAndroidShell } from './adb.ts';
-import {
-  androidActivityComponent,
-  buildAndroidIntentArgs,
-  parseAndroidLaunchComponent,
-} from './app-lifecycle.ts';
+import { buildAndroidIntentArgs } from './intent-arguments.ts';
+import { androidActivityComponent, parseAndroidLaunchComponent } from './app-lifecycle.ts';
 
 const INTENT_PACKAGE_RESOLUTION_TIMEOUT_MS = 2_000;
 
@@ -22,6 +19,8 @@ export async function resolveAndroidPackageForOpen(
   try {
     const resolved = await resolveAndroidApp(device, openTarget);
     if (resolved.type === 'package') return resolved.value;
+    const { resolutionArgs } = buildAndroidIntentArgs(resolved.value, launchArgs);
+    if (!resolutionArgs) return undefined;
     const result = await runAndroidShell(
       device,
       [
@@ -29,9 +28,9 @@ export async function resolveAndroidPackageForOpen(
         'package',
         'resolve-activity',
         '--brief',
-        '-c',
-        'android.intent.category.DEFAULT',
-        ...buildAndroidIntentArgs(resolved.value, launchArgs),
+        '--query-flags',
+        '0x10000',
+        ...resolutionArgs,
       ],
       { allowFailure: true, timeoutMs: INTENT_PACKAGE_RESOLUTION_TIMEOUT_MS },
     );

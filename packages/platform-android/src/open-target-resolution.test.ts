@@ -66,8 +66,8 @@ test('resolveAndroidPackageForOpen retains the native requested intent package w
       'package',
       'resolve-activity',
       '--brief',
-      '-c',
-      'android.intent.category.DEFAULT',
+      '--query-flags',
+      '0x10000',
       '-a',
       'android.settings.SETTINGS',
     ],
@@ -76,9 +76,30 @@ test('resolveAndroidPackageForOpen retains the native requested intent package w
   expect(getAndroidAppState).not.toHaveBeenCalled();
 });
 
-test('intent launch and ownership resolve the same overriding component arguments', async () => {
+test('intent launch and ownership retain intent overrides and extra values that resemble launch controls', async () => {
   const { openAndroidApp } = await import('./app-lifecycle.ts');
-  const launchArgs = ['-n', 'com.example.app/.MainActivity'];
+  const launchArgs = [
+    '-n',
+    'com.example.app/.MainActivity',
+    '-p',
+    'com.example.app',
+    '-d',
+    'content://example/settings',
+    '-t',
+    'text/plain',
+    '-c',
+    'com.example.CUSTOM',
+    '--user',
+    '10',
+    '--es',
+    'launch_control',
+    '--display',
+    '--esn',
+    '-S',
+    '--ei',
+    'offset',
+    '-1',
+  ];
   resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
   runAndroidShell.mockImplementation(async (_device, args: string[]) => ({
     stdout: args.includes('com.example.app/.MainActivity')
@@ -100,11 +121,107 @@ test('intent launch and ownership resolve the same overriding component argument
     'package',
     'resolve-activity',
     '--brief',
-    '-c',
-    'android.intent.category.DEFAULT',
+    '--query-flags',
+    '0x10000',
     ...intentArgs,
   ]);
   expect(getAndroidAppState).not.toHaveBeenCalled();
+});
+
+test('intent launch controls reach am start without breaking native package ownership', async () => {
+  const { openAndroidApp } = await import('./app-lifecycle.ts');
+  const launchArgs = ['-S', '-R', '2', '--display', '0'];
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockImplementation(async (_device, args: string[]) => {
+    if (args[0] === 'cmd' && args.slice(8).includes('-S')) {
+      return {
+        stdout: '',
+        stderr: 'java.lang.IllegalArgumentException: Unknown option: -S',
+        exitCode: 1,
+      };
+    }
+    return { stdout: 'com.android.settings/.Settings', stderr: '', exitCode: 0 };
+  });
+
+  await openAndroidApp(androidDevice, 'settings', { launchArgs });
+  await expect(resolveAndroidPackageForOpen(androidDevice, 'settings', launchArgs)).resolves.toBe(
+    'com.android.settings',
+  );
+  const commands = runAndroidShell.mock.calls.map((call) => call[1]);
+  expect(commands[0]).toEqual([
+    'am',
+    'start',
+    '-W',
+    '-a',
+    'android.settings.SETTINGS',
+    ...launchArgs,
+  ]);
+  expect(commands[1]).toEqual([
+    'cmd',
+    'package',
+    'resolve-activity',
+    '--brief',
+    '--query-flags',
+    '0x10000',
+    '-a',
+    'android.settings.SETTINGS',
+  ]);
+  expect(getAndroidAppState).not.toHaveBeenCalled();
+});
+
+test('intent selectors resolve only handlers eligible for activity launch', async () => {
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockImplementation(async (_device, args: string[]) => ({
+    stdout:
+      args.includes('--query-flags') && args[args.indexOf('--query-flags') + 1] === '0x10000'
+        ? 'com.example.default/.Main'
+        : 'com.example.nondefault/.Main',
+    stderr: '',
+    exitCode: 0,
+  }));
+
+  await expect(
+    resolveAndroidPackageForOpen(androidDevice, 'settings', [
+      '--selector',
+      '-a',
+      'com.example.VIEW',
+    ]),
+  ).resolves.toBe('com.example.default');
+  expect(runAndroidShell).toHaveBeenCalledWith(
+    androidDevice,
+    [
+      'cmd',
+      'package',
+      'resolve-activity',
+      '--brief',
+      '--query-flags',
+      '0x10000',
+      '-a',
+      'android.settings.SETTINGS',
+      '--selector',
+      '-a',
+      'com.example.VIEW',
+    ],
+    { allowFailure: true, timeoutMs: 2_000 },
+  );
+});
+
+test.each([
+  ['-a', 'android.intent.action.VIEW', '-d', 'content://example/image/1'],
+  ['-dcontent://example/image/1'],
+  ['--selector', '-d', 'content://example/image/1'],
+  ['content://example/image/1'],
+])('implicit content MIME resolution retains unknown ownership: %j', async (...launchArgs) => {
+  resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
+  runAndroidShell.mockResolvedValue({
+    stdout: 'com.example.generic/.Main',
+    stderr: '',
+    exitCode: 0,
+  });
+  await expect(
+    resolveAndroidPackageForOpen(androidDevice, 'settings', launchArgs),
+  ).resolves.toBeUndefined();
+  expect(runAndroidShell).not.toHaveBeenCalled();
 });
 
 test.each([
