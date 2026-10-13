@@ -33,6 +33,12 @@ import { withoutSettleChrome } from '@agent-device/capture-kit/snapshot-chrome';
 
 const STABLE_POLL_INTERVAL_MS = 300;
 const STABLE_MIN_POLL_MS = 25;
+// Never slower than the default poll, never faster than the minimum: a tight window gets a cadence
+// that can measure it, a window the confirmation extends gets one that does not sample the whole
+// extended wait at the caller's original grid.
+function stableCapturePollMs(quietMs: number): number {
+  return Math.min(STABLE_POLL_INTERVAL_MS, Math.max(STABLE_MIN_POLL_MS, quietMs));
+}
 // Wake PAST the quiet deadline rather than exactly on it. `setTimeout(n)` can
 // advance `Date.now()` by only n-1 — libuv times the sleep on the monotonic
 // loop clock while `now()` reads the wall clock — so a capture landing on the
@@ -88,10 +94,12 @@ export async function runStableCaptureLoop(
   const session = await runtime.sessions.get(options.session ?? 'default');
   let transitionBaseline: StableCaptureSignal | undefined;
   let preferredBackend = preferredSnapshotBackendForVerdict(session?.snapshot?.snapshotQuality);
-  // Cadence derives from the quiet window (never slower than the default
+  // Cadence derives from the quiet window in force (never slower than the default
   // poll): a caller asking for a 50ms quiet window should not be forced onto a
-  // 300ms grid — and tests inject the budget instead of waiting real time.
-  const pollMs = Math.min(STABLE_POLL_INTERVAL_MS, Math.max(STABLE_MIN_POLL_MS, quietMs));
+  // 300ms grid, and a run the confirmation has extended to 1.5s should not spend
+  // that wait on the caller's tight grid — every sample is a capture round trip.
+  // Tests inject the budget instead of waiting real time.
+  let pollMs = stableCapturePollMs(quietMs);
   let captures = 0;
   let lastSignal: StableCaptureSignal | undefined;
   let lastNodeCount = 0;
@@ -131,6 +139,9 @@ export async function runStableCaptureLoop(
       requestedQuietMs: quietMs,
       currentQuietMs: requiredQuietMs,
     });
+    // Recomputed from the window in force rather than only when it changed: the window is a
+    // monotonic max, so this is the same value, and the cadence cannot drift from it.
+    pollMs = stableCapturePollMs(requiredQuietMs);
     preferredBackend ??= preferredSnapshotBackendForVerdict(capture.snapshot.snapshotQuality);
     const nowMs = now(runtime);
     const recoveredDeadlineMs = extendedDeadlineAfterPrivateAxRecovery({

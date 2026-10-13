@@ -367,6 +367,13 @@ test('settle confirms a broad replacement on a caller window shorter than the co
     outcome.waitedMs >= 1_500,
     `short quiet window switched the confirmation off: settled after ${outcome.waitedMs}ms`,
   );
+  // Cadence follows the window in force, so the extended wait is sampled on the default grid:
+  // 10 captures here, 109 when the loop keeps polling at the caller's 25 ms. Each of those is a
+  // capture round trip, so the tight grid would turn a 1.5 s confirmation into ~1.5 s of reads.
+  assert.ok(
+    outcome.captures <= 12,
+    `confirmation sampled on the caller's tight grid: ${outcome.captures} captures`,
+  );
 });
 
 test('settle keeps the default quiet window for a backend-less overlapping local mutation', async () => {
