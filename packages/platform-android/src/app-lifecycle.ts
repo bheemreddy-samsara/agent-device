@@ -7,7 +7,6 @@ import { isDeepLinkTarget } from '@agent-device/contracts/command';
 
 import { waitForAndroidBoot } from './emulator-lifecycle.ts';
 import { runAndroidShell } from './adb.ts';
-import { buildAndroidIntentArgs } from './intent-arguments.ts';
 import {
   androidAdbResultError,
   createAndroidPortReverseManager,
@@ -290,6 +289,7 @@ async function openAndroidIntent(
   if (options.activity) {
     throw new AppError('INVALID_ARGS', 'Activity override requires a package name, not an intent');
   }
+  const { buildAndroidIntentArgs } = await import('./intent-arguments.ts');
   await runAndroidShell(device, [
     'am',
     'start',
