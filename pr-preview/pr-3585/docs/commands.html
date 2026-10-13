@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3585/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3585/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3585/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3585/static/js/index.8f6d50b200.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3585/static/js/index.813546c83a.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -414,6 +414,7 @@ restart; reconnect and take the hold again. See <a href="/agent-device/pr-previe
 <li><code>scroll &lt;direction&gt; [amount]</code> takes the finger path as a fraction of the viewport (<code>0.5</code> is half), or <code>--pixels &lt;n&gt;</code> for a fixed distance. Large distances are clamped. The app&#x27;s scroll physics decide the final offset, so a scroll does not land on an exact position.</li>
 <li><code>scroll &lt;direction&gt; --until &lt;selector&gt;</code> repeats passes until the selector is on screen and fails if the content runs out first. Add an amount (<code>scroll down 0.8 --until &lt;selector&gt;</code>) to widen each pass. Use it in <code>.ad</code> scripts too, instead of fixed amounts that depend on screen size; see <a href="/agent-device/pr-preview/pr-3585/docs/replay-e2e" class="rp-link">Replay &amp; E2E</a>.</li>
 <li>Default snapshot text summarizes off-screen interactive content instead of listing refs. <code>scroll &lt;direction&gt; --settle</code> (and <code>back --settle</code>) waits for the UI to go quiet and returns the diff with fresh refs, so you don&#x27;t need another <code>snapshot -i</code>. Settle is best-effort and never fails the action.</li>
+<li>On Android, settle ignores an allowlist of system-bar containers and shade/keyguard status headers; other SystemUI overlays remain content. Appium settle also applies package rules for keyboard and system chrome.</li>
 <li>With a keyboard up on iOS or Android, the swipe stays above the keyboard (reported as <code>keyboardAvoided</code> and <code>keyboardMinY</code>) and the keyboard stays open. If too little room is left, the command refuses with <code>scroll_keyboard_occludes_surface</code>; run <code>keyboard dismiss</code> first.</li>
 <li>A directional scroll reports what it observed as <code>movement</code>: <code>moved</code>, <code>at-edge</code> (no change and no more content that way), <code>unchanged</code> (no change, no edge signal), or <code>unobserved</code> (no reliable comparison). If nothing changed, the swipe ran inside a container, and that container still has hidden content in that direction, it refuses with <code>scroll_no_progress</code>; the hint names the usual causes: a focused keyboard, a nested scroller, or a list that needs a raw <code>swipe</code>. See <code>agent-device help scroll</code>.</li>
 </ul>
