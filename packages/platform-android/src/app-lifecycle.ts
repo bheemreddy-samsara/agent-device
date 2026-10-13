@@ -7,6 +7,7 @@ import { isDeepLinkTarget } from '@agent-device/contracts/command';
 
 import { waitForAndroidBoot } from './emulator-lifecycle.ts';
 import { runAndroidShell } from './adb.ts';
+import { buildAndroidIntentArgs } from './intent-arguments.ts';
 import {
   androidAdbResultError,
   createAndroidPortReverseManager,
@@ -192,13 +193,6 @@ function androidLaunchArgs(options: OpenAndroidAppOptions): string[] {
   return options.launchArgs ?? [];
 }
 
-export function buildAndroidIntentArgs(
-  intent: string,
-  launchArgs: readonly string[] = [],
-): string[] {
-  return ['-a', intent, ...launchArgs];
-}
-
 export async function openAndroidApp(
   device: DeviceInfo,
   app: string,
@@ -300,7 +294,7 @@ async function openAndroidIntent(
     'am',
     'start',
     '-W',
-    ...buildAndroidIntentArgs(intent, options.launchArgs),
+    ...buildAndroidIntentArgs(intent, options.launchArgs).launchArgs,
   ]);
 }
 
