@@ -1,4 +1,8 @@
-type AndroidIntentOption = readonly [audience: 'intent' | 'launch', valueCount: 0 | 1 | 2];
+type AndroidIntentOption = readonly [
+  audience: 'intent' | 'launch',
+  valueCount: 0 | 1 | 2,
+  valueType?: 'java-int',
+];
 
 /** AOSP Intent.parseCommandArgs and ActivityManagerShellCommand.makeIntent option arities. */
 const ANDROID_INTENT_OPTIONS: Readonly<Record<string, AndroidIntentOption>> = {
@@ -66,21 +70,21 @@ const ANDROID_INTENT_OPTIONS: Readonly<Record<string, AndroidIntentOption>> = {
   '-W': ['launch', 0],
   '-P': ['launch', 1],
   '--start-profiler': ['launch', 1],
-  '--sampling': ['launch', 1],
+  '--sampling': ['launch', 1, 'java-int'],
   '--clock-type': ['launch', 1],
-  '--profiler-output-version': ['launch', 1],
+  '--profiler-output-version': ['launch', 1, 'java-int'],
   '--streaming': ['launch', 0],
   '--attach-agent': ['launch', 1],
   '--attach-agent-bind': ['launch', 1],
-  '-R': ['launch', 1],
+  '-R': ['launch', 1, 'java-int'],
   '-S': ['launch', 0],
   '--track-allocation': ['launch', 0],
   '--receiver-permission': ['launch', 1],
-  '--display': ['launch', 1],
-  '--task-display-area-feature-id': ['launch', 1],
-  '--windowingMode': ['launch', 1],
-  '--activityType': ['launch', 1],
-  '--task': ['launch', 1],
+  '--display': ['launch', 1, 'java-int'],
+  '--task-display-area-feature-id': ['launch', 1, 'java-int'],
+  '--windowingMode': ['launch', 1, 'java-int'],
+  '--activityType': ['launch', 1, 'java-int'],
+  '--task': ['launch', 1, 'java-int'],
   '--task-overlay': ['launch', 0],
   '--lock-task': ['launch', 0],
   '--allow-background-activity-starts': ['launch', 0],
@@ -88,7 +92,7 @@ const ANDROID_INTENT_OPTIONS: Readonly<Record<string, AndroidIntentOption>> = {
   '--splashscreen-show-icon': ['launch', 0],
   '--dismiss-keyguard-if-insecure': ['launch', 0],
   '--dismiss-keyguard': ['launch', 0],
-  '--allow-fgs-start-reason': ['launch', 1],
+  '--allow-fgs-start-reason': ['launch', 1, 'java-int'],
 };
 
 type ParsedAndroidIntentOption = {
@@ -97,6 +101,23 @@ type ParsedAndroidIntentOption = {
   end: number;
   value: string | undefined;
 };
+
+/** Integer.parseInt accepts ASCII signs and BMP decimal digits, within signed 32-bit bounds. */
+function isAndroidIntentJavaInteger(value: string): boolean {
+  if (!/^[+-]?\p{Decimal_Number}+$/u.test(value)) return false;
+  const negative = value[0] === '-';
+  const digits = value[0] === '-' || value[0] === '+' ? value.slice(1) : value;
+  let result = 0;
+  for (const digit of digits) {
+    if (digit.length !== 1) return false;
+    const code = digit.charCodeAt(0);
+    let zero = code;
+    while (/\p{Decimal_Number}/u.test(String.fromCharCode(zero - 1))) zero -= 1;
+    result = result * 10 + code - zero;
+    if (result > (negative ? 2147483648 : 2147483647)) return false;
+  }
+  return true;
+}
 
 function readAndroidIntentOption(
   args: readonly string[],
@@ -109,11 +130,13 @@ function readAndroidIntentOption(
   if (!option || (attachedValue && option[1] === 0)) return undefined;
   const end = index + 1 + option[1] - Number(attachedValue);
   if (end > args.length) return undefined;
+  const value = attachedValue ? token.slice(2) : args[index + 1];
+  if (option[2] === 'java-int' && !isAndroidIntentJavaInteger(value ?? '')) return undefined;
   return {
     name,
     audience: option[0],
     end,
-    value: attachedValue ? token.slice(2) : args[index + 1],
+    value,
   };
 }
 

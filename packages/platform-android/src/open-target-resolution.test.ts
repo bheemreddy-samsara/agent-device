@@ -207,11 +207,13 @@ test('intent selectors resolve only handlers eligible for activity launch', asyn
 });
 
 test.each([
+  ['--display', 'not-a-number'],
+  ['-R--display'],
   ['-a', 'android.intent.action.VIEW', '-d', 'content://example/image/1'],
   ['-dcontent://example/image/1'],
   ['--selector', '-d', 'content://example/image/1'],
   ['content://example/image/1'],
-])('implicit content MIME resolution retains unknown ownership: %j', async (...launchArgs) => {
+])('unprojectable intent resolution retains unknown ownership: %j', async (...launchArgs) => {
   resolveAndroidApp.mockResolvedValue({ type: 'intent', value: 'android.settings.SETTINGS' });
   runAndroidShell.mockResolvedValue({
     stdout: 'com.example.generic/.Main',
