@@ -604,6 +604,12 @@ function androidPackageAdbResult(
   args: string[],
   dumpsysWindow?: () => string,
 ): AndroidAdbResult | undefined {
+  if (
+    key ===
+    'shell cmd package resolve-activity --brief --query-flags 0x10000 -a android.settings.SETTINGS'
+  ) {
+    return { stdout: 'com.android.settings/.Settings\n', stderr: '', exitCode: 0 };
+  }
   return (
     androidSnapshotHelperProbeAdbResult(key) ??
     androidPackageDumpsysAdbResult(args) ??

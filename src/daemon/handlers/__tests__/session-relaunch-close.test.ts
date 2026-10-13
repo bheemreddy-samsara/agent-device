@@ -54,10 +54,6 @@ vi.mock('@agent-device/platform-apple/app-resolution', async (importOriginal) =>
     resolveIosSimulatorDeepLinkBundleId: vi.fn(async () => undefined),
   };
 });
-vi.mock('@agent-device/platform-android/mechanics', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@agent-device/platform-android/mechanics')>();
-  return { ...actual, resolveAndroidPackageForOpen: vi.fn(async () => undefined) };
-});
 
 import {
   createRequestHandler,
@@ -225,6 +221,7 @@ test('open --relaunch leaves the old frame expired when the close dispatch fails
   // session's frame was expired BEFORE the close dispatch and stays expired — a
   // post-dispatch close failure never restores it (there is no rollback).
   expect(response?.ok ?? false).toBe(false);
+  expect(mockDispatch.mock.calls.map(([, command]) => command)).toEqual(['close']);
   expect(refFrameState(sessionStore.get(sessionName)!)).toBe('expired');
 });
 

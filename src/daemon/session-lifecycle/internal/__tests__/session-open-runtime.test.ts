@@ -408,6 +408,7 @@ test('open --metro-port alone stays host-ambiguous on a physical Android device'
 });
 
 test('open --relaunch allows Android package names ending with apk-like suffix', async () => {
+  mockResolveAndroidPackage.mockResolvedValue('com.example.apk');
   const sessionStore = makeSessionStore();
   const dispatchCalls: Array<{ command: string; positionals: string[] }> = [];
 
