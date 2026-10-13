@@ -159,9 +159,15 @@ jobs:
                       event('sample_skipped_identity', pid=pid, label=label)
                       return
                   event('sample_begin', pid=pid, label=label)
-                  result = subprocess.run(['/usr/bin/sample', str(pid), '3', '-file', str((out / (label + '.sample.txt')).resolve())], capture_output=True, text=True, timeout=6)
+                  result = subprocess.run(['/usr/bin/sample', str(pid), '3', '-mayDie', '-file', str((out / (label + '.sample.txt')).resolve())], capture_output=True, text=True, timeout=45)
                   (out / (label + '.sample-command.txt')).write_text(result.stdout + result.stderr)
                   event('sample_end', pid=pid, label=label, exitCode=result.returncode)
+              except subprocess.TimeoutExpired as e:
+                  partial = (e.stdout or b'') + (e.stderr or b'')
+                  if isinstance(partial, bytes):
+                      partial = partial.decode('utf-8', errors='replace')
+                  (out / (label + '.sample-command.txt')).write_text(partial)
+                  event('sample_error', pid=pid, label=label, error=str(e))
               except Exception as e:
                   event('sample_error', pid=pid, label=label, error=str(e))
 
@@ -199,9 +205,12 @@ jobs:
                           if not late and time.monotonic()-discovered >= 9:
                               late = True
                               launch_sample(child, parent, 'before-deadline')
-                      for name in ('daemon.json', 'daemon.lock', 'daemon.log'):
+                      for name in ('daemon.json', 'daemon.lock', 'daemon.lock/owner.json', 'daemon.log'):
                           file = state / name
                           try:
+                              if file.is_dir():
+                                  event('state_directory', name=name)
+                                  continue
                               raw = file.read_bytes()
                               digest = hashlib.sha256(raw).hexdigest()
                               event('state_file', name=name, bytes=len(raw), sha256=digest)
@@ -209,7 +218,7 @@ jobs:
                                   seen[name] = digest
                                   stamp = str(round((time.monotonic()-started)*1000))
                                   if name == 'daemon.log':
-                                      (out / (stamp + '-' + name)).write_bytes(raw)
+                                      (out / (stamp + '-' + name.replace('/', '-'))).write_bytes(raw)
                                   else:
                                       try:
                                           metadata = json.loads(raw)
@@ -219,7 +228,7 @@ jobs:
                                               if isinstance(value, list):
                                                   return [redact(v) for v in value]
                                               return value
-                                          (out / (stamp + '-' + name)).write_text(json.dumps(redact(metadata), indent=2))
+                                          (out / (stamp + '-' + name.replace('/', '-'))).write_text(json.dumps(redact(metadata), indent=2))
                                       except Exception as e:
                                           event('metadata_parse_error', name=name, error=str(e))
                           except FileNotFoundError:
@@ -245,7 +254,7 @@ jobs:
               stop.set()
               observer.join(timeout=3)
               for thread in samples:
-                  thread.join(timeout=7)
+                  thread.join(timeout=50)
           (out / 'exit-code.txt').write_text(str(code) + '\n')
           sys.stdout.buffer.write((out / 'preflight.stdout').read_bytes())
           sys.stderr.buffer.write((out / 'preflight.stderr').read_bytes())
