@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 3800feaefe6bf8627d7394c4495fbe8960ec8f40
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
@@ -50,6 +52,101 @@ jobs:
         id: android-setup
         run: echo "seconds=$(date +%s)" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare private Android launch-control probe
+        run: |
+          mkdir -p .tmp
+          cat > .tmp/round21-android.sh <<'PROBE_SH'
+          #!/bin/sh
+          set -eu
+          pnpm gate build
+          pnpm clean:daemon
+          python3 - <<'PROBE_PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import sys
+
+          out = Path('test/artifacts/round21-android-launch-controls').resolve()
+          out.mkdir(parents=True, exist_ok=True)
+          wrapper_dir = Path('.tmp/round21-adb').resolve()
+          wrapper_dir.mkdir(parents=True, exist_ok=True)
+          real_adb = shutil.which('adb')
+          assert real_adb, 'native adb must exist'
+          wrapper = r"""#!/usr/bin/env python3
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import time
+          args = sys.argv[1:]
+          out = Path(os.environ['ROUND21_PROBE_OUTPUT'])
+          name = str(time.time_ns()) + '-' + str(os.getpid())
+          (out / (name + '-argv.json')).write_text(json.dumps(args))
+          selected = any('resolve-activity' in arg or ('am' in arg and 'start' in arg) for arg in args)
+          if selected:
+              result = subprocess.run([REAL_ADB, *args], capture_output=True)
+              (out / (name + '-stdout.txt')).write_bytes(result.stdout)
+              (out / (name + '-stderr.txt')).write_bytes(result.stderr)
+              (out / (name + '-exit.txt')).write_text(str(result.returncode))
+              sys.stdout.buffer.write(result.stdout)
+              sys.stderr.buffer.write(result.stderr)
+              sys.exit(result.returncode if result.returncode >= 0 else 128-result.returncode)
+          os.execv(REAL_ADB, [REAL_ADB, *args])
+          """.replace('REAL_ADB', repr(real_adb))
+          (wrapper_dir / 'adb').write_text(wrapper)
+          (wrapper_dir / 'adb').chmod(0o755)
+          env = dict(os.environ, PATH=str(wrapper_dir)+os.pathsep+os.environ['PATH'], ROUND21_PROBE_OUTPUT=str(out))
+          base = ['node', '--experimental-strip-types', 'src/bin.ts']
+          flags = ['--platform', 'android', '--serial', os.environ['ANDROID_SERIAL'], '--session', 'round21-launch-controls', '--json']
+          launch = ['-S', '-R', '1', '--display', '0']
+          command = [*base, 'open', 'settings', *flags]
+          for arg in launch:
+              command += ['--launch-args', arg]
+          (out / 'source.json').write_text(json.dumps(dict(head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),command=command,realAdb=real_adb,wrapper=str(wrapper_dir/'adb'),note='private argv/output observer; may perturb timings')))
+          status = 1
+          try:
+              result = subprocess.run(command, env=env, capture_output=True)
+              (out / 'open.stdout').write_bytes(result.stdout)
+              (out / 'open.stderr').write_bytes(result.stderr)
+              (out / 'open.exit').write_text(str(result.returncode))
+              sys.stdout.buffer.write(result.stdout)
+              sys.stderr.buffer.write(result.stderr)
+              if result.returncode != 0:
+                  status = result.returncode
+              else:
+                  response = json.loads(result.stdout)
+                  assert response.get('success') is True, response
+                  assert response.get('data', {}).get('appBundleId') == 'com.android.settings', response
+                  snapshot = subprocess.run([*base, 'snapshot', '-i', *flags], env=env, capture_output=True)
+                  (out / 'snapshot.stdout').write_bytes(snapshot.stdout)
+                  (out / 'snapshot.stderr').write_bytes(snapshot.stderr)
+                  (out / 'snapshot.exit').write_text(str(snapshot.returncode))
+                  assert snapshot.returncode == 0, 'snapshot failed; original output retained'
+                  metadata = json.loads(snapshot.stdout).get('data', {}).get('androidSnapshot', {})
+                  assert metadata.get('backend') == 'android-helper', metadata
+                  assert metadata.get('helperVersion') == json.loads(Path('package.json').read_text())['version'], metadata
+                  status = 0
+          finally:
+              result = subprocess.run([*base, 'close', *flags], env=env, capture_output=True)
+              (out / 'close.stdout').write_bytes(result.stdout)
+              (out / 'close.stderr').write_bytes(result.stderr)
+              (out / 'close.exit').write_text(str(result.returncode))
+              if status == 0 and result.returncode != 0:
+                  status = result.returncode
+              clean = subprocess.run(['pnpm', 'clean:daemon'], capture_output=True)
+              (out / 'cleanup.stdout').write_bytes(clean.stdout)
+              (out / 'cleanup.stderr').write_bytes(clean.stderr)
+              (out / 'cleanup.exit').write_text(str(clean.returncode))
+              if status == 0 and clean.returncode != 0:
+                  status = clean.returncode
+          sys.exit(status)
+          PROBE_PY
+          sh scripts/replays/android-manual.sh "$@"
+          PROBE_SH
+
       - name: Run Android full emulator suite
         uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
         with:
@@ -58,7 +155,7 @@ jobs:
           profile: pixel_7
           target: google_apis_playstore
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: sh scripts/replays/android-manual.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
+          script: sh .tmp/round21-android.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
 
       - name: Upload Android artifacts
         if: always()
@@ -81,6 +178,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 3800feaefe6bf8627d7394c4495fbe8960ec8f40
 
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
