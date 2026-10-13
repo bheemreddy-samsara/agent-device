@@ -22,6 +22,149 @@ const BROAD_TRANSITION_PARAMS = {
   broadTransitionBaselineNodes: elementThreadsNoticeSnapshot.nodes,
 };
 
+// Each #1831 case below runs at BOTH windows. The confirmation used to switch itself off for a
+// requested window under the default, so `--settle-quiet 150` — what tester-army/e2e passes — got no
+// guard at all while 500 got a 1.5 s one (#3470).
+for (const requestedQuietMs of [500, 150]) {
+  const confirmationFloor = Math.max(requestedQuietMs, 1_500);
+
+  test(`settle confirms a broad screen replacement beyond a self-consistent transitional tree (quiet ${requestedQuietMs}ms)`, async () => {
+    const { runtime } = transitionRuntime();
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      { ...BROAD_TRANSITION_PARAMS, quietMs: requestedQuietMs },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= confirmationFloor,
+      `settled transitional tree after ${outcome.waitedMs}ms`,
+    );
+  });
+
+  test(`settle confirms a broad screen replacement when capture recovers to private AX (quiet ${requestedQuietMs}ms)`, async () => {
+    const { runtime } = transitionRuntime({ captureBackend: 'private-ax' });
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      { ...BROAD_TRANSITION_PARAMS, quietMs: requestedQuietMs },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= confirmationFloor,
+      `settled transitional tree after ${outcome.waitedMs}ms`,
+    );
+  });
+
+  test(`settle confirms a broad replacement that begins after the first post-action capture (quiet ${requestedQuietMs}ms)`, async () => {
+    const { runtime } = transitionRuntime({
+      captureBackend: 'private-ax',
+      firstCaptureKeepsBaseline: true,
+      settledAtMs: 1_200,
+    });
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      { ...BROAD_TRANSITION_PARAMS, quietMs: requestedQuietMs },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= confirmationFloor,
+      `settled delayed transition after ${outcome.waitedMs}ms`,
+    );
+  });
+
+  test(`settle confirms against the pre-action tree when the stored snapshot already advanced (quiet ${requestedQuietMs}ms)`, async () => {
+    const { runtime } = transitionRuntime({
+      sessionSnapshot: { ...elementTransientRoomSnapshot, backend: undefined, producer: undefined },
+      settledAtMs: 1_200,
+    });
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      { ...BROAD_TRANSITION_PARAMS, quietMs: requestedQuietMs },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= confirmationFloor,
+      `settled advanced-session transition after ${outcome.waitedMs}ms`,
+    );
+  });
+
+  test(`settle confirms an iOS broad replacement when capture omits snapshot backend provenance (quiet ${requestedQuietMs}ms)`, async () => {
+    const { runtime } = transitionRuntime({
+      omitSnapshotBackend: true,
+      settledAtMs: 1_200,
+    });
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      {
+        ...BROAD_TRANSITION_PARAMS,
+        quietMs: requestedQuietMs,
+        // Presented iOS modals can be complete interaction captures without retaining the
+        // Application root in their projection.
+        broadTransitionBaselineNodes: elementThreadsNoticeSnapshot.nodes.slice(1),
+      },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= confirmationFloor,
+      `settled backend-less transition after ${outcome.waitedMs}ms`,
+    );
+  });
+
+  test(`settle confirms a tiny modal replacement through a partial post-action projection (quiet ${requestedQuietMs}ms)`, async () => {
+    const { runtime } = transitionRuntime({ omitViewportRoot: true, settledAtMs: 1_200 });
+
+    const outcome = await runStableCaptureLoop(
+      runtime,
+      { session: 'default' },
+      { ...BROAD_TRANSITION_PARAMS, quietMs: requestedQuietMs },
+    );
+
+    assert.equal(outcome.settled, true);
+    assert.equal(
+      outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+      false,
+    );
+    assert.ok(
+      outcome.waitedMs >= confirmationFloor,
+      `settled partial transitional tree after ${outcome.waitedMs}ms`,
+    );
+  });
+}
+
 test('regular captures settle from visible semantics while offscreen rows churn', async () => {
   let elapsedMs = 0;
   const clock = {
@@ -203,8 +346,11 @@ test('settle keeps the default quiet window for a larger partial projection', as
   assert.ok(outcome.waitedMs < 800, `partial projection settled after ${outcome.waitedMs}ms`);
 });
 
-test('settle honors an explicitly shorter quiet window across a broad replacement', async () => {
-  const { runtime } = transitionRuntime();
+test('settle confirms a broad replacement on a caller window shorter than the confirmation floor', async () => {
+  // The counterpart of the loop above at the tightest window a caller realistically asks for. The
+  // 25 ms cadence still applies — the loop keeps sampling at that grid — but the confirmation floor,
+  // not the window, decides when a broad replacement is trusted (#3470).
+  const { runtime } = transitionRuntime({ settledAtMs: 1_200 });
 
   const outcome = await runStableCaptureLoop(
     runtime,
@@ -213,8 +359,14 @@ test('settle honors an explicitly shorter quiet window across a broad replacemen
   );
 
   assert.equal(outcome.settled, true);
-  assert.ok(outcome.captures <= 3, `short quiet window spent ${outcome.captures} captures`);
-  assert.ok(outcome.waitedMs < 800, `short quiet window settled after ${outcome.waitedMs}ms`);
+  assert.equal(
+    outcome.lastCapture?.snapshot.nodes.some((node) => node.label === 'action file'),
+    false,
+  );
+  assert.ok(
+    outcome.waitedMs >= 1_500,
+    `short quiet window switched the confirmation off: settled after ${outcome.waitedMs}ms`,
+  );
 });
 
 test('settle keeps the default quiet window for a backend-less overlapping local mutation', async () => {

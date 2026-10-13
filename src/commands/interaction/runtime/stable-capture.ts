@@ -41,6 +41,12 @@ const QUIET_DEADLINE_EPSILON_MS = 2;
 // Broad replacements (for example, dismissing a modal into a room) can expose a coherent but
 // transitional AX tree for the default quiet window. Confirm those transitions longer without
 // adding latency to local mutations whose pre/post trees substantially overlap.
+//
+// The confirmation is decided by the transition alone: a caller asking for a shorter quiet window
+// asked for a tighter verdict, not for a different set of transitions to distrust. It used to arm
+// only at `requestedQuietMs >= DEFAULT_STABLE_QUIET_MS`, which made `--settle-quiet 499` behave
+// differently from 500 and left `settleQuietMs: 150` callers (tester-army/e2e) with no guard at all
+// (#3470). A confirmed replacement is held for the caller's own window, floored at 1.5 s.
 const BROAD_TRANSITION_CONFIRMATION_QUIET_MS = 1_500;
 export const DEFAULT_STABLE_QUIET_MS = 500;
 export const DEFAULT_STABLE_TIMEOUT_MS = 10_000;
@@ -252,7 +258,7 @@ function stableCaptureNextQuietWindowMs(params: {
   requestedQuietMs: number;
   currentQuietMs: number;
 }): number {
-  if (params.requestedQuietMs < DEFAULT_STABLE_QUIET_MS || !params.baseline) {
+  if (!params.baseline) {
     return params.currentQuietMs;
   }
   const replacementSignal = stableCaptureReplacementSignal(params.snapshot, params.appBundleId);
