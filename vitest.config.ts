@@ -110,6 +110,9 @@ export default defineConfig({
             // and one hangs on purpose (#1414).
             'scripts/fuzz/harness.test.ts',
             'scripts/replays/android-manual.test.ts',
+            'scripts/replays/readiness-experiment.test.ts',
+            'scripts/replays/android-search-preparation.test.ts',
+            'scripts/replays/replay-command-evidence.test.ts',
             // The validation fuzz generators' expectation gates (#1781 B2): in-process, no
             // subprocess or worker, so they ride the fast lane unlike their serialized siblings.
             'scripts/fuzz/validation-arbitraries.test.ts',
