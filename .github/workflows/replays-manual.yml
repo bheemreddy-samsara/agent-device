@@ -133,13 +133,20 @@ jobs:
 
           def event(kind, **data):
               record = dict(kind=kind, elapsedMs=round((time.monotonic()-started)*1000), **data)
-              with lock:
-                  with (out / 'timeline.jsonl').open('a') as f:
-                      f.write(json.dumps(record) + '\n')
+              try:
+                  with lock:
+                      with (out / 'timeline.jsonl').open('a') as f:
+                          f.write(json.dumps(record) + '\n')
+              except OSError:
+                  pass
 
           def ps(pid):
-              result = subprocess.run(['ps', '-ww', '-p', str(pid), '-o', 'pid=,ppid=,stat=,etime=,time=,%cpu=,command='], capture_output=True, text=True, timeout=1)
-              return result.returncode, result.stdout.strip()
+              try:
+                  result = subprocess.run(['ps', '-ww', '-p', str(pid), '-o', 'pid=,ppid=,stat=,etime=,time=,%cpu=,command='], capture_output=True, text=True, timeout=2)
+                  return result.returncode, result.stdout.strip()
+              except subprocess.TimeoutExpired:
+                  event('process_query_timeout', pid=pid)
+                  return -1, ''
 
           def is_owned_child(pid, parent):
               code, row = ps(pid)
@@ -173,8 +180,13 @@ jobs:
                       code, row = ps(parent)
                       event('parent_process', exitCode=code, process=row)
                       if child is None:
-                          children = subprocess.run(['pgrep', '-P', str(parent)], capture_output=True, text=True, timeout=1)
-                          for value in children.stdout.split():
+                          try:
+                              children = subprocess.run(['pgrep', '-P', str(parent)], capture_output=True, text=True, timeout=2)
+                              child_pids = children.stdout.split()
+                          except subprocess.TimeoutExpired:
+                              event('child_query_timeout', parentPid=parent)
+                              child_pids = []
+                          for value in child_pids:
                               pid = int(value)
                               if is_owned_child(pid, parent):
                                   child, discovered = pid, time.monotonic()
