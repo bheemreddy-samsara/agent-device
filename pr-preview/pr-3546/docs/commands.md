@@ -418,6 +418,8 @@ agent-device gesture transform 200 420 80 -40 2 35 700 # combined pan, zoom, and
 
 A successful `click` or `press` means the action was sent to where the command found the target. It does not confirm that the element received it or that the screen changed. When the next step depends on it, add `--verify` (reports `changedFromBefore`), add `--settle` (returns the diff once the UI goes quiet), or follow with `wait <selector>`. Before retrying a failed interaction, see [Retry after a failed command](#retry-after-a-failed-command).
 
+A `click` or `press` whose target the daemon resolves to a point (`@ref` or selector) re-checks that target's position before dispatching when the session's previous action animated the screen, and dispatches where it came to rest. When that check cannot confirm a stable position — the target was still moving, or a re-check could not measure it — the command refuses with `target_still_moving` and `dispatched: no`: nothing was dispatched, the point the command resolved is in `error.details.rect`, and where the target was last seen is in `error.details.movedToRect` when that last look measured one. Run `wait <selector>` on the target and retry the same command, or add `--settle` so the action waits for the UI to go quiet. A refused `@ref` press needs a fresh `snapshot -i` and a selector, because the wait retires the ref. Two dispatch paths hand off before the check: a press at raw coordinates has no resolved target to re-check, and a dispatch the backend performs on the element itself — `click @ref` on a backend with element dispatch, or a Maestro non-hittable coordinate fallback — goes to that backend rather than through a resolved point.
+
 ### Text entry
 
 - `fill` clears then types. `type` appends to the focused field and accepts text only: use `fill @ref "text"` to target a field, or `press @ref` then `type "text"`.
@@ -837,6 +839,7 @@ agent-device react-devtools profile report @c5
 - `agent-device` global flags work before or after `react-devtools`. Put `--` before downstream flags only when they share an `agent-device` global flag name.
 - Development builds connect to the DevTools daemon on port 8097. If an Android emulator or device cannot reach the host, run `adb reverse tcp:8097 tcp:8097`. Android `open` of a local Metro URL with a port sets up host reachability; for app/package launches, run `adb reverse tcp:8081 tcp:8081` if the app cannot reach Metro.
 - Remote bridge sessions (Android and iOS) work through the same command; the CLI keeps a tunnel to the remote DevTools daemon alive until `react-devtools stop` or `disconnect`. See [Remote bridge sessions](/agent-device/pr-preview/pr-3546/docs/debugging-profiling.md#remote-bridge-sessions) for the iOS relaunch order and supported React Native versions.
+- `react-devtools stop` reports the tunnel's pid and keeps tracking it when it cannot confirm the tunnel exited — it belongs to another user, for example — instead of starting a second one on the next run. Stop that process as its owner and run `react-devtools stop` again.
 - For cross-platform validation, use separate sessions/devices and restart `react-devtools` between iOS and Android runs.
 
 ```bash
