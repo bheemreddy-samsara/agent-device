@@ -1,12 +1,20 @@
----
-name: PR3555 Targeted Native Evidence Round32
-'on':
+name: PR3555 Targeted Native Evidence Round33
+on:
   workflow_dispatch:
+    inputs:
+      deadline_utc:
+        description: Fixed UTC measurement deadline, exactly 50 minutes after dispatch start
+        required: true
+        type: string
+      dispatch_started_utc:
+        description: Fixed UTC total-bound origin
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: pr3555-native-round32-${{ github.ref }}-${{ github.run_id }}
+  group: pr3555-native-round33-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 jobs:
   native-api36:
@@ -15,497 +23,943 @@ jobs:
     timeout-minutes: 30
     env:
       EXPECTED_API: '36'
-      EVIDENCE: "${{ github.workspace }}/.tmp/pr3555-round32-api36-evidence"
-      AGENT_DEVICE_STATE_DIR: "${{ github.workspace }}/.tmp/pr3555-round32-api36-state"
+      EVIDENCE: ${{ github.workspace }}/.tmp/pr3555-round33-api36-evidence
+      AGENT_DEVICE_STATE_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api36-state
+      AGENT_DEVICE_CLAIMS_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api36-claims
+      OWNED_AVD_NAME: pr3555-round33-api36
+      XDG_RUNTIME_DIR: ${{ runner.temp }}/pr3555-round33-api36-runtime
+      MEASUREMENT_DEADLINE_UTC: ${{ inputs.deadline_utc }}
+      MEASUREMENT_DISPATCH_UTC: ${{ inputs.dispatch_started_utc }}
     steps:
-    - name: Checkout exact published PR3555 source
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      with:
-        ref: b69a3421a7d32d801540994b827b09dcf6cc5e70
-    - name: Setup Node 24.13 and frozen dependencies
-      uses: "./.github/actions/setup-node-pnpm"
-    - name: Setup isolated Android replay host
-      uses: "./.github/actions/setup-android-replay-host"
-      with:
-        package-helpers: 'true'
-    - name: Prepare observer and independently validate forwarding
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$EVIDENCE"
-        cat > /tmp/review32-observer.cjs <<'REVIEW32_EOF'
-        #!/usr/bin/env node
-        'use strict';
-        const fs = require('node:fs');
-        const path = require('node:path');
-        const { spawn } = require('node:child_process');
-        const config = JSON.parse(fs.readFileSync(__filename + '.json', 'utf8'));
-        const args = process.argv.slice(2);
-        const phase = config.phasePath ? fs.readFileSync(config.phasePath, 'utf8') : 'selfcheck';
-        const recordId = `${Date.now()}-${process.pid}`;
-        const record = { recordId, phase, executable:config.real, argv:args, startUnixMs:Date.now() };
-        fs.writeFileSync(path.join(config.records, recordId + '.start.json'), JSON.stringify(record, null, 2));
-        const child = spawn(config.real, args, { env: process.env, stdio:['inherit','pipe','pipe'] });
-        const stdout = [], stderr = [];
-        child.stdout.on('data', b => stdout.push(b));
-        child.stderr.on('data', b => stderr.push(b));
-        child.stdout.pipe(process.stdout);
-        child.stderr.pipe(process.stderr);
-        for (const signal of ['SIGTERM','SIGINT','SIGHUP']) process.on(signal, () => child.kill(signal));
-        child.on('error', error => { process.stderr.write(error.message + '\n'); process.exitCode = 127; });
-        child.on('close', (code,signal) => {
-          fs.writeFileSync(path.join(config.records, recordId + '.json'), JSON.stringify({ ...record, stdoutBase64:Buffer.concat(stdout).toString('base64'), stderrBase64:Buffer.concat(stderr).toString('base64'), exitCode:code, signal, endUnixMs:Date.now() }, null, 2));
-          if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); }
-          else process.exitCode = code === null ? 127 : code;
-        });
-        REVIEW32_EOF
-        cat > /tmp/review32-selfcheck.py <<'REVIEW32_EOF'
-        import os,json,pathlib,subprocess,tempfile,signal
-        proxy=pathlib.Path('/tmp/review32-observer.cjs')
-        if not proxy.exists(): proxy=pathlib.Path('/private/tmp/review32-input/observer.cjs')
-        with tempfile.TemporaryDirectory() as td:
-         p=pathlib.Path(td); records=p/'records'; records.mkdir(); wrapper=p/'adb'; wrapper.write_bytes(proxy.read_bytes()); wrapper.chmod(0o755)
-         fake=p/'native'; fake.write_text('#!/usr/bin/env python3\nimport os,sys,json,signal\nopen(os.environ["FAKE_ARGV"],"w").write(json.dumps(sys.argv[1:]))\nsys.stdout.buffer.write(b"native\\x00stdout\\n");sys.stdout.flush()\nsys.stderr.buffer.write(b"native stderr\\n");sys.stderr.flush()\nif os.environ.get("FAKE_SIGNAL"): os.kill(os.getpid(),signal.SIGTERM)\nsys.exit(int(os.environ["FAKE_CODE"]))\n'); fake.chmod(0o755)
-         pathlib.Path(str(wrapper)+'.json').write_text(json.dumps(dict(real=str(fake),serial='owned',records=str(records))))
-         query=['-s','owned','shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']
-         for code in [0,17]:
-          env={**os.environ,'FAKE_CODE':str(code),'FAKE_ARGV':str(p/'argv')}; r=subprocess.run([str(wrapper),*query],env=env,capture_output=True)
-          assert r.returncode==code and r.stdout==b'native\x00stdout\n' and r.stderr==b'native stderr\n'; assert json.loads((p/'argv').read_text())==query
-         assert sorted(json.loads(f.read_text())['exitCode'] for f in records.glob('*.json') if not f.name.endswith('.start.json'))==[0,17]
-         count=len(list(records.iterdir())); unknown=['-s','owned','shell','unknown','DO-NOT-RECORD']; r=subprocess.run([str(wrapper),*unknown],env=env,capture_output=True); assert r.returncode==17 and len(list(records.iterdir()))==count+2; assert json.loads((p/'argv').read_text())==unknown
-         r=subprocess.run([str(wrapper),*query],env={**env,'FAKE_SIGNAL':'1'},capture_output=True); assert r.returncode==-signal.SIGTERM
-        print('PASS: exact argv, byte streams, exit 0/nonzero 17, all-invocation observation, direct-child SIGTERM forwarding')
-        REVIEW32_EOF
-        cat > /tmp/review32-measure.py <<'REVIEW32_EOF'
-        import base64,hashlib,json,os,pathlib,shlex,shutil,subprocess,sys,time,traceback
-        E=pathlib.Path(os.environ['EVIDENCE']); E.mkdir(parents=True,exist_ok=True)
-        api=int(os.environ['EXPECTED_API']); state=os.environ['SUBJECT_STATE_DIR']; session='pr3555-round32-api'+str(api)
-        revision='b69a3421a7d32d801540994b827b09dcf6cc5e70'; results={}; conditions={}; transcript=[]; installed=False; created=False; integrity={}; serial='emulator-5554'
-        def run(name,args):
-         transcript.append('$ '+shlex.join(args))
-         try: p=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=120); code=p.returncode; out=p.stdout; err=p.stderr
-         except subprocess.TimeoutExpired as x: code=124; out=x.stdout or b''; err=(x.stderr or b'')+b'\nHOST HARNESS TIMEOUT 120s\n'
-         (E/(name+'.stdout')).write_bytes(out); (E/(name+'.stderr')).write_bytes(err)
-         r={'argv':args,'exitCode':code,'stdout':out.decode(errors='replace'),'stderr':err.decode(errors='replace')}; results[name]=r; transcript.extend([r['stdout'],r['stderr'],'exit='+str(code)]); return r
-        def obj(name):
-         try: return json.loads(results[name]['stdout'])
-         except Exception: return {}
-        def data(name): return obj(name).get('data',{})
-        def sha(p): return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
-        def emulators():
-         found=[]
-         for p in pathlib.Path('/proc').glob('[0-9]*/cmdline'):
+      - name: Checkout exact published PR3555 source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: 22dc288c6174048e78c7750aea1f46b3150fac3a
+      - name: Validate fixed dispatch deadline
+        shell: bash
+        run: |
+          python3 - <<'PYDEADLINE'
+          import datetime,os
+          deadline=datetime.datetime.fromisoformat(os.environ['MEASUREMENT_DEADLINE_UTC']);start=datetime.datetime.fromisoformat(os.environ['MEASUREMENT_DISPATCH_UTC']);assert deadline.utcoffset()==start.utcoffset()==datetime.timedelta(0);assert (deadline-start).total_seconds()==3000;assert datetime.datetime.now(datetime.timezone.utc)<deadline, 'allocation preparation arrived after fixed deadline'
+          PYDEADLINE
+      - name: Setup Node 24.13 and frozen dependencies
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Setup isolated Android replay host
+        uses: ./.github/actions/setup-android-replay-host
+        with:
+          package-helpers: 'true'
+      - name: Prepare observer and independently validate forwarding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          cat > /tmp/review33-observer.cjs <<'REVIEW33_EOF'
+          #!/usr/bin/env node
+          'use strict';
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { spawn } = require('node:child_process');
+          const config = JSON.parse(fs.readFileSync(__filename + '.json', 'utf8'));
+          const args = process.argv.slice(2);
+          const phase = config.phasePath ? fs.readFileSync(config.phasePath, 'utf8') : 'selfcheck';
+          const recordId = `${Date.now()}-${process.pid}`;
+          const record = { recordId, phase, executable:config.real, argv:args, startUnixMs:Date.now() };
+          fs.writeFileSync(path.join(config.records, recordId + '.start.json'), JSON.stringify(record, null, 2));
+          const bounded = config.deadlineUnixMs !== undefined;
+          const remaining = bounded ? config.deadlineUnixMs - Date.now() : Infinity;
+          if (bounded && remaining <= 0) {
+            fs.writeFileSync(path.join(config.records, recordId + '.json'), JSON.stringify({ ...record, nativeStarted:false, classification:'deadline-rejected', exitCode:124, stdoutBase64:'', stderrBase64:'', endUnixMs:Date.now() }, null, 2));
+            process.exit(124);
+          }
+          record.nativeStarted = true;
+          record.deadlineUnixMs = config.deadlineUnixMs;
+          fs.writeFileSync(path.join(config.records, recordId + '.start.json'), JSON.stringify(record, null, 2));
+          const child = spawn(config.real, args, { env: process.env, stdio:['inherit','pipe','pipe'] });
+          const stdout = [], stderr = [];
+          const deadlineTimer = bounded ? setTimeout(() => child.kill('SIGTERM'), remaining) : null;
+          child.stdout.on('data', b => stdout.push(b));
+          child.stderr.on('data', b => stderr.push(b));
+          child.stdout.pipe(process.stdout);
+          child.stderr.pipe(process.stderr);
+          for (const signal of ['SIGTERM','SIGINT','SIGHUP']) process.on(signal, () => child.kill(signal));
+          child.on('error', error => { process.stderr.write(error.message + '\n'); process.exitCode = 127; });
+          child.on('close', (code,signal) => {
+            if (deadlineTimer !== null) clearTimeout(deadlineTimer);
+            fs.writeFileSync(path.join(config.records, recordId + '.json'), JSON.stringify({ ...record, eligible:!bounded || Date.now()<=config.deadlineUnixMs, stdoutBase64:Buffer.concat(stdout).toString('base64'), stderrBase64:Buffer.concat(stderr).toString('base64'), exitCode:code, signal, endUnixMs:Date.now() }, null, 2));
+            if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); }
+            else process.exitCode = code === null ? 127 : code;
+          });
+          REVIEW33_EOF
+          cat > /tmp/review33-selfcheck.py <<'REVIEW33_EOF'
+          import os,json,pathlib,subprocess,tempfile,signal
+          proxy=pathlib.Path('/tmp/review33-observer.cjs')
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td); records=p/'records'; records.mkdir(); wrapper=p/'adb'; wrapper.write_bytes(proxy.read_bytes()); wrapper.chmod(0o755)
+           fake=p/'native'; fake.write_text('#!/usr/bin/env python3\nimport os,sys,json,signal\nopen(os.environ["FAKE_ARGV"],"w").write(json.dumps(sys.argv[1:]))\nsys.stdout.buffer.write(b"native\\x00stdout\\n");sys.stdout.flush()\nsys.stderr.buffer.write(b"native stderr\\n");sys.stderr.flush()\nif os.environ.get("FAKE_SIGNAL"): os.kill(os.getpid(),signal.SIGTERM)\nsys.exit(int(os.environ["FAKE_CODE"]))\n'); fake.chmod(0o755)
+           pathlib.Path(str(wrapper)+'.json').write_text(json.dumps(dict(real=str(fake),serial='owned',records=str(records))))
+           query=['-s','owned','shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']
+           for code in [0,17]:
+            env={**os.environ,'FAKE_CODE':str(code),'FAKE_ARGV':str(p/'argv')}; r=subprocess.run([str(wrapper),*query],env=env,capture_output=True)
+            assert r.returncode==code and r.stdout==b'native\x00stdout\n' and r.stderr==b'native stderr\n'; assert json.loads((p/'argv').read_text())==query
+           assert sorted(json.loads(f.read_text())['exitCode'] for f in records.glob('*.json') if not f.name.endswith('.start.json'))==[0,17]
+           count=len(list(records.iterdir())); unknown=['-s','owned','shell','unknown','DO-NOT-RECORD']; r=subprocess.run([str(wrapper),*unknown],env=env,capture_output=True); assert r.returncode==17 and len(list(records.iterdir()))==count+2; assert json.loads((p/'argv').read_text())==unknown
+           r=subprocess.run([str(wrapper),*query],env={**env,'FAKE_SIGNAL':'1'},capture_output=True); assert r.returncode==-signal.SIGTERM
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td); records=p/'records';records.mkdir();wrapper=p/'adb';wrapper.write_bytes(proxy.read_bytes());wrapper.chmod(0o755);marker=p/'started';fake=p/'native';fake.write_text('#!/usr/bin/env python3\nimport pathlib,sys,time\npathlib.Path(sys.argv[1]).write_text("native")\ntime.sleep(float(sys.argv[2]))\n');fake.chmod(0o755)
+           import time
+           config=pathlib.Path(str(wrapper)+'.json');config.write_text(json.dumps({'real':str(fake),'records':str(records),'deadlineUnixMs':time.time()*1000-1000}));r=subprocess.run([str(wrapper),str(marker),'0'],capture_output=True);assert r.returncode==124 and not marker.exists();assert any(json.loads(f.read_text()).get('classification')=='deadline-rejected' for f in records.glob('*.json'))
+           config.write_text(json.dumps({'real':str(fake),'records':str(records),'deadlineUnixMs':time.time()*1000+5000}));r=subprocess.run([str(wrapper),str(marker),'0'],capture_output=True);assert r.returncode==0 and marker.exists();marker.unlink()
+           config.write_text(json.dumps({'real':str(fake),'records':str(records),'deadlineUnixMs':time.time()*1000+150}));r=subprocess.run([str(wrapper),str(marker),'5'],capture_output=True);assert r.returncode==-signal.SIGTERM and marker.exists();assert any(json.loads(f.read_text()).get('eligible') is False for f in records.glob('*.json'))
+           print('PASS: observer deadline refuses late native launch before spawn; viable within-bound launch; remaining bound terminates direct owned native child')
+          print('PASS: exact argv, byte streams, exit 0/nonzero 17, all-invocation observation, direct-child SIGTERM forwarding')
+          REVIEW33_EOF
+          cat > /tmp/review33-boundary.py <<'REVIEW33_EOF'
+          import datetime,json,pathlib,signal,subprocess,time
+          class MeasurementDeadlineExpired(Exception): pass
+          class MeasurementCancelled(Exception): pass
+          class MeasurementBoundary:
+           def __init__(self, deadline, evidence):
+            self.deadline=datetime.datetime.fromisoformat(deadline.replace('Z','+00:00')).timestamp(); self.evidence=pathlib.Path(evidence); self.cancelled=False; self.child=None
+            assert datetime.datetime.fromisoformat(deadline.replace('Z','+00:00')).utcoffset()==datetime.timedelta(0)
+           def interrupt(self, signum, frame):
+            self.cancelled=True
+            if self.child is not None: self.child.terminate()
+            raise MeasurementCancelled(signum)
+           def run(self,name,args):
+            start=time.time(); remaining=self.deadline-start
+            record={'name':name,'argv':args,'startUnixMs':start*1000,'deadlineUnixMs':self.deadline*1000,'remainingSeconds':remaining,'started':False,'classification':'measurement'}
+            destination=self.evidence/(name+'.boundary.json')
+            if self.cancelled or remaining<=0:
+             record.update(classification='rejected-before-measurement',eligible=False); destination.write_text(json.dumps(record,indent=2))
+             raise MeasurementDeadlineExpired(name)
+            record.update(started=True,timeoutSeconds=min(120,remaining)); destination.write_text(json.dumps(record,indent=2))
+            with subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE) as child:
+             self.child=child
+             try:
+              out,err=child.communicate(timeout=record['timeoutSeconds']); code=child.returncode
+             except subprocess.TimeoutExpired:
+              child.kill(); out,err=child.communicate(); code=124; record['timedOut']=True
+             except MeasurementCancelled:
+              child.terminate()
+              try: out,err=child.communicate(timeout=1)
+              except subprocess.TimeoutExpired: child.kill(); out,err=child.communicate()
+              code=130; record['cancelled']=True
+             finally: self.child=None
+            end=time.time(); record.update(endUnixMs=end*1000,exitCode=code,eligible=end<=self.deadline and not self.cancelled and not record.get('timedOut',False))
+            destination.write_text(json.dumps(record,indent=2)); (self.evidence/(name+'.stdout')).write_bytes(out); (self.evidence/(name+'.stderr')).write_bytes(err)
+            if not record['eligible']: raise MeasurementDeadlineExpired(name)
+            return subprocess.CompletedProcess(args,code,out,err)
+          def owned_dead_claims(claims,context,registration,clean_stopped):
+           if not clean_stopped: return False
+           return bool(claims) and all(c.get('classification')=='owner-process-dead' and c.get('device',{}).get('id')==context['serial'] and c.get('owner',{}).get('session')==context['session'] and c.get('owner',{}).get('stateDir')==context['state'] and c.get('owner',{}).get('workspace')==context['workspace'] and c.get('owner',{}).get('pid')==registration.get('pid') and c.get('owner',{}).get('startTime')==registration.get('startTime') for c in claims)
+          REVIEW33_EOF
+          cat > /tmp/review33-boundary-selfcheck.py <<'REVIEW33_EOF'
+          import datetime,importlib.util,json,pathlib,shlex,signal,subprocess,tempfile,time
+          spec=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py'); b=importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+          def old_run(name, args):
+              transcript.append('$ ' + shlex.join(args))
+              try:
+                  p = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+                  code = p.returncode
+                  out = p.stdout
+                  err = p.stderr
+              except subprocess.TimeoutExpired as x:
+                  code = 124
+                  out = x.stdout or b''
+                  err = (x.stderr or b'') + b'\nHOST HARNESS TIMEOUT 120s\n'
+              (E / (name + '.stdout')).write_bytes(out)
+              (E / (name + '.stderr')).write_bytes(err)
+              r = {'argv': args, 'exitCode': code, 'stdout': out.decode(errors='replace'), 'stderr': err.decode(errors='replace')}
+              results[name] = r
+              transcript.extend([r['stdout'], r['stderr'], 'exit=' + str(code)])
+              return r
+          def utc(seconds):return datetime.datetime.fromtimestamp(time.time()+seconds,datetime.timezone.utc).isoformat()
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td); fake=p/'fake.py'; marker=p/'native-start'; fake.write_text('import pathlib,sys,time\npathlib.Path(sys.argv[1]).write_text("started")\ntime.sleep(float(sys.argv[2]))\nprint("controlled native result")\n'); argv=['python3',str(fake),str(marker),'0']
+           # Historical entry has no deadline argument and dispatches after its deadline.
+           deadline=utc(-1); E=p;transcript=[];results={};old=old_run('old-late',argv);assert old['exitCode']==0 and marker.exists(); marker.unlink(); print('MUTATION WITNESS: old entry starts and completes after fixed deadline (required invariant FAIL)')
+           try:b.MeasurementBoundary(deadline,p).run('late',argv);raise AssertionError('late work accepted')
+           except b.MeasurementDeadlineExpired:pass
+           assert not marker.exists() and json.loads((p/'late.boundary.json').read_text())['started'] is False
+           good=b.MeasurementBoundary(utc(5),p).run('within-bound',argv);assert good.returncode==0 and marker.exists(); marker.unlink()
+           try:b.MeasurementBoundary(utc(.15),p).run('remaining-timeout',argv[:-1]+['5']);raise AssertionError('over-deadline result accepted')
+           except b.MeasurementDeadlineExpired:pass
+           record=json.loads((p/'remaining-timeout.boundary.json').read_text());assert marker.exists() and record['timeoutSeconds']<.16 and record['eligible'] is False
+           c={'serial':'owned','session':'owned-session','state':'owned-state','workspace':'owned-workspace'}; reg={'pid':1234,'startTime':'identity'};claim={'classification':'owner-process-dead','device':{'id':'owned'},'owner':{'session':'owned-session','stateDir':'owned-state','workspace':'owned-workspace','pid':1234,'startTime':'identity'}}
+           assert b.owned_dead_claims([claim],c,reg,True)
+           for change in [dict(classification='live'),dict(classification='unknown'),dict(owner={**claim['owner'],'session':'foreign'}),dict(owner={**claim['owner'],'pid':2222}),dict(owner={**claim['owner'],'stateDir':'foreign'})]:assert not b.owned_dead_claims([{**claim,**change}],c,reg,True)
+           assert not b.owned_dead_claims([claim],c,reg,False)
+           print('PASS: late entry rejection before process allocation; viable within-bound subprocess; remaining-time timeout excluded; owned dead claim release permits only matching identity after clean stop; live/uncertain/foreign identities rejected')
+
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td);marker=p/'cleanup'; started=p/'started'; runner=p/'runner.py'; runner.write_text("import datetime,importlib.util,pathlib,signal,sys,time\ns=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py');b=importlib.util.module_from_spec(s);s.loader.exec_module(b)\np=pathlib.Path(sys.argv[1]);boundary=b.MeasurementBoundary(datetime.datetime.fromtimestamp(time.time()+30,datetime.timezone.utc).isoformat(),p);signal.signal(signal.SIGTERM,boundary.interrupt)\ntry:boundary.run('cancelled-operation',['python3','-c','import pathlib,time,sys;pathlib.Path(sys.argv[1]).write_text(\"started\");time.sleep(10)',str(p/'started')])\nexcept b.MeasurementDeadlineExpired:pass\nfinally:(p/'cleanup').write_text('cleanup entered')\n")
+           child=subprocess.Popen(['python3',str(runner),str(p)])
+           for i in range(100):
+            if started.exists():break
+            time.sleep(.01)
+           assert started.exists();child.send_signal(signal.SIGTERM);assert child.wait(timeout=5)==0;assert marker.exists();record=json.loads((p/'cancelled-operation.boundary.json').read_text());assert record['eligible'] is False and record['cancelled'] is True
+           print('PASS: cancellation excludes active owned subprocess result and enters cleanup; no monitor-only child or process remains')
+          REVIEW33_EOF
+          cat > /tmp/review33-cleanup.py <<'REVIEW33_EOF'
+          import importlib.util,json,os,pathlib,shlex,shutil,subprocess,time,traceback
+          spec=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py'); b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
+          def process_identity(pid):
+           p=pathlib.Path('/proc')/str(pid)
+           try:
+            stat=(p/'stat').read_text(); fields=stat.rsplit(')',1)[1].split()
+            return {'pid':pid,'startTicks':fields[19],'state':fields[0],'argv':(p/'cmdline').read_bytes().decode(errors='replace').split('\0')}
+           except FileNotFoundError:return None
+
+          def emulator_identity(serial,avd):
+           roots={pathlib.Path('/run/user')/str(os.getuid())/'avd/running',pathlib.Path('/tmp')/('android-'+str(os.getuid()))/'running',pathlib.Path('/tmp')/('android-'+os.environ.get('USER','runner'))/'running'}
+           if os.environ.get('XDG_RUNTIME_DIR'):roots.add(pathlib.Path(os.environ['XDG_RUNTIME_DIR'])/'avd/running')
+           found=[]
+           for root in roots:
+            for file in root.glob('pid_*.ini'):
+             pairs=dict(line.split('=',1) for line in file.read_text().splitlines() if '=' in line); pairs={k.strip():v.strip() for k,v in pairs.items()}
+             if pairs.get('port.serial')==serial.removeprefix('emulator-') and avd in (pairs.get('avd.name'),pairs.get('avd.id')):
+              pid=int(file.stem.removeprefix('pid_')); identity=process_identity(pid)
+              if identity and any('-avd'==v and identity['argv'][i+1]==avd for i,v in enumerate(identity['argv'][:-1])):found.append({'discoveryPath':str(file),'discovery':{k:v for k,v in pairs.items() if k in ('port.serial','port.adb','avd.name','avd.id','avd.dir','emulator.version','emulator.build','cmdline')},'process':identity})
+           assert len(found)==1, 'exact action-owned emulator discovery/process identity unavailable'
+           return found[0]
+
+          def cleanup(E):
+           E=pathlib.Path(E); C=json.loads((E/'cleanup-context.json').read_text());conditions={};results={};transcript=[]
+           cli=['node','--experimental-strip-types','src/bin.ts']; state=C['state']; session=C['session']; serial=C['serial'];adb=pathlib.Path(C['adb']);real=pathlib.Path(str(adb)+'.review33-original'); common=['--platform','android','--serial',serial,'--session',session,'--state-dir',state,'--json']
+           def run(name,args):
+            started=time.time()
+            try:r=subprocess.run(args,capture_output=True,timeout=120);code=r.returncode;out=r.stdout;err=r.stderr
+            except subprocess.TimeoutExpired as x:code=124;out=x.stdout or b'';err=x.stderr or b''
+            (E/(name+'.stdout')).write_bytes(out);(E/(name+'.stderr')).write_bytes(err);results[name]={'argv':args,'exitCode':code,'stdout':out.decode(errors='replace'),'stderr':err.decode(errors='replace'),'startUnixMs':started*1000,'endUnixMs':time.time()*1000,'classification':'cleanup-not-measurement'};transcript.append('$ '+shlex.join(args)+'\n'+out.decode(errors='replace')+'\n'+err.decode(errors='replace')+'\nexit='+str(code));return results[name]
+           def data(name):
+            r=results[name];return json.loads(r['stdout']).get('data',{}) if r['exitCode']==0 else {}
+           # Preserve raw records even if any cleanup step fails.
+           if pathlib.Path(state).exists():shutil.copytree(state,E/'raw-daemon-before-cleanup',dirs_exist_ok=True)
+           if pathlib.Path(os.environ['AGENT_DEVICE_CLAIMS_DIR']).exists():shutil.copytree(os.environ['AGENT_DEVICE_CLAIMS_DIR'],E/'raw-claims-before-cleanup',dirs_exist_ok=True)
+           if real.exists():
+            original=C.get('observerIntegrity',{});assert original and original['originalSha256']==__import__('hashlib').sha256(real.read_bytes()).hexdigest()
+            adb.unlink();real.rename(adb);pathlib.Path(str(adb)+'.json').unlink(missing_ok=True)
+           integrity=C.get('observerIntegrity',{})
+           if integrity:
+            integrity['restoredSha256']=__import__('hashlib').sha256(adb.read_bytes()).hexdigest();integrity['restored']=integrity['originalSha256']==integrity['restoredSha256'];conditions['observerRestored']=integrity['restored'];(E/'observer-integrity.json').write_text(json.dumps(integrity,indent=2))
+           if pathlib.Path(state).exists():
+            run('cleanup-session-list',cli+['session','list','--state-dir',state,'--json']);sessions=data('cleanup-session-list').get('sessions',[])
+            registration=json.loads((pathlib.Path(state)/'daemon.json').read_text()) if (pathlib.Path(state)/'daemon.json').exists() else C.get('daemonRegistration',{})
+            registration={'pid':registration.get('pid'),'startTime':registration.get('processStartTime',registration.get('startTime'))}
+            (E/'cleanup-owner-registration.json').write_text(json.dumps(registration,indent=2))
+            if C['api']==36 and any(s.get('name')==session and s.get('id')==serial for s in sessions):run('close',cli+['close']+common);conditions['sessionClosed']=results['close']['exitCode']==0
+            run('session-list-cleanup',cli+['session','list','--state-dir',state,'--json']);conditions['ownedSessionsAbsent']=results['session-list-cleanup']['exitCode']==0 and data('session-list-cleanup').get('sessions')==[]
+            run('daemon-stop',cli+['daemon','stop','--clean','--state-dir',state,'--json']);d=data('daemon-stop');conditions['daemonStoppedClean']=results['daemon-stop']['exitCode']==0 and d.get('stopped') is True and d.get('clean') is True and d.get('cleanupConfidence')=='known' and d.get('providerReleases',{}).get('pending')==[] and d.get('claimsOrphaned')==[] and d.get('claimsUnattributable')==[] and d.get('claimsSuperseded')==[]
+            run('device-status-stale-before-release',cli+['device','status','--stale','--platform','android','--serial',serial,'--json']);claims=data('device-status-stale-before-release').get('claims')
+            release_allowed=b.owned_dead_claims(claims or [],C,registration,conditions['daemonStoppedClean']);(E/'claim-release-authorization.json').write_text(json.dumps({'ownedDeadIdentityMatched':release_allowed,'claims':claims,'registration':registration,'context':C,'cleanStopped':conditions['daemonStoppedClean']},indent=2))
+            if claims and release_allowed:
+             run('device-release-stale',cli+['device','release','--stale','--platform','android','--serial',serial,'--json']);released=data('device-release-stale');conditions['onlyOwnedDeadClaimReleased']=results['device-release-stale']['exitCode']==0 and len(released.get('released',[]))==len(claims) and released.get('retained')==[] and released.get('refused')==[] and released.get('changed')==[]
+            elif claims:conditions['unsafeClaimReleaseRefused']=False
+            run('device-status-stale',cli+['device','status','--stale','--platform','android','--serial',serial,'--json']);conditions['supportedDeviceStatus']=results['device-status-stale']['exitCode']==0 and data('device-status-stale').get('claims')==[]
+            run('device-status',cli+['device','status','--platform','android','--serial',serial,'--json']);conditions['noDeviceClaims']=results['device-status']['exitCode']==0 and data('device-status').get('claims')==[] and data('device-status').get('hiddenStaleClaims')==0
+            if pathlib.Path(state).exists():shutil.copytree(state,E/'daemon-state-after-cleanup',dirs_exist_ok=True)
+           # Native SDK restoration and owned daemon cleanup precede the exact owned serial stop.
+           owned=C.get('emulatorIdentity');run('emulator-avd-before-stop',[str(adb),'-s',serial,'emu','avd','name']);avd_matches=C['avd'] in results['emulator-avd-before-stop']['stdout'].splitlines()
+           if owned and avd_matches:run('owned-emulator-stop',[str(adb),'-s',serial,'emu','kill']);conditions['ownedEmulatorStopRequested']=results['owned-emulator-stop']['exitCode']==0
+           elif not owned:conditions['ownedEmulatorIdentityCaptured']=False
+           checks=[]
+           for attempt in range(16):
+            r=run('device-final-state-'+str(attempt),[str(adb),'-s',serial,'get-state']);current=process_identity(owned['process']['pid']) if owned else None;same=bool(current and current['startTicks']==owned['process']['startTicks'] and current['state']!='Z');checks.append({'attempt':attempt,'sameOwnedEmulatorLive':same,'ownedProcessObservation':current,'getStateExit':r['exitCode'],'stdout':r['stdout'],'stderr':r['stderr']})
+            if owned and not same and r['exitCode']!=0:break
+            if attempt<15:time.sleep(2)
+           conditions['ownedEmulatorGone']=bool(owned) and not checks[-1]['sameOwnedEmulatorLive'];conditions['ownedSerialUnavailable']=checks[-1]['getStateExit']!=0
+           (E/'emulator-runner-cleanup.json').write_text(json.dumps({'checks':checks,'verifiedStopped':conditions['ownedEmulatorGone'] and conditions['ownedSerialUnavailable'],'basis':'action-owned serial and exact AVD discovery PID/start identity; SDK adb emu kill; no process table search or signal'},indent=2))
+           (E/'cleanup-command-transcript.txt').write_text('\n'.join(transcript));report={'conditions':conditions,'results':results,'passed':bool(conditions) and all(conditions.values()),'classification':'cleanup-not-measurement'};(E/'cleanup.json').write_text(json.dumps(report,indent=2));return report
+          if __name__=='__main__':
+           E=pathlib.Path(os.environ['EVIDENCE'])
+           if (E/'cleanup-context.json').exists() and not (E/'cleanup.json').exists():
+            try:report=cleanup(E);print(json.dumps(report['conditions'],indent=2));raise SystemExit(0 if report['passed'] else 1)
+            except Exception:(E/'cleanup-exception.txt').write_text(traceback.format_exc());raise
+          REVIEW33_EOF
+          cat > /tmp/review33-cleanup-selfcheck.py <<'REVIEW33_EOF'
+          import importlib.util,json,os,pathlib,tempfile
+          spec=importlib.util.spec_from_file_location('cleanup','/tmp/review33-cleanup.py');c=importlib.util.module_from_spec(spec);spec.loader.exec_module(c)
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td);E=p/'evidence';E.mkdir();state=p/'state';state.mkdir();bins=p/'bin';bins.mkdir();claims=p/'claims';claims.mkdir();requests=state/'sessions/owned-session/requests';requests.mkdir(parents=True);(requests/'raw.ndjson').write_text('{"rawRequest":"retained-before-cleanup"}\n');(state/'daemon.json').write_text(json.dumps({'pid':1234,'processStartTime':'owned-start'})); log=p/'calls'; stopped=p/'stopped';released=p/'released'; vm=p/'vm-gone'
+           context={'api':23,'state':str(state),'session':'owned-session','serial':'owned-serial','avd':'owned-avd','workspace':str(p),'adb':str(bins/'adb'),'emulatorIdentity':{'process':{'pid':4321,'startTicks':'owned-ticks'}}};(E/'cleanup-context.json').write_text(json.dumps(context));identity={'session':'owned-session','stateDir':str(state),'workspace':str(p),'pid':1234,'startTime':'owned-start'}
+           node=bins/'node';node.write_text('''#!/usr/bin/env python3
+          import json,os,pathlib,sys
+          args=sys.argv[1:];p=pathlib.Path(os.environ['FIXTURE']);log=p/'calls';log.open('a').write(json.dumps(args)+'\\n');data={}
+          if 'session' in args:data={'sessions':[]}
+          elif 'daemon' in args:
+           (p/'stopped').write_text('yes');(p/'state/sessions/owned-session/requests/raw.ndjson').unlink();data={'stopped':True,'clean':True,'cleanupConfidence':'known','providerReleases':{'pending':[]},'claimsOrphaned':[],'claimsUnattributable':[],'claimsSuperseded':[]}
+          elif 'release' in args:
+           assert (p/'stopped').exists();assert '--state-dir' not in args;(p/'released').write_text('yes');data={'released':[{}],'retained':[],'refused':[],'changed':[]}
+          elif 'status' in args:
+           assert '--state-dir' not in args
+           data={'claims':[],'hiddenStaleClaims':0}
+           if '--stale' in args and not (p/'released').exists():data={'claims':[{'classification':'owner-process-dead','device':{'id':'owned-serial'},'owner':json.loads(os.environ['CLAIM_IDENTITY'])}]}
+          print(json.dumps({'success':True,'data':data}))
+          ''');node.chmod(0o755)
+           adb=bins/'adb';adb.write_text('''#!/usr/bin/env python3
+          import json,os,pathlib,sys
+          p=pathlib.Path(os.environ['FIXTURE']);a=sys.argv[1:];(p/'calls').open('a').write(json.dumps(a)+'\\n');assert a[:2]==['-s','owned-serial']
+          if a[2:]==['emu','avd','name']:print('owned-avd\\nOK')
+          elif a[2:]==['emu','kill']:assert (p/'released').exists();(p/'vm-gone').write_text('yes');print('OK')
+          elif a[2:]==['get-state']:sys.exit(1 if (p/'vm-gone').exists() else 0)
+          else:raise AssertionError(a)
+          ''');adb.chmod(0o755)
+           os.environ.update(FIXTURE=str(p),CLAIM_IDENTITY=json.dumps(identity),AGENT_DEVICE_CLAIMS_DIR=str(claims),PATH=str(bins)+os.pathsep+os.environ['PATH']);c.process_identity=lambda pid:None if vm.exists() else {'pid':4321,'startTicks':'owned-ticks','state':'S'}
+           report=c.cleanup(E);assert report['passed'];assert (E/'raw-daemon-before-cleanup/sessions/owned-session/requests/raw.ndjson').exists();calls=[json.loads(x) for x in log.read_text().splitlines()];assert not any('close' in a for a in calls);assert any('release' in a for a in calls);assert vm.exists();assert calls.index(['-s','owned-serial','emu','kill'])>next(i for i,a in enumerate(calls) if 'release' in a)
+           print('PASS: controlled API23 refusal cleanup archives raw request logs before destructive stop; normalizes daemon registration start identity; supported stale release; no alias close; exact owned serial emu kill; exact identity and serial disposal verification')
+
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td);running=p/'avd/running';running.mkdir(parents=True);os.environ['XDG_RUNTIME_DIR']=str(p);f=running/'pid_4321.ini';f.write_text('port.serial=5554\navd.id=owned-avd\navd.name=Owned AVD\ngrpc.token=never-retain\n');c.process_identity=lambda pid:{'pid':pid,'startTicks':'owned-start','state':'S','argv':['qemu','-port','5554','-avd','owned-avd']};owned=c.emulator_identity('emulator-5554','owned-avd');assert owned['process']['pid']==4321 and 'grpc.token' not in owned['discovery']
+           try:c.emulator_identity('emulator-5556','owned-avd');raise AssertionError('foreign serial accepted')
+           except AssertionError as e:assert str(e)=='exact action-owned emulator discovery/process identity unavailable'
+           c.process_identity=lambda pid:None
+           try:c.emulator_identity('emulator-5554','owned-avd');raise AssertionError('dead process accepted')
+           except AssertionError as e:assert str(e)=='exact action-owned emulator discovery/process identity unavailable'
+           print('PASS: owned emulator discovery resolves fixed port/AVD to direct process identity; foreign serial and missing process rejected; authentication token excluded')
+          REVIEW33_EOF
+          cat > /tmp/review33-measure.py <<'REVIEW33_EOF'
+          import datetime,importlib.util,signal,base64,hashlib,json,os,pathlib,shlex,shutil,subprocess,sys,time,traceback
+          E=pathlib.Path(os.environ['EVIDENCE']); E.mkdir(parents=True,exist_ok=True)
+          api=int(os.environ['EXPECTED_API']); state=os.environ['SUBJECT_STATE_DIR']; session='pr3555-round33-api'+str(api)
+          revision='22dc288c6174048e78c7750aea1f46b3150fac3a'; results={}; conditions={}; transcript=[]; installed=False; created=False; integrity={}; serial='emulator-5554'
+          spec=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py'); b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
+          boundary=b.MeasurementBoundary(os.environ['MEASUREMENT_DEADLINE_UTC'],E)
+          signal.signal(signal.SIGTERM,boundary.interrupt);signal.signal(signal.SIGINT,boundary.interrupt)
+          spec=importlib.util.spec_from_file_location('cleanup','/tmp/review33-cleanup.py'); cleanup_module=importlib.util.module_from_spec(spec);spec.loader.exec_module(cleanup_module)
+          context={'api':api,'state':state,'session':session,'serial':serial,'avd':os.environ['OWNED_AVD_NAME'],'workspace':os.getcwd(),'adb':str(pathlib.Path(os.environ['ANDROID_SDK_ROOT'])/'platform-tools/adb'),'measurementDeadlineUtc':os.environ['MEASUREMENT_DEADLINE_UTC']}
+          def save_context(): (E/'cleanup-context.json').write_text(json.dumps(context,indent=2))
+          save_context()
+          def run(name,args):
+           transcript.append('$ '+shlex.join(args))
+           p=boundary.run(name,args); code=p.returncode; out=p.stdout;err=p.stderr
+           r={'argv':args,'exitCode':code,'stdout':out.decode(errors='replace'),'stderr':err.decode(errors='replace')}; results[name]=r; transcript.extend([r['stdout'],r['stderr'],'exit='+str(code)]); return r
+          def obj(name):
+           try: return json.loads(results[name]['stdout'])
+           except Exception: return {}
+          def data(name): return obj(name).get('data',{})
+          def sha(p): return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
+          adb=pathlib.Path(os.environ['ANDROID_SDK_ROOT'])/'platform-tools/adb'; real=pathlib.Path(str(adb)+'.review33-original'); phase=E/'observer-phase.txt'; records=E/'native-records'; records.mkdir(exist_ok=True)
+          cli=['node','--experimental-strip-types','src/bin.ts']; common=['--platform','android','--serial',serial,'--session',session,'--state-dir',state,'--json']
           try:
-           args=p.read_bytes().split(b'\0'); executable=args[0].decode(errors='replace')
-           if pathlib.Path(executable).name=='emulator' or pathlib.Path(executable).name.startswith('qemu-system-'): found.append({'pid':int(p.parent.name),'argv':[a.decode(errors='replace') for a in args if a]})
-          except (OSError,ValueError): pass
-         return found
-        adb=pathlib.Path(os.environ['ANDROID_SDK_ROOT'])/'platform-tools/adb'; real=pathlib.Path(str(adb)+'.review32-original'); phase=E/'observer-phase.txt'; records=E/'native-records'; records.mkdir(exist_ok=True)
-        cli=['node','--experimental-strip-types','src/bin.ts']; common=['--platform','android','--serial',serial,'--session',session,'--state-dir',state,'--json']
-        try:
-         conditions['exactSource']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==revision; assert conditions['exactSource']
-         conditions['distinctPreparationState']=state!=os.environ['AGENT_DEVICE_STATE_DIR']; assert conditions['distinctPreparationState']
-         devices=run('devices',[str(adb),'devices','-l']); owned=[line.split()[0] for line in devices['stdout'].splitlines() if len(line.split())>1 and line.split()[1]=='device']; assert owned==[serial]
-         sdk=run('sdk',[str(adb),'-s',serial,'shell','getprop','ro.build.version.sdk']); conditions['expectedApi']=sdk['exitCode']==0 and sdk['stdout'].strip()==str(api)
-         run('identity',[str(adb),'-s',serial,'shell','getprop','ro.build.fingerprint']); run('os-release',[str(adb),'-s',serial,'shell','getprop','ro.build.version.release']); run('avd',[str(adb),'-s',serial,'emu','avd','name']); (E/'emulator-processes-start.json').write_text(json.dumps(emulators(),indent=2))
-         version=json.loads(pathlib.Path('package.json').read_text())['version']; sources={}
-         for f in ['package.json','src/bin.ts','packages/platform-android/src/lifecycle.ts','packages/platform-android/src/open-target-resolution.ts','android/snapshot-helper/AndroidManifest.xml','android/ime-helper/AndroidManifest.xml']:
-          dest=E/'source'/f; dest.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest); sources[f]={'sha256':sha(f),'gitBlob':subprocess.check_output(['git','rev-parse','HEAD:'+f],text=True).strip()}
-         (E/'source-identity.json').write_text(json.dumps({'runtimeRevision':revision,'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'packageVersion':version,'sources':sources,'trackedDiff':subprocess.check_output(['git','diff','HEAD','--'],text=True)},indent=2))
-         for f in pathlib.Path('android').glob('*/dist/*'):
-          if f.is_file(): dest=E/'helpers'/f.parent.parent.name; dest.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest/f.name)
-         run('session-list-before',cli+['session','list','--state-dir',state,'--json']); conditions['sessionInitiallyAbsent']=results['session-list-before']['exitCode']==0 and data('session-list-before').get('sessions')==[]; assert conditions['sessionInitiallyAbsent']
-         integrity={'originalPath':str(adb),'nativePathDuringObservation':str(real),'originalSha256':sha(adb),'observerSha256':sha('/tmp/review32-observer.cjs'),'serial':serial,'instrumentation':'SDK-path host observer recording every invocation; timing perturbed; shipping source untouched'}
-         assert not real.exists(); adb.rename(real); installed=True; phase.write_text('pre-subject')
-         pathlib.Path(str(adb)+'.json').write_text(json.dumps({'real':str(real),'serial':serial,'records':str(records),'phasePath':str(phase)})); shutil.copy2('/tmp/review32-observer.cjs',adb); adb.chmod(0o755)
-         # The separate direct query is outside the public operation's observation window.
-         run('direct-resolver',[str(adb),'-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS'])
-         phase.write_text('public-open'); start=time.time_ns()
-         r=run('public-open',cli+['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0']+common)
-         end=time.time_ns(); phase.write_text('post-subject'); (E/'observation-window.json').write_text(json.dumps({'startUnixNs':start,'endUnixNs':end,'phase':'public-open','includesCleanup':False},indent=2))
-         observed=[json.loads(f.read_text()) for f in records.glob('*.json') if not f.name.endswith('.start.json')]; subject=[x for x in observed if x['phase']=='public-open']; starts=[json.loads(f.read_text()) for f in records.glob('*.start.json') if json.loads(f.read_text())['phase']=='public-open']; (E/'subject-native-executions.json').write_text(json.dumps(subject,indent=2))
-         blockingStarts=starts if api==23 else [x for x in starts if 'shell' in x['argv'] and any(v in ('cmd','am') for v in x['argv'][x['argv'].index('shell')+1:])]
-         conditions['observerComplete']=bool(subject) and {x['recordId'] for x in blockingStarts}.issubset({x['recordId'] for x in subject})
-         query=['-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']; launch=['-s',serial,'shell','am','start','-W','-a','android.settings.SETTINGS','-S','-R','1','--display','0']; resolvers=[x for x in subject if x['argv']==query]
-         conditions['actualCliResolver']=bool(resolvers)
-         created=r['exitCode']==0
-         if api==23:
-          error=obj('public-open').get('error',{}); conditions['explicitOwnerRefusal']=r['exitCode']==1 and obj('public-open').get('success') is False and error.get('code')=='COMMAND_FAILED' and error.get('details',{}).get('reason')=='android-relaunch-owner-unresolved'
-          conditions['nativeResolverUnavailable']=bool(resolvers) and all(x['exitCode']==0 and base64.b64decode(x['stdoutBase64'])==b'/system/bin/sh: cmd: not found\r\n' and base64.b64decode(x['stderrBase64'])==b'' for x in resolvers)
-          # Every SDK ADB invocation is retained; rejecting any am/monkey payload prevents alternate launch or force-stop from passing.
-          effects=[x for x in starts if 'shell' in x['argv'] and any(v in ('am','monkey') or 'am start' in v or 'am force-stop' in v or 'monkey ' in v for v in x['argv'][x['argv'].index('shell')+1:])]
-          conditions['noNativeLifecycleEffects']=not effects; (E/'subject-lifecycle-effects.json').write_text(json.dumps(effects,indent=2))
-         else:
-          conditions['publicOpenOwner']=r['exitCode']==0 and data('public-open').get('appBundleId')=='com.android.settings'
-          conditions['resolverOwner']=bool(resolvers) and all(x['exitCode']==0 and any(l.startswith('com.android.settings/') for l in base64.b64decode(x['stdoutBase64']).decode().splitlines()) for x in resolvers)
-          conditions['unchangedLaunchArgv']=any(x['argv']==launch and x['exitCode']==0 and b'Status: ok' in base64.b64decode(x['stdoutBase64']) for x in subject)
-          if created:
-           run('snapshot',cli+['snapshot','-i']+common); m=data('snapshot').get('androidSnapshot',{}); conditions['helperSnapshot']=results['snapshot']['exitCode']==0 and m.get('backend')=='android-helper' and m.get('helperVersion')==version
-          else: conditions['helperSnapshot']=False
-         run('session-list-after-operation',cli+['session','list','--state-dir',state,'--json']); sessions=data('session-list-after-operation').get('sessions'); conditions['sessionIdentity']=results['session-list-after-operation']['exitCode']==0 and (sessions==[] if api==23 else isinstance(sessions,list) and len(sessions)==1 and sessions[0].get('name')==session and sessions[0].get('id')==serial)
-        except Exception:
-         (E/'harness-exception.txt').write_text(traceback.format_exc()); conditions['harnessCompleted']=False
-        finally:
-         if installed:
-          adb.unlink(); real.rename(adb); pathlib.Path(str(adb)+'.json').unlink(); integrity['restoredSha256']=sha(adb); integrity['restored']=integrity['restoredSha256']==integrity['originalSha256']; conditions['observerRestored']=integrity['restored']
-         if integrity: (E/'observer-integrity.json').write_text(json.dumps(integrity,indent=2))
-         if created and api==36: run('close',cli+['close']+common); conditions['sessionClosed']=results['close']['exitCode']==0
-         if pathlib.Path(state).exists():
-          run('session-list-cleanup',cli+['session','list','--state-dir',state,'--json']); conditions['ownedSessionsAbsent']=results['session-list-cleanup']['exitCode']==0 and data('session-list-cleanup').get('sessions')==[]
-          run('daemon-stop',cli+['daemon','stop','--clean','--state-dir',state,'--json']); d=data('daemon-stop'); conditions['daemonStoppedClean']=results['daemon-stop']['exitCode']==0 and d.get('stopped') is True and d.get('clean') is True and d.get('cleanupConfidence')=='known' and d.get('providerReleases',{}).get('pending')==[] and d.get('claimsOrphaned')==[] and d.get('claimsUnattributable')==[] and d.get('claimsSuperseded')==[]
-          run('device-status-stale',cli+['device','status','--stale','--platform','android','--serial',serial,'--json']); conditions['supportedDeviceStatus']=results['device-status-stale']['exitCode']==0 and data('device-status-stale').get('claims')==[]
-          run('device-status',cli+['device','status','--platform','android','--serial',serial,'--json']); conditions['noDeviceClaims']=results['device-status']['exitCode']==0 and data('device-status').get('claims')==[] and data('device-status').get('hiddenStaleClaims')==0
-          shutil.copytree(state,E/'daemon-state',dirs_exist_ok=True)
-         run('device-final-state',[str(adb),'-s',serial,'get-state'])
-         (E/'literal-command-transcript.txt').write_text('\n'.join(transcript)); (E/'measurement.json').write_text(json.dumps({'api':api,'conditions':conditions,'results':results,'passed':bool(conditions) and all(conditions.values())},indent=2)); print(json.dumps({'api':api,'conditions':conditions},indent=2))
-         if not conditions or not all(conditions.values()): sys.exit(1)
-        REVIEW32_EOF
-        node --check /tmp/review32-observer.cjs
-        python3 /tmp/review32-selfcheck.py | tee "$EVIDENCE/observer-selfcheck.txt"
-        python3 -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in ["/tmp/review32-selfcheck.py","/tmp/review32-measure.py"]]'
-    - name: Verify selected SDK image exists and preserve identity
-      shell: bash
-      run: |
-        set -euo pipefail
-        SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-        "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list > "$EVIDENCE/sdkmanager-list.txt"
-        python3 - "$EVIDENCE/sdkmanager-list.txt" 'system-images;android-36;google_apis_playstore;x86_64' <<'PYVERIFY'
-        import pathlib,sys
-        assert any(line.strip().split(' | ')[0].strip()==sys.argv[2] for line in pathlib.Path(sys.argv[1]).read_text().splitlines()), 'selected system image absent'
-        PYVERIFY
-        git rev-parse HEAD > "$EVIDENCE/runtime-revision.txt"
-        printf '%s\n' "$GITHUB_SHA" > "$EVIDENCE/workflow-revision.txt"
-        sha256sum android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml > "$EVIDENCE/source-manifest-sha256.txt"
-        pnpm gate build
-        pnpm clean:daemon
-        node --experimental-strip-types --input-type=module - <<'CLIPREREQUISITES' > "$EVIDENCE/cli-prerequisites.json"
-        import assert from 'node:assert/strict';
-        import { resolveCliOptions } from './src/cli/resolve-cli-options.ts';
-        import { readInputFromCli } from './src/commands/cli-grammar.ts';
-        const common=['--platform','android','--serial','emulator-5554','--session','pr3555-round32-check','--state-dir','/private/tmp/pr3555-round32-check','--json'];
-        const cases=[['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0',...common], ['snapshot','-i',...common], ['close',...common],['session','list','--state-dir','/private/tmp/pr3555-round32-check','--json'],['daemon','stop','--clean','--state-dir','/private/tmp/pr3555-round32-check','--json'],['device','status','--stale','--platform','android','--serial','emulator-5554','--json'],['device','status','--platform','android','--serial','emulator-5554','--json']];
-        const parsed=cases.map(argv=>({argv,parsed:resolveCliOptions(argv,{cwd:process.cwd(),env:process.env,strictFlags:true})}));
-        assert.deepEqual(parsed[0].parsed.flags.launchArgs,['-S','-R','1','--display','0']);
-        const input=readInputFromCli('open',parsed[0].parsed.positionals,parsed[0].parsed.flags);
-        assert.equal(input.relaunch,true);
-        assert.deepEqual(input.launchArgs,['-S','-R','1','--display','0']);
-        assert.throws(()=>resolveCliOptions(['device','status','--state-dir','/private/tmp/invalid'],{strictFlags:true}));
-        console.log(JSON.stringify({passed:true,parsed,publicOpenInput:input},null,2));
-        CLIPREREQUISITES
-        node --experimental-strip-types --input-type=module - <<'SUBJECTSTATE' > "$EVIDENCE/subject-state-construction.json"
-        import { createOwnedReplayStateDir } from '@agent-device/daemon-contracts/daemon-registration-owner';
-        const owned = createOwnedReplayStateDir();
-        console.log(JSON.stringify({ source: 'createOwnedReplayStateDir', preparationState: process.env.AGENT_DEVICE_STATE_DIR, subjectState: owned.paths.baseDir, paths: owned.paths }, null, 2));
-        SUBJECTSTATE
-        node -e 'const fs=require("node:fs"); const state=JSON.parse(fs.readFileSync(process.env.EVIDENCE+"/subject-state-construction.json", "utf8")); if(state.preparationState===state.subjectState) process.exit(1); fs.appendFileSync(process.env.GITHUB_ENV, "SUBJECT_STATE_DIR="+state.subjectState+"\n");'
-        test -x "$SDK_ROOT/platform-tools/adb"
-        test ! -e "$SDK_ROOT/platform-tools/adb.review32-original"
-        for source in package.json src/bin.ts packages/platform-android/src/lifecycle.ts packages/platform-android/src/open-target-resolution.ts android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml; do
-          test -f "$source"
-          git rev-parse "HEAD:$source" > /dev/null
-        done
-    - name: Measure targeted API 36 native evidence
-      uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b
-      with:
-        api-level: 36
-        arch: x86_64
-        profile: pixel_7
-        target: google_apis_playstore
-        emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio
-          -no-boot-anim -no-metrics"
-        script: python3 /tmp/review32-measure.py
-    - name: Record emulator runner final state
-      if: always()
-      shell: bash
-      run: |
-        set +e
-        "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/platform-tools/adb" devices -l > "$EVIDENCE/emulator-runner-final-state.stdout" 2> "$EVIDENCE/emulator-runner-final-state.stderr"
-        code=$?
-        printf '%s\n' "$code" > "$EVIDENCE/emulator-runner-final-state.exit"
-        python3 - <<'PYFINAL'
-        import os,pathlib,json,subprocess,time
-        p=pathlib.Path(os.environ['EVIDENCE']); adb=str(pathlib.Path(os.environ.get('ANDROID_SDK_ROOT',os.environ['ANDROID_HOME']))/'platform-tools/adb'); checks=[]
-        def processes():
-         found=[]
-         for f in pathlib.Path('/proc').glob('[0-9]*/cmdline'):
-          try:
-           args=f.read_bytes().split(b'\0'); name=pathlib.Path(args[0].decode(errors='replace')).name
-           if name=='emulator' or name.startswith('qemu-system-'): found.append({'pid':int(f.parent.name),'argv':[a.decode(errors='replace') for a in args if a]})
-          except (OSError,ValueError): pass
-         return found
-        for attempt in range(16):
-         r=subprocess.run([adb,'-s','emulator-5554','get-state'],capture_output=True,timeout=10); live=processes(); checks.append({'attempt':attempt,'liveEmulatorProcesses':live,'getStateExit':r.returncode,'stdout':r.stdout.decode(errors='replace'),'stderr':r.stderr.decode(errors='replace')})
-         if not live and r.returncode!=0: break
-         if attempt<15: time.sleep(2)
-        verified=not checks[-1]['liveEmulatorProcesses'] and checks[-1]['getStateExit']!=0
-        (p/'emulator-runner-cleanup.json').write_text(json.dumps({'checks':checks,'verifiedStopped':verified,'basis':'no live emulator or qemu-system process and owned serial get-state fails; stale offline ADB entries do not establish a live emulator'},indent=2))
-        assert verified, 'owned emulator final cleanup is unverified'
-        PYFINAL
-    - name: Digest retained native evidence
-      if: always()
-      shell: bash
-      run: |
-        python3 - <<'PYDIGEST'
-        import hashlib,json,os,pathlib
-        p=pathlib.Path(os.environ['EVIDENCE']); (p/'digests.json').write_text(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(p.rglob('*')) if f.is_file() and f.name!='digests.json'},indent=2))
-        PYDIGEST
-    - name: Upload targeted native proof (including failures)
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: pr3555-round32-api36-native-evidence
-        path: "${{ env.EVIDENCE }}"
-        include-hidden-files: true
-        if-no-files-found: error
-        retention-days: 14
+           conditions['exactSource']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==revision; assert conditions['exactSource']
+           conditions['distinctPreparationState']=state!=os.environ['AGENT_DEVICE_STATE_DIR']; assert conditions['distinctPreparationState']
+           devices=run('devices',[str(adb),'devices','-l']); owned=[line.split()[0] for line in devices['stdout'].splitlines() if len(line.split())>1 and line.split()[1]=='device']; assert owned==[serial]
+           sdk=run('sdk',[str(adb),'-s',serial,'shell','getprop','ro.build.version.sdk']); conditions['expectedApi']=sdk['exitCode']==0 and sdk['stdout'].strip()==str(api); assert conditions['expectedApi']
+           run('identity',[str(adb),'-s',serial,'shell','getprop','ro.build.fingerprint']); run('os-release',[str(adb),'-s',serial,'shell','getprop','ro.build.version.release']); run('avd',[str(adb),'-s',serial,'emu','avd','name']); context['emulatorIdentity']=cleanup_module.emulator_identity(serial,context['avd']);save_context();(E/'emulator-owned-identity.json').write_text(json.dumps(context['emulatorIdentity'],indent=2))
+           version=json.loads(pathlib.Path('package.json').read_text())['version']; sources={}
+           for f in ['package.json','src/bin.ts','packages/platform-android/src/lifecycle.ts','packages/platform-android/src/open-target-resolution.ts','android/snapshot-helper/AndroidManifest.xml','android/ime-helper/AndroidManifest.xml']:
+            dest=E/'source'/f; dest.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest); sources[f]={'sha256':sha(f),'gitBlob':subprocess.check_output(['git','rev-parse','HEAD:'+f],text=True).strip()}
+           (E/'source-identity.json').write_text(json.dumps({'runtimeRevision':revision,'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'packageVersion':version,'sources':sources,'trackedDiff':subprocess.check_output(['git','diff','HEAD','--'],text=True)},indent=2))
+           for f in pathlib.Path('android').glob('*/dist/*'):
+            if f.is_file(): dest=E/'helpers'/f.parent.parent.name; dest.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest/f.name)
+           run('session-list-before',cli+['session','list','--state-dir',state,'--json']); conditions['sessionInitiallyAbsent']=results['session-list-before']['exitCode']==0 and data('session-list-before').get('sessions')==[]; assert conditions['sessionInitiallyAbsent']
+           integrity={'originalPath':str(adb),'nativePathDuringObservation':str(real),'originalSha256':sha(adb),'observerSha256':sha('/tmp/review33-observer.cjs'),'serial':serial,'instrumentation':'SDK-path host observer recording every invocation; timing perturbed; shipping source untouched'}
+           context['observerIntegrity']=integrity;save_context();assert not real.exists(); adb.rename(real); installed=True; phase.write_text('pre-subject')
+           pathlib.Path(str(adb)+'.json').write_text(json.dumps({'real':str(real),'serial':serial,'records':str(records),'phasePath':str(phase),'deadlineUnixMs':boundary.deadline*1000})); shutil.copy2('/tmp/review33-observer.cjs',adb); adb.chmod(0o755)
+           # The separate direct query is outside the public operation's observation window.
+           run('direct-resolver',[str(adb),'-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS'])
+           phase.write_text('public-open'); start=time.time_ns()
+           r=run('public-open',cli+['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0']+common)
+           end=time.time_ns(); phase.write_text('post-subject'); (E/'observation-window.json').write_text(json.dumps({'startUnixNs':start,'endUnixNs':end,'phase':'public-open','includesCleanup':False},indent=2))
+           observed=[json.loads(f.read_text()) for f in records.glob('*.json') if not f.name.endswith('.start.json')]; subject=[x for x in observed if x['phase']=='public-open']; starts=[json.loads(f.read_text()) for f in records.glob('*.start.json') if json.loads(f.read_text())['phase']=='public-open']; (E/'subject-native-executions.json').write_text(json.dumps(subject,indent=2))
+           blockingStarts=starts if api==23 else [x for x in starts if 'shell' in x['argv'] and any(v in ('cmd','am') for v in x['argv'][x['argv'].index('shell')+1:])]
+           conditions['observerComplete']=bool(subject) and {x['recordId'] for x in blockingStarts}.issubset({x['recordId'] for x in subject})
+           query=['-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']; launch=['-s',serial,'shell','am','start','-W','-a','android.settings.SETTINGS','-S','-R','1','--display','0']; resolvers=[x for x in subject if x['argv']==query]
+           conditions['actualCliResolver']=bool(resolvers)
+           conditions['nativeOperationsWithinDeadline']=bool(subject) and all(x.get('nativeStarted') is True and x.get('eligible') is True and x['startUnixMs']<boundary.deadline*1000 and x['endUnixMs']<=boundary.deadline*1000 for x in subject)
+           created=r['exitCode']==0
+           registration=pathlib.Path(state)/'daemon.json'
+           if registration.exists():context['daemonRegistration']=json.loads(registration.read_text());save_context()
+           if api==23:
+            error=obj('public-open').get('error',{}); conditions['explicitOwnerRefusal']=r['exitCode']==1 and obj('public-open').get('success') is False and error.get('code')=='COMMAND_FAILED' and error.get('details',{}).get('reason')=='android-relaunch-owner-unresolved'
+            conditions['nativeResolverUnavailable']=bool(resolvers) and all(x['exitCode']==0 and base64.b64decode(x['stdoutBase64'])==b'/system/bin/sh: cmd: not found\r\n' and base64.b64decode(x['stderrBase64'])==b'' for x in resolvers)
+            # Every SDK ADB invocation is retained; rejecting any am/monkey payload prevents alternate launch or force-stop from passing.
+            effects=[x for x in starts if 'shell' in x['argv'] and any(v in ('am','monkey') or 'am start' in v or 'am force-stop' in v or 'monkey ' in v for v in x['argv'][x['argv'].index('shell')+1:])]
+            conditions['noNativeLifecycleEffects']=not effects; (E/'subject-lifecycle-effects.json').write_text(json.dumps(effects,indent=2))
+           else:
+            conditions['publicOpenOwner']=r['exitCode']==0 and data('public-open').get('appBundleId')=='com.android.settings'
+            stops=[x for x in subject if x['argv'][2:5]==['shell','am','force-stop']]
+            conditions['forceStopResolvedOwnerOnly']=bool(stops) and all(x['argv']==['-s',serial,'shell','am','force-stop','com.android.settings'] and x['exitCode']==0 for x in stops)
+            conditions['resolverOwner']=bool(resolvers) and all(x['exitCode']==0 and any(l.startswith('com.android.settings/') for l in base64.b64decode(x['stdoutBase64']).decode().splitlines()) for x in resolvers)
+            conditions['unchangedLaunchArgv']=any(x['argv']==launch and x['exitCode']==0 and b'Status: ok' in base64.b64decode(x['stdoutBase64']) for x in subject)
+            if created:
+             run('snapshot',cli+['snapshot','-i']+common); m=data('snapshot').get('androidSnapshot',{}); conditions['helperSnapshot']=results['snapshot']['exitCode']==0 and m.get('backend')=='android-helper' and m.get('helperVersion')==version
+            else: conditions['helperSnapshot']=False
+           run('session-list-after-operation',cli+['session','list','--state-dir',state,'--json']); sessions=data('session-list-after-operation').get('sessions'); conditions['sessionIdentity']=results['session-list-after-operation']['exitCode']==0 and (sessions==[] if api==23 else isinstance(sessions,list) and len(sessions)==1 and sessions[0].get('name')==session and sessions[0].get('id')==serial)
+          except Exception:
+           (E/'harness-exception.txt').write_text(traceback.format_exc()); conditions['harnessCompleted']=False
+          finally:
+           signal.signal(signal.SIGTERM,signal.SIG_IGN);signal.signal(signal.SIGINT,signal.SIG_IGN)
+           try:
+            cleanup_report=cleanup_module.cleanup(E);conditions.update(cleanup_report['conditions'])
+            conditions['rawRequestLogRetained']=bool(list((E/'raw-daemon-before-cleanup').glob('sessions/*/requests/*.ndjson')))
+           except Exception:
+            (E/'cleanup-exception.txt').write_text(traceback.format_exc());conditions['cleanupCompleted']=False
+           conditions['allMeasuredOperationsWithinDeadline']=all(json.loads(f.read_text())['eligible'] for f in E.glob('*.boundary.json')) and bool(list(E.glob('*.boundary.json')))
+           (E/'literal-command-transcript.txt').write_text('\n'.join(transcript)); (E/'measurement.json').write_text(json.dumps({'api':api,'runtimeRevision':revision,'deadlineUtc':os.environ['MEASUREMENT_DEADLINE_UTC'],'conditions':conditions,'results':results,'passed':bool(conditions) and all(conditions.values())},indent=2)); print(json.dumps({'api':api,'conditions':conditions},indent=2))
+           if not conditions or not all(conditions.values()): sys.exit(1)
+          REVIEW33_EOF
+          node --check /tmp/review33-observer.cjs
+          python3 /tmp/review33-selfcheck.py | tee "$EVIDENCE/observer-selfcheck.txt"
+          python3 /tmp/review33-boundary-selfcheck.py | tee "$EVIDENCE/boundary-selfcheck.txt"
+          python3 /tmp/review33-cleanup-selfcheck.py | tee "$EVIDENCE/cleanup-selfcheck.txt"
+          python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path("/tmp").glob("review33-*.py")]'
+          mkdir -p "$EVIDENCE/harness"
+          cp /tmp/review33-* "$EVIDENCE/harness/"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+      - name: Verify selected SDK image exists and preserve identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list > "$EVIDENCE/sdkmanager-list.txt"
+          python3 - "$EVIDENCE/sdkmanager-list.txt" 'system-images;android-36;google_apis_playstore;x86_64' <<'PYVERIFY'
+          import pathlib,sys
+          assert any(line.strip().split(' | ')[0].strip()==sys.argv[2] for line in pathlib.Path(sys.argv[1]).read_text().splitlines()), 'selected system image absent'
+          PYVERIFY
+          git rev-parse HEAD > "$EVIDENCE/runtime-revision.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$EVIDENCE/workflow-revision.txt"
+          sha256sum android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml > "$EVIDENCE/source-manifest-sha256.txt"
+          pnpm gate build
+          pnpm clean:daemon
+          node --experimental-strip-types --input-type=module - <<'CLIPREREQUISITES' > "$EVIDENCE/cli-prerequisites.json"
+          import assert from 'node:assert/strict';
+          import { resolveCliOptions } from './src/cli/resolve-cli-options.ts';
+          import { readInputFromCli } from './src/commands/cli-grammar.ts';
+          const common=['--platform','android','--serial','emulator-5554','--session','pr3555-round33-check','--state-dir','/private/tmp/pr3555-round33-check','--json'];
+          const cases=[['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0',...common], ['snapshot','-i',...common], ['close',...common],['session','list','--state-dir','/private/tmp/pr3555-round33-check','--json'],['daemon','stop','--clean','--state-dir','/private/tmp/pr3555-round33-check','--json'],['device','release','--stale','--platform','android','--serial','emulator-5554','--json'],['device','status','--stale','--platform','android','--serial','emulator-5554','--json'],['device','status','--platform','android','--serial','emulator-5554','--json']];
+          const parsed=cases.map(argv=>({argv,parsed:resolveCliOptions(argv,{cwd:process.cwd(),env:process.env,strictFlags:true})}));
+          assert.deepEqual(parsed[0].parsed.flags.launchArgs,['-S','-R','1','--display','0']);
+          const input=readInputFromCli('open',parsed[0].parsed.positionals,parsed[0].parsed.flags);
+          assert.equal(input.relaunch,true);
+          assert.deepEqual(input.launchArgs,['-S','-R','1','--display','0']);
+          assert.throws(()=>resolveCliOptions(['device','status','--state-dir','/private/tmp/invalid'],{strictFlags:true}));
+          console.log(JSON.stringify({passed:true,parsed,publicOpenInput:input},null,2));
+          CLIPREREQUISITES
+          node --experimental-strip-types --input-type=module - <<'SUBJECTSTATE' > "$EVIDENCE/subject-state-construction.json"
+          import { createOwnedReplayStateDir } from '@agent-device/daemon-contracts/daemon-registration-owner';
+          const owned = createOwnedReplayStateDir();
+          console.log(JSON.stringify({ source: 'createOwnedReplayStateDir', preparationState: process.env.AGENT_DEVICE_STATE_DIR, subjectState: owned.paths.baseDir, paths: owned.paths }, null, 2));
+          SUBJECTSTATE
+          node -e 'const fs=require("node:fs"); const state=JSON.parse(fs.readFileSync(process.env.EVIDENCE+"/subject-state-construction.json", "utf8")); if(state.preparationState===state.subjectState) process.exit(1); fs.appendFileSync(process.env.GITHUB_ENV, "SUBJECT_STATE_DIR="+state.subjectState+"\n");'
+          test -x "$SDK_ROOT/platform-tools/adb"
+          test ! -e "$SDK_ROOT/platform-tools/adb.review33-original"
+          for source in package.json src/bin.ts packages/platform-android/src/lifecycle.ts packages/platform-android/src/open-target-resolution.ts android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml; do
+            test -f "$source"
+            git rev-parse "HEAD:$source" > /dev/null
+          done
+      - name: Measure targeted API 36 native evidence
+        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: pixel_7
+          target: google_apis_playstore
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -grpc 8554
+          script: python3 /tmp/review33-measure.py
+          avd-name: pr3555-round33-api36
+          emulator-port: 5554
+      - name: Complete owned cleanup and preserve terminal state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/review33-cleanup.py ]; then python3 /tmp/review33-cleanup.py; fi
+          python3 - <<'PYFINAL'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['EVIDENCE']);report=p/'cleanup.json'
+          assert report.exists(), 'owned cleanup unavailable: measurement entry never established owned context or cleanup was interrupted'
+          assert json.loads(report.read_text())['passed'], 'owned cleanup did not prove all required conditions'
+          PYFINAL
+      - name: Digest retained native evidence
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PYDIGEST'
+          import hashlib,json,os,pathlib
+          p=pathlib.Path(os.environ['EVIDENCE']); (p/'digests.json').write_text(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(p.rglob('*')) if f.is_file() and f.name!='digests.json'},indent=2))
+          PYDIGEST
+      - name: Upload targeted native proof (including failures)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr3555-round33-api36-native-evidence
+          path: ${{ env.EVIDENCE }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
   native-api23:
     name: PR3555 targeted native proof API 23
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       EXPECTED_API: '23'
-      EVIDENCE: "${{ github.workspace }}/.tmp/pr3555-round32-api23-evidence"
-      AGENT_DEVICE_STATE_DIR: "${{ github.workspace }}/.tmp/pr3555-round32-api23-state"
+      EVIDENCE: ${{ github.workspace }}/.tmp/pr3555-round33-api23-evidence
+      AGENT_DEVICE_STATE_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api23-state
+      AGENT_DEVICE_CLAIMS_DIR: ${{ github.workspace }}/.tmp/pr3555-round33-api23-claims
+      OWNED_AVD_NAME: pr3555-round33-api23
+      XDG_RUNTIME_DIR: ${{ runner.temp }}/pr3555-round33-api23-runtime
+      MEASUREMENT_DEADLINE_UTC: ${{ inputs.deadline_utc }}
+      MEASUREMENT_DISPATCH_UTC: ${{ inputs.dispatch_started_utc }}
     steps:
-    - name: Checkout exact published PR3555 source
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      with:
-        ref: b69a3421a7d32d801540994b827b09dcf6cc5e70
-    - name: Setup Node 24.13 and frozen dependencies
-      uses: "./.github/actions/setup-node-pnpm"
-    - name: Setup isolated Android replay host
-      uses: "./.github/actions/setup-android-replay-host"
-      with:
-        package-helpers: 'true'
-    - name: Prepare observer and independently validate forwarding
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "$EVIDENCE"
-        cat > /tmp/review32-observer.cjs <<'REVIEW32_EOF'
-        #!/usr/bin/env node
-        'use strict';
-        const fs = require('node:fs');
-        const path = require('node:path');
-        const { spawn } = require('node:child_process');
-        const config = JSON.parse(fs.readFileSync(__filename + '.json', 'utf8'));
-        const args = process.argv.slice(2);
-        const phase = config.phasePath ? fs.readFileSync(config.phasePath, 'utf8') : 'selfcheck';
-        const recordId = `${Date.now()}-${process.pid}`;
-        const record = { recordId, phase, executable:config.real, argv:args, startUnixMs:Date.now() };
-        fs.writeFileSync(path.join(config.records, recordId + '.start.json'), JSON.stringify(record, null, 2));
-        const child = spawn(config.real, args, { env: process.env, stdio:['inherit','pipe','pipe'] });
-        const stdout = [], stderr = [];
-        child.stdout.on('data', b => stdout.push(b));
-        child.stderr.on('data', b => stderr.push(b));
-        child.stdout.pipe(process.stdout);
-        child.stderr.pipe(process.stderr);
-        for (const signal of ['SIGTERM','SIGINT','SIGHUP']) process.on(signal, () => child.kill(signal));
-        child.on('error', error => { process.stderr.write(error.message + '\n'); process.exitCode = 127; });
-        child.on('close', (code,signal) => {
-          fs.writeFileSync(path.join(config.records, recordId + '.json'), JSON.stringify({ ...record, stdoutBase64:Buffer.concat(stdout).toString('base64'), stderrBase64:Buffer.concat(stderr).toString('base64'), exitCode:code, signal, endUnixMs:Date.now() }, null, 2));
-          if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); }
-          else process.exitCode = code === null ? 127 : code;
-        });
-        REVIEW32_EOF
-        cat > /tmp/review32-selfcheck.py <<'REVIEW32_EOF'
-        import os,json,pathlib,subprocess,tempfile,signal
-        proxy=pathlib.Path('/tmp/review32-observer.cjs')
-        if not proxy.exists(): proxy=pathlib.Path('/private/tmp/review32-input/observer.cjs')
-        with tempfile.TemporaryDirectory() as td:
-         p=pathlib.Path(td); records=p/'records'; records.mkdir(); wrapper=p/'adb'; wrapper.write_bytes(proxy.read_bytes()); wrapper.chmod(0o755)
-         fake=p/'native'; fake.write_text('#!/usr/bin/env python3\nimport os,sys,json,signal\nopen(os.environ["FAKE_ARGV"],"w").write(json.dumps(sys.argv[1:]))\nsys.stdout.buffer.write(b"native\\x00stdout\\n");sys.stdout.flush()\nsys.stderr.buffer.write(b"native stderr\\n");sys.stderr.flush()\nif os.environ.get("FAKE_SIGNAL"): os.kill(os.getpid(),signal.SIGTERM)\nsys.exit(int(os.environ["FAKE_CODE"]))\n'); fake.chmod(0o755)
-         pathlib.Path(str(wrapper)+'.json').write_text(json.dumps(dict(real=str(fake),serial='owned',records=str(records))))
-         query=['-s','owned','shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']
-         for code in [0,17]:
-          env={**os.environ,'FAKE_CODE':str(code),'FAKE_ARGV':str(p/'argv')}; r=subprocess.run([str(wrapper),*query],env=env,capture_output=True)
-          assert r.returncode==code and r.stdout==b'native\x00stdout\n' and r.stderr==b'native stderr\n'; assert json.loads((p/'argv').read_text())==query
-         assert sorted(json.loads(f.read_text())['exitCode'] for f in records.glob('*.json') if not f.name.endswith('.start.json'))==[0,17]
-         count=len(list(records.iterdir())); unknown=['-s','owned','shell','unknown','DO-NOT-RECORD']; r=subprocess.run([str(wrapper),*unknown],env=env,capture_output=True); assert r.returncode==17 and len(list(records.iterdir()))==count+2; assert json.loads((p/'argv').read_text())==unknown
-         r=subprocess.run([str(wrapper),*query],env={**env,'FAKE_SIGNAL':'1'},capture_output=True); assert r.returncode==-signal.SIGTERM
-        print('PASS: exact argv, byte streams, exit 0/nonzero 17, all-invocation observation, direct-child SIGTERM forwarding')
-        REVIEW32_EOF
-        cat > /tmp/review32-measure.py <<'REVIEW32_EOF'
-        import base64,hashlib,json,os,pathlib,shlex,shutil,subprocess,sys,time,traceback
-        E=pathlib.Path(os.environ['EVIDENCE']); E.mkdir(parents=True,exist_ok=True)
-        api=int(os.environ['EXPECTED_API']); state=os.environ['SUBJECT_STATE_DIR']; session='pr3555-round32-api'+str(api)
-        revision='b69a3421a7d32d801540994b827b09dcf6cc5e70'; results={}; conditions={}; transcript=[]; installed=False; created=False; integrity={}; serial='emulator-5554'
-        def run(name,args):
-         transcript.append('$ '+shlex.join(args))
-         try: p=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=120); code=p.returncode; out=p.stdout; err=p.stderr
-         except subprocess.TimeoutExpired as x: code=124; out=x.stdout or b''; err=(x.stderr or b'')+b'\nHOST HARNESS TIMEOUT 120s\n'
-         (E/(name+'.stdout')).write_bytes(out); (E/(name+'.stderr')).write_bytes(err)
-         r={'argv':args,'exitCode':code,'stdout':out.decode(errors='replace'),'stderr':err.decode(errors='replace')}; results[name]=r; transcript.extend([r['stdout'],r['stderr'],'exit='+str(code)]); return r
-        def obj(name):
-         try: return json.loads(results[name]['stdout'])
-         except Exception: return {}
-        def data(name): return obj(name).get('data',{})
-        def sha(p): return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
-        def emulators():
-         found=[]
-         for p in pathlib.Path('/proc').glob('[0-9]*/cmdline'):
+      - name: Checkout exact published PR3555 source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: 22dc288c6174048e78c7750aea1f46b3150fac3a
+      - name: Validate fixed dispatch deadline
+        shell: bash
+        run: |
+          python3 - <<'PYDEADLINE'
+          import datetime,os
+          deadline=datetime.datetime.fromisoformat(os.environ['MEASUREMENT_DEADLINE_UTC']);start=datetime.datetime.fromisoformat(os.environ['MEASUREMENT_DISPATCH_UTC']);assert deadline.utcoffset()==start.utcoffset()==datetime.timedelta(0);assert (deadline-start).total_seconds()==3000;assert datetime.datetime.now(datetime.timezone.utc)<deadline, 'allocation preparation arrived after fixed deadline'
+          PYDEADLINE
+      - name: Setup Node 24.13 and frozen dependencies
+        uses: ./.github/actions/setup-node-pnpm
+      - name: Setup isolated Android replay host
+        uses: ./.github/actions/setup-android-replay-host
+        with:
+          package-helpers: 'true'
+      - name: Prepare observer and independently validate forwarding
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          cat > /tmp/review33-observer.cjs <<'REVIEW33_EOF'
+          #!/usr/bin/env node
+          'use strict';
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { spawn } = require('node:child_process');
+          const config = JSON.parse(fs.readFileSync(__filename + '.json', 'utf8'));
+          const args = process.argv.slice(2);
+          const phase = config.phasePath ? fs.readFileSync(config.phasePath, 'utf8') : 'selfcheck';
+          const recordId = `${Date.now()}-${process.pid}`;
+          const record = { recordId, phase, executable:config.real, argv:args, startUnixMs:Date.now() };
+          fs.writeFileSync(path.join(config.records, recordId + '.start.json'), JSON.stringify(record, null, 2));
+          const bounded = config.deadlineUnixMs !== undefined;
+          const remaining = bounded ? config.deadlineUnixMs - Date.now() : Infinity;
+          if (bounded && remaining <= 0) {
+            fs.writeFileSync(path.join(config.records, recordId + '.json'), JSON.stringify({ ...record, nativeStarted:false, classification:'deadline-rejected', exitCode:124, stdoutBase64:'', stderrBase64:'', endUnixMs:Date.now() }, null, 2));
+            process.exit(124);
+          }
+          record.nativeStarted = true;
+          record.deadlineUnixMs = config.deadlineUnixMs;
+          fs.writeFileSync(path.join(config.records, recordId + '.start.json'), JSON.stringify(record, null, 2));
+          const child = spawn(config.real, args, { env: process.env, stdio:['inherit','pipe','pipe'] });
+          const stdout = [], stderr = [];
+          const deadlineTimer = bounded ? setTimeout(() => child.kill('SIGTERM'), remaining) : null;
+          child.stdout.on('data', b => stdout.push(b));
+          child.stderr.on('data', b => stderr.push(b));
+          child.stdout.pipe(process.stdout);
+          child.stderr.pipe(process.stderr);
+          for (const signal of ['SIGTERM','SIGINT','SIGHUP']) process.on(signal, () => child.kill(signal));
+          child.on('error', error => { process.stderr.write(error.message + '\n'); process.exitCode = 127; });
+          child.on('close', (code,signal) => {
+            if (deadlineTimer !== null) clearTimeout(deadlineTimer);
+            fs.writeFileSync(path.join(config.records, recordId + '.json'), JSON.stringify({ ...record, eligible:!bounded || Date.now()<=config.deadlineUnixMs, stdoutBase64:Buffer.concat(stdout).toString('base64'), stderrBase64:Buffer.concat(stderr).toString('base64'), exitCode:code, signal, endUnixMs:Date.now() }, null, 2));
+            if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); }
+            else process.exitCode = code === null ? 127 : code;
+          });
+          REVIEW33_EOF
+          cat > /tmp/review33-selfcheck.py <<'REVIEW33_EOF'
+          import os,json,pathlib,subprocess,tempfile,signal
+          proxy=pathlib.Path('/tmp/review33-observer.cjs')
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td); records=p/'records'; records.mkdir(); wrapper=p/'adb'; wrapper.write_bytes(proxy.read_bytes()); wrapper.chmod(0o755)
+           fake=p/'native'; fake.write_text('#!/usr/bin/env python3\nimport os,sys,json,signal\nopen(os.environ["FAKE_ARGV"],"w").write(json.dumps(sys.argv[1:]))\nsys.stdout.buffer.write(b"native\\x00stdout\\n");sys.stdout.flush()\nsys.stderr.buffer.write(b"native stderr\\n");sys.stderr.flush()\nif os.environ.get("FAKE_SIGNAL"): os.kill(os.getpid(),signal.SIGTERM)\nsys.exit(int(os.environ["FAKE_CODE"]))\n'); fake.chmod(0o755)
+           pathlib.Path(str(wrapper)+'.json').write_text(json.dumps(dict(real=str(fake),serial='owned',records=str(records))))
+           query=['-s','owned','shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']
+           for code in [0,17]:
+            env={**os.environ,'FAKE_CODE':str(code),'FAKE_ARGV':str(p/'argv')}; r=subprocess.run([str(wrapper),*query],env=env,capture_output=True)
+            assert r.returncode==code and r.stdout==b'native\x00stdout\n' and r.stderr==b'native stderr\n'; assert json.loads((p/'argv').read_text())==query
+           assert sorted(json.loads(f.read_text())['exitCode'] for f in records.glob('*.json') if not f.name.endswith('.start.json'))==[0,17]
+           count=len(list(records.iterdir())); unknown=['-s','owned','shell','unknown','DO-NOT-RECORD']; r=subprocess.run([str(wrapper),*unknown],env=env,capture_output=True); assert r.returncode==17 and len(list(records.iterdir()))==count+2; assert json.loads((p/'argv').read_text())==unknown
+           r=subprocess.run([str(wrapper),*query],env={**env,'FAKE_SIGNAL':'1'},capture_output=True); assert r.returncode==-signal.SIGTERM
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td); records=p/'records';records.mkdir();wrapper=p/'adb';wrapper.write_bytes(proxy.read_bytes());wrapper.chmod(0o755);marker=p/'started';fake=p/'native';fake.write_text('#!/usr/bin/env python3\nimport pathlib,sys,time\npathlib.Path(sys.argv[1]).write_text("native")\ntime.sleep(float(sys.argv[2]))\n');fake.chmod(0o755)
+           import time
+           config=pathlib.Path(str(wrapper)+'.json');config.write_text(json.dumps({'real':str(fake),'records':str(records),'deadlineUnixMs':time.time()*1000-1000}));r=subprocess.run([str(wrapper),str(marker),'0'],capture_output=True);assert r.returncode==124 and not marker.exists();assert any(json.loads(f.read_text()).get('classification')=='deadline-rejected' for f in records.glob('*.json'))
+           config.write_text(json.dumps({'real':str(fake),'records':str(records),'deadlineUnixMs':time.time()*1000+5000}));r=subprocess.run([str(wrapper),str(marker),'0'],capture_output=True);assert r.returncode==0 and marker.exists();marker.unlink()
+           config.write_text(json.dumps({'real':str(fake),'records':str(records),'deadlineUnixMs':time.time()*1000+150}));r=subprocess.run([str(wrapper),str(marker),'5'],capture_output=True);assert r.returncode==-signal.SIGTERM and marker.exists();assert any(json.loads(f.read_text()).get('eligible') is False for f in records.glob('*.json'))
+           print('PASS: observer deadline refuses late native launch before spawn; viable within-bound launch; remaining bound terminates direct owned native child')
+          print('PASS: exact argv, byte streams, exit 0/nonzero 17, all-invocation observation, direct-child SIGTERM forwarding')
+          REVIEW33_EOF
+          cat > /tmp/review33-boundary.py <<'REVIEW33_EOF'
+          import datetime,json,pathlib,signal,subprocess,time
+          class MeasurementDeadlineExpired(Exception): pass
+          class MeasurementCancelled(Exception): pass
+          class MeasurementBoundary:
+           def __init__(self, deadline, evidence):
+            self.deadline=datetime.datetime.fromisoformat(deadline.replace('Z','+00:00')).timestamp(); self.evidence=pathlib.Path(evidence); self.cancelled=False; self.child=None
+            assert datetime.datetime.fromisoformat(deadline.replace('Z','+00:00')).utcoffset()==datetime.timedelta(0)
+           def interrupt(self, signum, frame):
+            self.cancelled=True
+            if self.child is not None: self.child.terminate()
+            raise MeasurementCancelled(signum)
+           def run(self,name,args):
+            start=time.time(); remaining=self.deadline-start
+            record={'name':name,'argv':args,'startUnixMs':start*1000,'deadlineUnixMs':self.deadline*1000,'remainingSeconds':remaining,'started':False,'classification':'measurement'}
+            destination=self.evidence/(name+'.boundary.json')
+            if self.cancelled or remaining<=0:
+             record.update(classification='rejected-before-measurement',eligible=False); destination.write_text(json.dumps(record,indent=2))
+             raise MeasurementDeadlineExpired(name)
+            record.update(started=True,timeoutSeconds=min(120,remaining)); destination.write_text(json.dumps(record,indent=2))
+            with subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE) as child:
+             self.child=child
+             try:
+              out,err=child.communicate(timeout=record['timeoutSeconds']); code=child.returncode
+             except subprocess.TimeoutExpired:
+              child.kill(); out,err=child.communicate(); code=124; record['timedOut']=True
+             except MeasurementCancelled:
+              child.terminate()
+              try: out,err=child.communicate(timeout=1)
+              except subprocess.TimeoutExpired: child.kill(); out,err=child.communicate()
+              code=130; record['cancelled']=True
+             finally: self.child=None
+            end=time.time(); record.update(endUnixMs=end*1000,exitCode=code,eligible=end<=self.deadline and not self.cancelled and not record.get('timedOut',False))
+            destination.write_text(json.dumps(record,indent=2)); (self.evidence/(name+'.stdout')).write_bytes(out); (self.evidence/(name+'.stderr')).write_bytes(err)
+            if not record['eligible']: raise MeasurementDeadlineExpired(name)
+            return subprocess.CompletedProcess(args,code,out,err)
+          def owned_dead_claims(claims,context,registration,clean_stopped):
+           if not clean_stopped: return False
+           return bool(claims) and all(c.get('classification')=='owner-process-dead' and c.get('device',{}).get('id')==context['serial'] and c.get('owner',{}).get('session')==context['session'] and c.get('owner',{}).get('stateDir')==context['state'] and c.get('owner',{}).get('workspace')==context['workspace'] and c.get('owner',{}).get('pid')==registration.get('pid') and c.get('owner',{}).get('startTime')==registration.get('startTime') for c in claims)
+          REVIEW33_EOF
+          cat > /tmp/review33-boundary-selfcheck.py <<'REVIEW33_EOF'
+          import datetime,importlib.util,json,pathlib,shlex,signal,subprocess,tempfile,time
+          spec=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py'); b=importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+          def old_run(name, args):
+              transcript.append('$ ' + shlex.join(args))
+              try:
+                  p = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+                  code = p.returncode
+                  out = p.stdout
+                  err = p.stderr
+              except subprocess.TimeoutExpired as x:
+                  code = 124
+                  out = x.stdout or b''
+                  err = (x.stderr or b'') + b'\nHOST HARNESS TIMEOUT 120s\n'
+              (E / (name + '.stdout')).write_bytes(out)
+              (E / (name + '.stderr')).write_bytes(err)
+              r = {'argv': args, 'exitCode': code, 'stdout': out.decode(errors='replace'), 'stderr': err.decode(errors='replace')}
+              results[name] = r
+              transcript.extend([r['stdout'], r['stderr'], 'exit=' + str(code)])
+              return r
+          def utc(seconds):return datetime.datetime.fromtimestamp(time.time()+seconds,datetime.timezone.utc).isoformat()
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td); fake=p/'fake.py'; marker=p/'native-start'; fake.write_text('import pathlib,sys,time\npathlib.Path(sys.argv[1]).write_text("started")\ntime.sleep(float(sys.argv[2]))\nprint("controlled native result")\n'); argv=['python3',str(fake),str(marker),'0']
+           # Historical entry has no deadline argument and dispatches after its deadline.
+           deadline=utc(-1); E=p;transcript=[];results={};old=old_run('old-late',argv);assert old['exitCode']==0 and marker.exists(); marker.unlink(); print('MUTATION WITNESS: old entry starts and completes after fixed deadline (required invariant FAIL)')
+           try:b.MeasurementBoundary(deadline,p).run('late',argv);raise AssertionError('late work accepted')
+           except b.MeasurementDeadlineExpired:pass
+           assert not marker.exists() and json.loads((p/'late.boundary.json').read_text())['started'] is False
+           good=b.MeasurementBoundary(utc(5),p).run('within-bound',argv);assert good.returncode==0 and marker.exists(); marker.unlink()
+           try:b.MeasurementBoundary(utc(.15),p).run('remaining-timeout',argv[:-1]+['5']);raise AssertionError('over-deadline result accepted')
+           except b.MeasurementDeadlineExpired:pass
+           record=json.loads((p/'remaining-timeout.boundary.json').read_text());assert marker.exists() and record['timeoutSeconds']<.16 and record['eligible'] is False
+           c={'serial':'owned','session':'owned-session','state':'owned-state','workspace':'owned-workspace'}; reg={'pid':1234,'startTime':'identity'};claim={'classification':'owner-process-dead','device':{'id':'owned'},'owner':{'session':'owned-session','stateDir':'owned-state','workspace':'owned-workspace','pid':1234,'startTime':'identity'}}
+           assert b.owned_dead_claims([claim],c,reg,True)
+           for change in [dict(classification='live'),dict(classification='unknown'),dict(owner={**claim['owner'],'session':'foreign'}),dict(owner={**claim['owner'],'pid':2222}),dict(owner={**claim['owner'],'stateDir':'foreign'})]:assert not b.owned_dead_claims([{**claim,**change}],c,reg,True)
+           assert not b.owned_dead_claims([claim],c,reg,False)
+           print('PASS: late entry rejection before process allocation; viable within-bound subprocess; remaining-time timeout excluded; owned dead claim release permits only matching identity after clean stop; live/uncertain/foreign identities rejected')
+
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td);marker=p/'cleanup'; started=p/'started'; runner=p/'runner.py'; runner.write_text("import datetime,importlib.util,pathlib,signal,sys,time\ns=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py');b=importlib.util.module_from_spec(s);s.loader.exec_module(b)\np=pathlib.Path(sys.argv[1]);boundary=b.MeasurementBoundary(datetime.datetime.fromtimestamp(time.time()+30,datetime.timezone.utc).isoformat(),p);signal.signal(signal.SIGTERM,boundary.interrupt)\ntry:boundary.run('cancelled-operation',['python3','-c','import pathlib,time,sys;pathlib.Path(sys.argv[1]).write_text(\"started\");time.sleep(10)',str(p/'started')])\nexcept b.MeasurementDeadlineExpired:pass\nfinally:(p/'cleanup').write_text('cleanup entered')\n")
+           child=subprocess.Popen(['python3',str(runner),str(p)])
+           for i in range(100):
+            if started.exists():break
+            time.sleep(.01)
+           assert started.exists();child.send_signal(signal.SIGTERM);assert child.wait(timeout=5)==0;assert marker.exists();record=json.loads((p/'cancelled-operation.boundary.json').read_text());assert record['eligible'] is False and record['cancelled'] is True
+           print('PASS: cancellation excludes active owned subprocess result and enters cleanup; no monitor-only child or process remains')
+          REVIEW33_EOF
+          cat > /tmp/review33-cleanup.py <<'REVIEW33_EOF'
+          import importlib.util,json,os,pathlib,shlex,shutil,subprocess,time,traceback
+          spec=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py'); b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
+          def process_identity(pid):
+           p=pathlib.Path('/proc')/str(pid)
+           try:
+            stat=(p/'stat').read_text(); fields=stat.rsplit(')',1)[1].split()
+            return {'pid':pid,'startTicks':fields[19],'state':fields[0],'argv':(p/'cmdline').read_bytes().decode(errors='replace').split('\0')}
+           except FileNotFoundError:return None
+
+          def emulator_identity(serial,avd):
+           roots={pathlib.Path('/run/user')/str(os.getuid())/'avd/running',pathlib.Path('/tmp')/('android-'+str(os.getuid()))/'running',pathlib.Path('/tmp')/('android-'+os.environ.get('USER','runner'))/'running'}
+           if os.environ.get('XDG_RUNTIME_DIR'):roots.add(pathlib.Path(os.environ['XDG_RUNTIME_DIR'])/'avd/running')
+           found=[]
+           for root in roots:
+            for file in root.glob('pid_*.ini'):
+             pairs=dict(line.split('=',1) for line in file.read_text().splitlines() if '=' in line); pairs={k.strip():v.strip() for k,v in pairs.items()}
+             if pairs.get('port.serial')==serial.removeprefix('emulator-') and avd in (pairs.get('avd.name'),pairs.get('avd.id')):
+              pid=int(file.stem.removeprefix('pid_')); identity=process_identity(pid)
+              if identity and any('-avd'==v and identity['argv'][i+1]==avd for i,v in enumerate(identity['argv'][:-1])):found.append({'discoveryPath':str(file),'discovery':{k:v for k,v in pairs.items() if k in ('port.serial','port.adb','avd.name','avd.id','avd.dir','emulator.version','emulator.build','cmdline')},'process':identity})
+           assert len(found)==1, 'exact action-owned emulator discovery/process identity unavailable'
+           return found[0]
+
+          def cleanup(E):
+           E=pathlib.Path(E); C=json.loads((E/'cleanup-context.json').read_text());conditions={};results={};transcript=[]
+           cli=['node','--experimental-strip-types','src/bin.ts']; state=C['state']; session=C['session']; serial=C['serial'];adb=pathlib.Path(C['adb']);real=pathlib.Path(str(adb)+'.review33-original'); common=['--platform','android','--serial',serial,'--session',session,'--state-dir',state,'--json']
+           def run(name,args):
+            started=time.time()
+            try:r=subprocess.run(args,capture_output=True,timeout=120);code=r.returncode;out=r.stdout;err=r.stderr
+            except subprocess.TimeoutExpired as x:code=124;out=x.stdout or b'';err=x.stderr or b''
+            (E/(name+'.stdout')).write_bytes(out);(E/(name+'.stderr')).write_bytes(err);results[name]={'argv':args,'exitCode':code,'stdout':out.decode(errors='replace'),'stderr':err.decode(errors='replace'),'startUnixMs':started*1000,'endUnixMs':time.time()*1000,'classification':'cleanup-not-measurement'};transcript.append('$ '+shlex.join(args)+'\n'+out.decode(errors='replace')+'\n'+err.decode(errors='replace')+'\nexit='+str(code));return results[name]
+           def data(name):
+            r=results[name];return json.loads(r['stdout']).get('data',{}) if r['exitCode']==0 else {}
+           # Preserve raw records even if any cleanup step fails.
+           if pathlib.Path(state).exists():shutil.copytree(state,E/'raw-daemon-before-cleanup',dirs_exist_ok=True)
+           if pathlib.Path(os.environ['AGENT_DEVICE_CLAIMS_DIR']).exists():shutil.copytree(os.environ['AGENT_DEVICE_CLAIMS_DIR'],E/'raw-claims-before-cleanup',dirs_exist_ok=True)
+           if real.exists():
+            original=C.get('observerIntegrity',{});assert original and original['originalSha256']==__import__('hashlib').sha256(real.read_bytes()).hexdigest()
+            adb.unlink();real.rename(adb);pathlib.Path(str(adb)+'.json').unlink(missing_ok=True)
+           integrity=C.get('observerIntegrity',{})
+           if integrity:
+            integrity['restoredSha256']=__import__('hashlib').sha256(adb.read_bytes()).hexdigest();integrity['restored']=integrity['originalSha256']==integrity['restoredSha256'];conditions['observerRestored']=integrity['restored'];(E/'observer-integrity.json').write_text(json.dumps(integrity,indent=2))
+           if pathlib.Path(state).exists():
+            run('cleanup-session-list',cli+['session','list','--state-dir',state,'--json']);sessions=data('cleanup-session-list').get('sessions',[])
+            registration=json.loads((pathlib.Path(state)/'daemon.json').read_text()) if (pathlib.Path(state)/'daemon.json').exists() else C.get('daemonRegistration',{})
+            registration={'pid':registration.get('pid'),'startTime':registration.get('processStartTime',registration.get('startTime'))}
+            (E/'cleanup-owner-registration.json').write_text(json.dumps(registration,indent=2))
+            if C['api']==36 and any(s.get('name')==session and s.get('id')==serial for s in sessions):run('close',cli+['close']+common);conditions['sessionClosed']=results['close']['exitCode']==0
+            run('session-list-cleanup',cli+['session','list','--state-dir',state,'--json']);conditions['ownedSessionsAbsent']=results['session-list-cleanup']['exitCode']==0 and data('session-list-cleanup').get('sessions')==[]
+            run('daemon-stop',cli+['daemon','stop','--clean','--state-dir',state,'--json']);d=data('daemon-stop');conditions['daemonStoppedClean']=results['daemon-stop']['exitCode']==0 and d.get('stopped') is True and d.get('clean') is True and d.get('cleanupConfidence')=='known' and d.get('providerReleases',{}).get('pending')==[] and d.get('claimsOrphaned')==[] and d.get('claimsUnattributable')==[] and d.get('claimsSuperseded')==[]
+            run('device-status-stale-before-release',cli+['device','status','--stale','--platform','android','--serial',serial,'--json']);claims=data('device-status-stale-before-release').get('claims')
+            release_allowed=b.owned_dead_claims(claims or [],C,registration,conditions['daemonStoppedClean']);(E/'claim-release-authorization.json').write_text(json.dumps({'ownedDeadIdentityMatched':release_allowed,'claims':claims,'registration':registration,'context':C,'cleanStopped':conditions['daemonStoppedClean']},indent=2))
+            if claims and release_allowed:
+             run('device-release-stale',cli+['device','release','--stale','--platform','android','--serial',serial,'--json']);released=data('device-release-stale');conditions['onlyOwnedDeadClaimReleased']=results['device-release-stale']['exitCode']==0 and len(released.get('released',[]))==len(claims) and released.get('retained')==[] and released.get('refused')==[] and released.get('changed')==[]
+            elif claims:conditions['unsafeClaimReleaseRefused']=False
+            run('device-status-stale',cli+['device','status','--stale','--platform','android','--serial',serial,'--json']);conditions['supportedDeviceStatus']=results['device-status-stale']['exitCode']==0 and data('device-status-stale').get('claims')==[]
+            run('device-status',cli+['device','status','--platform','android','--serial',serial,'--json']);conditions['noDeviceClaims']=results['device-status']['exitCode']==0 and data('device-status').get('claims')==[] and data('device-status').get('hiddenStaleClaims')==0
+            if pathlib.Path(state).exists():shutil.copytree(state,E/'daemon-state-after-cleanup',dirs_exist_ok=True)
+           # Native SDK restoration and owned daemon cleanup precede the exact owned serial stop.
+           owned=C.get('emulatorIdentity');run('emulator-avd-before-stop',[str(adb),'-s',serial,'emu','avd','name']);avd_matches=C['avd'] in results['emulator-avd-before-stop']['stdout'].splitlines()
+           if owned and avd_matches:run('owned-emulator-stop',[str(adb),'-s',serial,'emu','kill']);conditions['ownedEmulatorStopRequested']=results['owned-emulator-stop']['exitCode']==0
+           elif not owned:conditions['ownedEmulatorIdentityCaptured']=False
+           checks=[]
+           for attempt in range(16):
+            r=run('device-final-state-'+str(attempt),[str(adb),'-s',serial,'get-state']);current=process_identity(owned['process']['pid']) if owned else None;same=bool(current and current['startTicks']==owned['process']['startTicks'] and current['state']!='Z');checks.append({'attempt':attempt,'sameOwnedEmulatorLive':same,'ownedProcessObservation':current,'getStateExit':r['exitCode'],'stdout':r['stdout'],'stderr':r['stderr']})
+            if owned and not same and r['exitCode']!=0:break
+            if attempt<15:time.sleep(2)
+           conditions['ownedEmulatorGone']=bool(owned) and not checks[-1]['sameOwnedEmulatorLive'];conditions['ownedSerialUnavailable']=checks[-1]['getStateExit']!=0
+           (E/'emulator-runner-cleanup.json').write_text(json.dumps({'checks':checks,'verifiedStopped':conditions['ownedEmulatorGone'] and conditions['ownedSerialUnavailable'],'basis':'action-owned serial and exact AVD discovery PID/start identity; SDK adb emu kill; no process table search or signal'},indent=2))
+           (E/'cleanup-command-transcript.txt').write_text('\n'.join(transcript));report={'conditions':conditions,'results':results,'passed':bool(conditions) and all(conditions.values()),'classification':'cleanup-not-measurement'};(E/'cleanup.json').write_text(json.dumps(report,indent=2));return report
+          if __name__=='__main__':
+           E=pathlib.Path(os.environ['EVIDENCE'])
+           if (E/'cleanup-context.json').exists() and not (E/'cleanup.json').exists():
+            try:report=cleanup(E);print(json.dumps(report['conditions'],indent=2));raise SystemExit(0 if report['passed'] else 1)
+            except Exception:(E/'cleanup-exception.txt').write_text(traceback.format_exc());raise
+          REVIEW33_EOF
+          cat > /tmp/review33-cleanup-selfcheck.py <<'REVIEW33_EOF'
+          import importlib.util,json,os,pathlib,tempfile
+          spec=importlib.util.spec_from_file_location('cleanup','/tmp/review33-cleanup.py');c=importlib.util.module_from_spec(spec);spec.loader.exec_module(c)
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td);E=p/'evidence';E.mkdir();state=p/'state';state.mkdir();bins=p/'bin';bins.mkdir();claims=p/'claims';claims.mkdir();requests=state/'sessions/owned-session/requests';requests.mkdir(parents=True);(requests/'raw.ndjson').write_text('{"rawRequest":"retained-before-cleanup"}\n');(state/'daemon.json').write_text(json.dumps({'pid':1234,'processStartTime':'owned-start'})); log=p/'calls'; stopped=p/'stopped';released=p/'released'; vm=p/'vm-gone'
+           context={'api':23,'state':str(state),'session':'owned-session','serial':'owned-serial','avd':'owned-avd','workspace':str(p),'adb':str(bins/'adb'),'emulatorIdentity':{'process':{'pid':4321,'startTicks':'owned-ticks'}}};(E/'cleanup-context.json').write_text(json.dumps(context));identity={'session':'owned-session','stateDir':str(state),'workspace':str(p),'pid':1234,'startTime':'owned-start'}
+           node=bins/'node';node.write_text('''#!/usr/bin/env python3
+          import json,os,pathlib,sys
+          args=sys.argv[1:];p=pathlib.Path(os.environ['FIXTURE']);log=p/'calls';log.open('a').write(json.dumps(args)+'\\n');data={}
+          if 'session' in args:data={'sessions':[]}
+          elif 'daemon' in args:
+           (p/'stopped').write_text('yes');(p/'state/sessions/owned-session/requests/raw.ndjson').unlink();data={'stopped':True,'clean':True,'cleanupConfidence':'known','providerReleases':{'pending':[]},'claimsOrphaned':[],'claimsUnattributable':[],'claimsSuperseded':[]}
+          elif 'release' in args:
+           assert (p/'stopped').exists();assert '--state-dir' not in args;(p/'released').write_text('yes');data={'released':[{}],'retained':[],'refused':[],'changed':[]}
+          elif 'status' in args:
+           assert '--state-dir' not in args
+           data={'claims':[],'hiddenStaleClaims':0}
+           if '--stale' in args and not (p/'released').exists():data={'claims':[{'classification':'owner-process-dead','device':{'id':'owned-serial'},'owner':json.loads(os.environ['CLAIM_IDENTITY'])}]}
+          print(json.dumps({'success':True,'data':data}))
+          ''');node.chmod(0o755)
+           adb=bins/'adb';adb.write_text('''#!/usr/bin/env python3
+          import json,os,pathlib,sys
+          p=pathlib.Path(os.environ['FIXTURE']);a=sys.argv[1:];(p/'calls').open('a').write(json.dumps(a)+'\\n');assert a[:2]==['-s','owned-serial']
+          if a[2:]==['emu','avd','name']:print('owned-avd\\nOK')
+          elif a[2:]==['emu','kill']:assert (p/'released').exists();(p/'vm-gone').write_text('yes');print('OK')
+          elif a[2:]==['get-state']:sys.exit(1 if (p/'vm-gone').exists() else 0)
+          else:raise AssertionError(a)
+          ''');adb.chmod(0o755)
+           os.environ.update(FIXTURE=str(p),CLAIM_IDENTITY=json.dumps(identity),AGENT_DEVICE_CLAIMS_DIR=str(claims),PATH=str(bins)+os.pathsep+os.environ['PATH']);c.process_identity=lambda pid:None if vm.exists() else {'pid':4321,'startTicks':'owned-ticks','state':'S'}
+           report=c.cleanup(E);assert report['passed'];assert (E/'raw-daemon-before-cleanup/sessions/owned-session/requests/raw.ndjson').exists();calls=[json.loads(x) for x in log.read_text().splitlines()];assert not any('close' in a for a in calls);assert any('release' in a for a in calls);assert vm.exists();assert calls.index(['-s','owned-serial','emu','kill'])>next(i for i,a in enumerate(calls) if 'release' in a)
+           print('PASS: controlled API23 refusal cleanup archives raw request logs before destructive stop; normalizes daemon registration start identity; supported stale release; no alias close; exact owned serial emu kill; exact identity and serial disposal verification')
+
+          with tempfile.TemporaryDirectory() as td:
+           p=pathlib.Path(td);running=p/'avd/running';running.mkdir(parents=True);os.environ['XDG_RUNTIME_DIR']=str(p);f=running/'pid_4321.ini';f.write_text('port.serial=5554\navd.id=owned-avd\navd.name=Owned AVD\ngrpc.token=never-retain\n');c.process_identity=lambda pid:{'pid':pid,'startTicks':'owned-start','state':'S','argv':['qemu','-port','5554','-avd','owned-avd']};owned=c.emulator_identity('emulator-5554','owned-avd');assert owned['process']['pid']==4321 and 'grpc.token' not in owned['discovery']
+           try:c.emulator_identity('emulator-5556','owned-avd');raise AssertionError('foreign serial accepted')
+           except AssertionError as e:assert str(e)=='exact action-owned emulator discovery/process identity unavailable'
+           c.process_identity=lambda pid:None
+           try:c.emulator_identity('emulator-5554','owned-avd');raise AssertionError('dead process accepted')
+           except AssertionError as e:assert str(e)=='exact action-owned emulator discovery/process identity unavailable'
+           print('PASS: owned emulator discovery resolves fixed port/AVD to direct process identity; foreign serial and missing process rejected; authentication token excluded')
+          REVIEW33_EOF
+          cat > /tmp/review33-measure.py <<'REVIEW33_EOF'
+          import datetime,importlib.util,signal,base64,hashlib,json,os,pathlib,shlex,shutil,subprocess,sys,time,traceback
+          E=pathlib.Path(os.environ['EVIDENCE']); E.mkdir(parents=True,exist_ok=True)
+          api=int(os.environ['EXPECTED_API']); state=os.environ['SUBJECT_STATE_DIR']; session='pr3555-round33-api'+str(api)
+          revision='22dc288c6174048e78c7750aea1f46b3150fac3a'; results={}; conditions={}; transcript=[]; installed=False; created=False; integrity={}; serial='emulator-5554'
+          spec=importlib.util.spec_from_file_location('boundary','/tmp/review33-boundary.py'); b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
+          boundary=b.MeasurementBoundary(os.environ['MEASUREMENT_DEADLINE_UTC'],E)
+          signal.signal(signal.SIGTERM,boundary.interrupt);signal.signal(signal.SIGINT,boundary.interrupt)
+          spec=importlib.util.spec_from_file_location('cleanup','/tmp/review33-cleanup.py'); cleanup_module=importlib.util.module_from_spec(spec);spec.loader.exec_module(cleanup_module)
+          context={'api':api,'state':state,'session':session,'serial':serial,'avd':os.environ['OWNED_AVD_NAME'],'workspace':os.getcwd(),'adb':str(pathlib.Path(os.environ['ANDROID_SDK_ROOT'])/'platform-tools/adb'),'measurementDeadlineUtc':os.environ['MEASUREMENT_DEADLINE_UTC']}
+          def save_context(): (E/'cleanup-context.json').write_text(json.dumps(context,indent=2))
+          save_context()
+          def run(name,args):
+           transcript.append('$ '+shlex.join(args))
+           p=boundary.run(name,args); code=p.returncode; out=p.stdout;err=p.stderr
+           r={'argv':args,'exitCode':code,'stdout':out.decode(errors='replace'),'stderr':err.decode(errors='replace')}; results[name]=r; transcript.extend([r['stdout'],r['stderr'],'exit='+str(code)]); return r
+          def obj(name):
+           try: return json.loads(results[name]['stdout'])
+           except Exception: return {}
+          def data(name): return obj(name).get('data',{})
+          def sha(p): return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
+          adb=pathlib.Path(os.environ['ANDROID_SDK_ROOT'])/'platform-tools/adb'; real=pathlib.Path(str(adb)+'.review33-original'); phase=E/'observer-phase.txt'; records=E/'native-records'; records.mkdir(exist_ok=True)
+          cli=['node','--experimental-strip-types','src/bin.ts']; common=['--platform','android','--serial',serial,'--session',session,'--state-dir',state,'--json']
           try:
-           args=p.read_bytes().split(b'\0'); executable=args[0].decode(errors='replace')
-           if pathlib.Path(executable).name=='emulator' or pathlib.Path(executable).name.startswith('qemu-system-'): found.append({'pid':int(p.parent.name),'argv':[a.decode(errors='replace') for a in args if a]})
-          except (OSError,ValueError): pass
-         return found
-        adb=pathlib.Path(os.environ['ANDROID_SDK_ROOT'])/'platform-tools/adb'; real=pathlib.Path(str(adb)+'.review32-original'); phase=E/'observer-phase.txt'; records=E/'native-records'; records.mkdir(exist_ok=True)
-        cli=['node','--experimental-strip-types','src/bin.ts']; common=['--platform','android','--serial',serial,'--session',session,'--state-dir',state,'--json']
-        try:
-         conditions['exactSource']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==revision; assert conditions['exactSource']
-         conditions['distinctPreparationState']=state!=os.environ['AGENT_DEVICE_STATE_DIR']; assert conditions['distinctPreparationState']
-         devices=run('devices',[str(adb),'devices','-l']); owned=[line.split()[0] for line in devices['stdout'].splitlines() if len(line.split())>1 and line.split()[1]=='device']; assert owned==[serial]
-         sdk=run('sdk',[str(adb),'-s',serial,'shell','getprop','ro.build.version.sdk']); conditions['expectedApi']=sdk['exitCode']==0 and sdk['stdout'].strip()==str(api)
-         run('identity',[str(adb),'-s',serial,'shell','getprop','ro.build.fingerprint']); run('os-release',[str(adb),'-s',serial,'shell','getprop','ro.build.version.release']); run('avd',[str(adb),'-s',serial,'emu','avd','name']); (E/'emulator-processes-start.json').write_text(json.dumps(emulators(),indent=2))
-         version=json.loads(pathlib.Path('package.json').read_text())['version']; sources={}
-         for f in ['package.json','src/bin.ts','packages/platform-android/src/lifecycle.ts','packages/platform-android/src/open-target-resolution.ts','android/snapshot-helper/AndroidManifest.xml','android/ime-helper/AndroidManifest.xml']:
-          dest=E/'source'/f; dest.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest); sources[f]={'sha256':sha(f),'gitBlob':subprocess.check_output(['git','rev-parse','HEAD:'+f],text=True).strip()}
-         (E/'source-identity.json').write_text(json.dumps({'runtimeRevision':revision,'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'packageVersion':version,'sources':sources,'trackedDiff':subprocess.check_output(['git','diff','HEAD','--'],text=True)},indent=2))
-         for f in pathlib.Path('android').glob('*/dist/*'):
-          if f.is_file(): dest=E/'helpers'/f.parent.parent.name; dest.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest/f.name)
-         run('session-list-before',cli+['session','list','--state-dir',state,'--json']); conditions['sessionInitiallyAbsent']=results['session-list-before']['exitCode']==0 and data('session-list-before').get('sessions')==[]; assert conditions['sessionInitiallyAbsent']
-         integrity={'originalPath':str(adb),'nativePathDuringObservation':str(real),'originalSha256':sha(adb),'observerSha256':sha('/tmp/review32-observer.cjs'),'serial':serial,'instrumentation':'SDK-path host observer recording every invocation; timing perturbed; shipping source untouched'}
-         assert not real.exists(); adb.rename(real); installed=True; phase.write_text('pre-subject')
-         pathlib.Path(str(adb)+'.json').write_text(json.dumps({'real':str(real),'serial':serial,'records':str(records),'phasePath':str(phase)})); shutil.copy2('/tmp/review32-observer.cjs',adb); adb.chmod(0o755)
-         # The separate direct query is outside the public operation's observation window.
-         run('direct-resolver',[str(adb),'-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS'])
-         phase.write_text('public-open'); start=time.time_ns()
-         r=run('public-open',cli+['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0']+common)
-         end=time.time_ns(); phase.write_text('post-subject'); (E/'observation-window.json').write_text(json.dumps({'startUnixNs':start,'endUnixNs':end,'phase':'public-open','includesCleanup':False},indent=2))
-         observed=[json.loads(f.read_text()) for f in records.glob('*.json') if not f.name.endswith('.start.json')]; subject=[x for x in observed if x['phase']=='public-open']; starts=[json.loads(f.read_text()) for f in records.glob('*.start.json') if json.loads(f.read_text())['phase']=='public-open']; (E/'subject-native-executions.json').write_text(json.dumps(subject,indent=2))
-         blockingStarts=starts if api==23 else [x for x in starts if 'shell' in x['argv'] and any(v in ('cmd','am') for v in x['argv'][x['argv'].index('shell')+1:])]
-         conditions['observerComplete']=bool(subject) and {x['recordId'] for x in blockingStarts}.issubset({x['recordId'] for x in subject})
-         query=['-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']; launch=['-s',serial,'shell','am','start','-W','-a','android.settings.SETTINGS','-S','-R','1','--display','0']; resolvers=[x for x in subject if x['argv']==query]
-         conditions['actualCliResolver']=bool(resolvers)
-         created=r['exitCode']==0
-         if api==23:
-          error=obj('public-open').get('error',{}); conditions['explicitOwnerRefusal']=r['exitCode']==1 and obj('public-open').get('success') is False and error.get('code')=='COMMAND_FAILED' and error.get('details',{}).get('reason')=='android-relaunch-owner-unresolved'
-          conditions['nativeResolverUnavailable']=bool(resolvers) and all(x['exitCode']==0 and base64.b64decode(x['stdoutBase64'])==b'/system/bin/sh: cmd: not found\r\n' and base64.b64decode(x['stderrBase64'])==b'' for x in resolvers)
-          # Every SDK ADB invocation is retained; rejecting any am/monkey payload prevents alternate launch or force-stop from passing.
-          effects=[x for x in starts if 'shell' in x['argv'] and any(v in ('am','monkey') or 'am start' in v or 'am force-stop' in v or 'monkey ' in v for v in x['argv'][x['argv'].index('shell')+1:])]
-          conditions['noNativeLifecycleEffects']=not effects; (E/'subject-lifecycle-effects.json').write_text(json.dumps(effects,indent=2))
-         else:
-          conditions['publicOpenOwner']=r['exitCode']==0 and data('public-open').get('appBundleId')=='com.android.settings'
-          conditions['resolverOwner']=bool(resolvers) and all(x['exitCode']==0 and any(l.startswith('com.android.settings/') for l in base64.b64decode(x['stdoutBase64']).decode().splitlines()) for x in resolvers)
-          conditions['unchangedLaunchArgv']=any(x['argv']==launch and x['exitCode']==0 and b'Status: ok' in base64.b64decode(x['stdoutBase64']) for x in subject)
-          if created:
-           run('snapshot',cli+['snapshot','-i']+common); m=data('snapshot').get('androidSnapshot',{}); conditions['helperSnapshot']=results['snapshot']['exitCode']==0 and m.get('backend')=='android-helper' and m.get('helperVersion')==version
-          else: conditions['helperSnapshot']=False
-         run('session-list-after-operation',cli+['session','list','--state-dir',state,'--json']); sessions=data('session-list-after-operation').get('sessions'); conditions['sessionIdentity']=results['session-list-after-operation']['exitCode']==0 and (sessions==[] if api==23 else isinstance(sessions,list) and len(sessions)==1 and sessions[0].get('name')==session and sessions[0].get('id')==serial)
-        except Exception:
-         (E/'harness-exception.txt').write_text(traceback.format_exc()); conditions['harnessCompleted']=False
-        finally:
-         if installed:
-          adb.unlink(); real.rename(adb); pathlib.Path(str(adb)+'.json').unlink(); integrity['restoredSha256']=sha(adb); integrity['restored']=integrity['restoredSha256']==integrity['originalSha256']; conditions['observerRestored']=integrity['restored']
-         if integrity: (E/'observer-integrity.json').write_text(json.dumps(integrity,indent=2))
-         if created and api==36: run('close',cli+['close']+common); conditions['sessionClosed']=results['close']['exitCode']==0
-         if pathlib.Path(state).exists():
-          run('session-list-cleanup',cli+['session','list','--state-dir',state,'--json']); conditions['ownedSessionsAbsent']=results['session-list-cleanup']['exitCode']==0 and data('session-list-cleanup').get('sessions')==[]
-          run('daemon-stop',cli+['daemon','stop','--clean','--state-dir',state,'--json']); d=data('daemon-stop'); conditions['daemonStoppedClean']=results['daemon-stop']['exitCode']==0 and d.get('stopped') is True and d.get('clean') is True and d.get('cleanupConfidence')=='known' and d.get('providerReleases',{}).get('pending')==[] and d.get('claimsOrphaned')==[] and d.get('claimsUnattributable')==[] and d.get('claimsSuperseded')==[]
-          run('device-status-stale',cli+['device','status','--stale','--platform','android','--serial',serial,'--json']); conditions['supportedDeviceStatus']=results['device-status-stale']['exitCode']==0 and data('device-status-stale').get('claims')==[]
-          run('device-status',cli+['device','status','--platform','android','--serial',serial,'--json']); conditions['noDeviceClaims']=results['device-status']['exitCode']==0 and data('device-status').get('claims')==[] and data('device-status').get('hiddenStaleClaims')==0
-          shutil.copytree(state,E/'daemon-state',dirs_exist_ok=True)
-         run('device-final-state',[str(adb),'-s',serial,'get-state'])
-         (E/'literal-command-transcript.txt').write_text('\n'.join(transcript)); (E/'measurement.json').write_text(json.dumps({'api':api,'conditions':conditions,'results':results,'passed':bool(conditions) and all(conditions.values())},indent=2)); print(json.dumps({'api':api,'conditions':conditions},indent=2))
-         if not conditions or not all(conditions.values()): sys.exit(1)
-        REVIEW32_EOF
-        node --check /tmp/review32-observer.cjs
-        python3 /tmp/review32-selfcheck.py | tee "$EVIDENCE/observer-selfcheck.txt"
-        python3 -c 'import ast,pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in ["/tmp/review32-selfcheck.py","/tmp/review32-measure.py"]]'
-    - name: Verify selected SDK image exists and preserve identity
-      shell: bash
-      run: |
-        set -euo pipefail
-        SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-        "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list > "$EVIDENCE/sdkmanager-list.txt"
-        python3 - "$EVIDENCE/sdkmanager-list.txt" 'system-images;android-23;google_apis;x86' <<'PYVERIFY'
-        import pathlib,sys
-        assert any(line.strip().split(' | ')[0].strip()==sys.argv[2] for line in pathlib.Path(sys.argv[1]).read_text().splitlines()), 'selected system image absent'
-        PYVERIFY
-        git rev-parse HEAD > "$EVIDENCE/runtime-revision.txt"
-        printf '%s\n' "$GITHUB_SHA" > "$EVIDENCE/workflow-revision.txt"
-        sha256sum android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml > "$EVIDENCE/source-manifest-sha256.txt"
-        pnpm gate build
-        pnpm clean:daemon
-        node --experimental-strip-types --input-type=module - <<'CLIPREREQUISITES' > "$EVIDENCE/cli-prerequisites.json"
-        import assert from 'node:assert/strict';
-        import { resolveCliOptions } from './src/cli/resolve-cli-options.ts';
-        import { readInputFromCli } from './src/commands/cli-grammar.ts';
-        const common=['--platform','android','--serial','emulator-5554','--session','pr3555-round32-check','--state-dir','/private/tmp/pr3555-round32-check','--json'];
-        const cases=[['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0',...common], ['snapshot','-i',...common], ['close',...common],['session','list','--state-dir','/private/tmp/pr3555-round32-check','--json'],['daemon','stop','--clean','--state-dir','/private/tmp/pr3555-round32-check','--json'],['device','status','--stale','--platform','android','--serial','emulator-5554','--json'],['device','status','--platform','android','--serial','emulator-5554','--json']];
-        const parsed=cases.map(argv=>({argv,parsed:resolveCliOptions(argv,{cwd:process.cwd(),env:process.env,strictFlags:true})}));
-        assert.deepEqual(parsed[0].parsed.flags.launchArgs,['-S','-R','1','--display','0']);
-        const input=readInputFromCli('open',parsed[0].parsed.positionals,parsed[0].parsed.flags);
-        assert.equal(input.relaunch,true);
-        assert.deepEqual(input.launchArgs,['-S','-R','1','--display','0']);
-        assert.throws(()=>resolveCliOptions(['device','status','--state-dir','/private/tmp/invalid'],{strictFlags:true}));
-        console.log(JSON.stringify({passed:true,parsed,publicOpenInput:input},null,2));
-        CLIPREREQUISITES
-        node --experimental-strip-types --input-type=module - <<'SUBJECTSTATE' > "$EVIDENCE/subject-state-construction.json"
-        import { createOwnedReplayStateDir } from '@agent-device/daemon-contracts/daemon-registration-owner';
-        const owned = createOwnedReplayStateDir();
-        console.log(JSON.stringify({ source: 'createOwnedReplayStateDir', preparationState: process.env.AGENT_DEVICE_STATE_DIR, subjectState: owned.paths.baseDir, paths: owned.paths }, null, 2));
-        SUBJECTSTATE
-        node -e 'const fs=require("node:fs"); const state=JSON.parse(fs.readFileSync(process.env.EVIDENCE+"/subject-state-construction.json", "utf8")); if(state.preparationState===state.subjectState) process.exit(1); fs.appendFileSync(process.env.GITHUB_ENV, "SUBJECT_STATE_DIR="+state.subjectState+"\n");'
-        test -x "$SDK_ROOT/platform-tools/adb"
-        test ! -e "$SDK_ROOT/platform-tools/adb.review32-original"
-        for source in package.json src/bin.ts packages/platform-android/src/lifecycle.ts packages/platform-android/src/open-target-resolution.ts android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml; do
-          test -f "$source"
-          git rev-parse "HEAD:$source" > /dev/null
-        done
-    - name: Measure targeted API 23 native evidence
-      uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b
-      with:
-        api-level: 23
-        arch: x86
-        profile: Nexus 5
-        target: google_apis
-        emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio
-          -no-boot-anim -no-metrics"
-        script: python3 /tmp/review32-measure.py
-    - name: Record emulator runner final state
-      if: always()
-      shell: bash
-      run: |
-        set +e
-        "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/platform-tools/adb" devices -l > "$EVIDENCE/emulator-runner-final-state.stdout" 2> "$EVIDENCE/emulator-runner-final-state.stderr"
-        code=$?
-        printf '%s\n' "$code" > "$EVIDENCE/emulator-runner-final-state.exit"
-        python3 - <<'PYFINAL'
-        import os,pathlib,json,subprocess,time
-        p=pathlib.Path(os.environ['EVIDENCE']); adb=str(pathlib.Path(os.environ.get('ANDROID_SDK_ROOT',os.environ['ANDROID_HOME']))/'platform-tools/adb'); checks=[]
-        def processes():
-         found=[]
-         for f in pathlib.Path('/proc').glob('[0-9]*/cmdline'):
-          try:
-           args=f.read_bytes().split(b'\0'); name=pathlib.Path(args[0].decode(errors='replace')).name
-           if name=='emulator' or name.startswith('qemu-system-'): found.append({'pid':int(f.parent.name),'argv':[a.decode(errors='replace') for a in args if a]})
-          except (OSError,ValueError): pass
-         return found
-        for attempt in range(16):
-         r=subprocess.run([adb,'-s','emulator-5554','get-state'],capture_output=True,timeout=10); live=processes(); checks.append({'attempt':attempt,'liveEmulatorProcesses':live,'getStateExit':r.returncode,'stdout':r.stdout.decode(errors='replace'),'stderr':r.stderr.decode(errors='replace')})
-         if not live and r.returncode!=0: break
-         if attempt<15: time.sleep(2)
-        verified=not checks[-1]['liveEmulatorProcesses'] and checks[-1]['getStateExit']!=0
-        (p/'emulator-runner-cleanup.json').write_text(json.dumps({'checks':checks,'verifiedStopped':verified,'basis':'no live emulator or qemu-system process and owned serial get-state fails; stale offline ADB entries do not establish a live emulator'},indent=2))
-        assert verified, 'owned emulator final cleanup is unverified'
-        PYFINAL
-    - name: Digest retained native evidence
-      if: always()
-      shell: bash
-      run: |
-        python3 - <<'PYDIGEST'
-        import hashlib,json,os,pathlib
-        p=pathlib.Path(os.environ['EVIDENCE']); (p/'digests.json').write_text(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(p.rglob('*')) if f.is_file() and f.name!='digests.json'},indent=2))
-        PYDIGEST
-    - name: Upload targeted native proof (including failures)
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: pr3555-round32-api23-native-evidence
-        path: "${{ env.EVIDENCE }}"
-        include-hidden-files: true
-        if-no-files-found: error
-        retention-days: 14
+           conditions['exactSource']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==revision; assert conditions['exactSource']
+           conditions['distinctPreparationState']=state!=os.environ['AGENT_DEVICE_STATE_DIR']; assert conditions['distinctPreparationState']
+           devices=run('devices',[str(adb),'devices','-l']); owned=[line.split()[0] for line in devices['stdout'].splitlines() if len(line.split())>1 and line.split()[1]=='device']; assert owned==[serial]
+           sdk=run('sdk',[str(adb),'-s',serial,'shell','getprop','ro.build.version.sdk']); conditions['expectedApi']=sdk['exitCode']==0 and sdk['stdout'].strip()==str(api); assert conditions['expectedApi']
+           run('identity',[str(adb),'-s',serial,'shell','getprop','ro.build.fingerprint']); run('os-release',[str(adb),'-s',serial,'shell','getprop','ro.build.version.release']); run('avd',[str(adb),'-s',serial,'emu','avd','name']); context['emulatorIdentity']=cleanup_module.emulator_identity(serial,context['avd']);save_context();(E/'emulator-owned-identity.json').write_text(json.dumps(context['emulatorIdentity'],indent=2))
+           version=json.loads(pathlib.Path('package.json').read_text())['version']; sources={}
+           for f in ['package.json','src/bin.ts','packages/platform-android/src/lifecycle.ts','packages/platform-android/src/open-target-resolution.ts','android/snapshot-helper/AndroidManifest.xml','android/ime-helper/AndroidManifest.xml']:
+            dest=E/'source'/f; dest.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest); sources[f]={'sha256':sha(f),'gitBlob':subprocess.check_output(['git','rev-parse','HEAD:'+f],text=True).strip()}
+           (E/'source-identity.json').write_text(json.dumps({'runtimeRevision':revision,'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),'packageVersion':version,'sources':sources,'trackedDiff':subprocess.check_output(['git','diff','HEAD','--'],text=True)},indent=2))
+           for f in pathlib.Path('android').glob('*/dist/*'):
+            if f.is_file(): dest=E/'helpers'/f.parent.parent.name; dest.mkdir(parents=True,exist_ok=True); shutil.copy2(f,dest/f.name)
+           run('session-list-before',cli+['session','list','--state-dir',state,'--json']); conditions['sessionInitiallyAbsent']=results['session-list-before']['exitCode']==0 and data('session-list-before').get('sessions')==[]; assert conditions['sessionInitiallyAbsent']
+           integrity={'originalPath':str(adb),'nativePathDuringObservation':str(real),'originalSha256':sha(adb),'observerSha256':sha('/tmp/review33-observer.cjs'),'serial':serial,'instrumentation':'SDK-path host observer recording every invocation; timing perturbed; shipping source untouched'}
+           context['observerIntegrity']=integrity;save_context();assert not real.exists(); adb.rename(real); installed=True; phase.write_text('pre-subject')
+           pathlib.Path(str(adb)+'.json').write_text(json.dumps({'real':str(real),'serial':serial,'records':str(records),'phasePath':str(phase),'deadlineUnixMs':boundary.deadline*1000})); shutil.copy2('/tmp/review33-observer.cjs',adb); adb.chmod(0o755)
+           # The separate direct query is outside the public operation's observation window.
+           run('direct-resolver',[str(adb),'-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS'])
+           phase.write_text('public-open'); start=time.time_ns()
+           r=run('public-open',cli+['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0']+common)
+           end=time.time_ns(); phase.write_text('post-subject'); (E/'observation-window.json').write_text(json.dumps({'startUnixNs':start,'endUnixNs':end,'phase':'public-open','includesCleanup':False},indent=2))
+           observed=[json.loads(f.read_text()) for f in records.glob('*.json') if not f.name.endswith('.start.json')]; subject=[x for x in observed if x['phase']=='public-open']; starts=[json.loads(f.read_text()) for f in records.glob('*.start.json') if json.loads(f.read_text())['phase']=='public-open']; (E/'subject-native-executions.json').write_text(json.dumps(subject,indent=2))
+           blockingStarts=starts if api==23 else [x for x in starts if 'shell' in x['argv'] and any(v in ('cmd','am') for v in x['argv'][x['argv'].index('shell')+1:])]
+           conditions['observerComplete']=bool(subject) and {x['recordId'] for x in blockingStarts}.issubset({x['recordId'] for x in subject})
+           query=['-s',serial,'shell','cmd','package','resolve-activity','--brief','--query-flags','0x10000','-a','android.settings.SETTINGS']; launch=['-s',serial,'shell','am','start','-W','-a','android.settings.SETTINGS','-S','-R','1','--display','0']; resolvers=[x for x in subject if x['argv']==query]
+           conditions['actualCliResolver']=bool(resolvers)
+           conditions['nativeOperationsWithinDeadline']=bool(subject) and all(x.get('nativeStarted') is True and x.get('eligible') is True and x['startUnixMs']<boundary.deadline*1000 and x['endUnixMs']<=boundary.deadline*1000 for x in subject)
+           created=r['exitCode']==0
+           registration=pathlib.Path(state)/'daemon.json'
+           if registration.exists():context['daemonRegistration']=json.loads(registration.read_text());save_context()
+           if api==23:
+            error=obj('public-open').get('error',{}); conditions['explicitOwnerRefusal']=r['exitCode']==1 and obj('public-open').get('success') is False and error.get('code')=='COMMAND_FAILED' and error.get('details',{}).get('reason')=='android-relaunch-owner-unresolved'
+            conditions['nativeResolverUnavailable']=bool(resolvers) and all(x['exitCode']==0 and base64.b64decode(x['stdoutBase64'])==b'/system/bin/sh: cmd: not found\r\n' and base64.b64decode(x['stderrBase64'])==b'' for x in resolvers)
+            # Every SDK ADB invocation is retained; rejecting any am/monkey payload prevents alternate launch or force-stop from passing.
+            effects=[x for x in starts if 'shell' in x['argv'] and any(v in ('am','monkey') or 'am start' in v or 'am force-stop' in v or 'monkey ' in v for v in x['argv'][x['argv'].index('shell')+1:])]
+            conditions['noNativeLifecycleEffects']=not effects; (E/'subject-lifecycle-effects.json').write_text(json.dumps(effects,indent=2))
+           else:
+            conditions['publicOpenOwner']=r['exitCode']==0 and data('public-open').get('appBundleId')=='com.android.settings'
+            stops=[x for x in subject if x['argv'][2:5]==['shell','am','force-stop']]
+            conditions['forceStopResolvedOwnerOnly']=bool(stops) and all(x['argv']==['-s',serial,'shell','am','force-stop','com.android.settings'] and x['exitCode']==0 for x in stops)
+            conditions['resolverOwner']=bool(resolvers) and all(x['exitCode']==0 and any(l.startswith('com.android.settings/') for l in base64.b64decode(x['stdoutBase64']).decode().splitlines()) for x in resolvers)
+            conditions['unchangedLaunchArgv']=any(x['argv']==launch and x['exitCode']==0 and b'Status: ok' in base64.b64decode(x['stdoutBase64']) for x in subject)
+            if created:
+             run('snapshot',cli+['snapshot','-i']+common); m=data('snapshot').get('androidSnapshot',{}); conditions['helperSnapshot']=results['snapshot']['exitCode']==0 and m.get('backend')=='android-helper' and m.get('helperVersion')==version
+            else: conditions['helperSnapshot']=False
+           run('session-list-after-operation',cli+['session','list','--state-dir',state,'--json']); sessions=data('session-list-after-operation').get('sessions'); conditions['sessionIdentity']=results['session-list-after-operation']['exitCode']==0 and (sessions==[] if api==23 else isinstance(sessions,list) and len(sessions)==1 and sessions[0].get('name')==session and sessions[0].get('id')==serial)
+          except Exception:
+           (E/'harness-exception.txt').write_text(traceback.format_exc()); conditions['harnessCompleted']=False
+          finally:
+           signal.signal(signal.SIGTERM,signal.SIG_IGN);signal.signal(signal.SIGINT,signal.SIG_IGN)
+           try:
+            cleanup_report=cleanup_module.cleanup(E);conditions.update(cleanup_report['conditions'])
+            conditions['rawRequestLogRetained']=bool(list((E/'raw-daemon-before-cleanup').glob('sessions/*/requests/*.ndjson')))
+           except Exception:
+            (E/'cleanup-exception.txt').write_text(traceback.format_exc());conditions['cleanupCompleted']=False
+           conditions['allMeasuredOperationsWithinDeadline']=all(json.loads(f.read_text())['eligible'] for f in E.glob('*.boundary.json')) and bool(list(E.glob('*.boundary.json')))
+           (E/'literal-command-transcript.txt').write_text('\n'.join(transcript)); (E/'measurement.json').write_text(json.dumps({'api':api,'runtimeRevision':revision,'deadlineUtc':os.environ['MEASUREMENT_DEADLINE_UTC'],'conditions':conditions,'results':results,'passed':bool(conditions) and all(conditions.values())},indent=2)); print(json.dumps({'api':api,'conditions':conditions},indent=2))
+           if not conditions or not all(conditions.values()): sys.exit(1)
+          REVIEW33_EOF
+          node --check /tmp/review33-observer.cjs
+          python3 /tmp/review33-selfcheck.py | tee "$EVIDENCE/observer-selfcheck.txt"
+          python3 /tmp/review33-boundary-selfcheck.py | tee "$EVIDENCE/boundary-selfcheck.txt"
+          python3 /tmp/review33-cleanup-selfcheck.py | tee "$EVIDENCE/cleanup-selfcheck.txt"
+          python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path("/tmp").glob("review33-*.py")]'
+          mkdir -p "$EVIDENCE/harness"
+          cp /tmp/review33-* "$EVIDENCE/harness/"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+      - name: Verify selected SDK image exists and preserve identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list > "$EVIDENCE/sdkmanager-list.txt"
+          python3 - "$EVIDENCE/sdkmanager-list.txt" 'system-images;android-23;google_apis;x86' <<'PYVERIFY'
+          import pathlib,sys
+          assert any(line.strip().split(' | ')[0].strip()==sys.argv[2] for line in pathlib.Path(sys.argv[1]).read_text().splitlines()), 'selected system image absent'
+          PYVERIFY
+          git rev-parse HEAD > "$EVIDENCE/runtime-revision.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$EVIDENCE/workflow-revision.txt"
+          sha256sum android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml > "$EVIDENCE/source-manifest-sha256.txt"
+          pnpm gate build
+          pnpm clean:daemon
+          node --experimental-strip-types --input-type=module - <<'CLIPREREQUISITES' > "$EVIDENCE/cli-prerequisites.json"
+          import assert from 'node:assert/strict';
+          import { resolveCliOptions } from './src/cli/resolve-cli-options.ts';
+          import { readInputFromCli } from './src/commands/cli-grammar.ts';
+          const common=['--platform','android','--serial','emulator-5554','--session','pr3555-round33-check','--state-dir','/private/tmp/pr3555-round33-check','--json'];
+          const cases=[['open','settings','--relaunch','--launch-args','-S','--launch-args','-R','--launch-args','1','--launch-args','--display','--launch-args','0',...common], ['snapshot','-i',...common], ['close',...common],['session','list','--state-dir','/private/tmp/pr3555-round33-check','--json'],['daemon','stop','--clean','--state-dir','/private/tmp/pr3555-round33-check','--json'],['device','release','--stale','--platform','android','--serial','emulator-5554','--json'],['device','status','--stale','--platform','android','--serial','emulator-5554','--json'],['device','status','--platform','android','--serial','emulator-5554','--json']];
+          const parsed=cases.map(argv=>({argv,parsed:resolveCliOptions(argv,{cwd:process.cwd(),env:process.env,strictFlags:true})}));
+          assert.deepEqual(parsed[0].parsed.flags.launchArgs,['-S','-R','1','--display','0']);
+          const input=readInputFromCli('open',parsed[0].parsed.positionals,parsed[0].parsed.flags);
+          assert.equal(input.relaunch,true);
+          assert.deepEqual(input.launchArgs,['-S','-R','1','--display','0']);
+          assert.throws(()=>resolveCliOptions(['device','status','--state-dir','/private/tmp/invalid'],{strictFlags:true}));
+          console.log(JSON.stringify({passed:true,parsed,publicOpenInput:input},null,2));
+          CLIPREREQUISITES
+          node --experimental-strip-types --input-type=module - <<'SUBJECTSTATE' > "$EVIDENCE/subject-state-construction.json"
+          import { createOwnedReplayStateDir } from '@agent-device/daemon-contracts/daemon-registration-owner';
+          const owned = createOwnedReplayStateDir();
+          console.log(JSON.stringify({ source: 'createOwnedReplayStateDir', preparationState: process.env.AGENT_DEVICE_STATE_DIR, subjectState: owned.paths.baseDir, paths: owned.paths }, null, 2));
+          SUBJECTSTATE
+          node -e 'const fs=require("node:fs"); const state=JSON.parse(fs.readFileSync(process.env.EVIDENCE+"/subject-state-construction.json", "utf8")); if(state.preparationState===state.subjectState) process.exit(1); fs.appendFileSync(process.env.GITHUB_ENV, "SUBJECT_STATE_DIR="+state.subjectState+"\n");'
+          test -x "$SDK_ROOT/platform-tools/adb"
+          test ! -e "$SDK_ROOT/platform-tools/adb.review33-original"
+          for source in package.json src/bin.ts packages/platform-android/src/lifecycle.ts packages/platform-android/src/open-target-resolution.ts android/snapshot-helper/AndroidManifest.xml android/ime-helper/AndroidManifest.xml; do
+            test -f "$source"
+            git rev-parse "HEAD:$source" > /dev/null
+          done
+      - name: Measure targeted API 23 native evidence
+        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b
+        with:
+          api-level: 23
+          arch: x86
+          profile: Nexus 5
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -grpc 8554
+          script: python3 /tmp/review33-measure.py
+          avd-name: pr3555-round33-api23
+          emulator-port: 5554
+      - name: Complete owned cleanup and preserve terminal state
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/review33-cleanup.py ]; then python3 /tmp/review33-cleanup.py; fi
+          python3 - <<'PYFINAL'
+          import json,os,pathlib
+          p=pathlib.Path(os.environ['EVIDENCE']);report=p/'cleanup.json'
+          assert report.exists(), 'owned cleanup unavailable: measurement entry never established owned context or cleanup was interrupted'
+          assert json.loads(report.read_text())['passed'], 'owned cleanup did not prove all required conditions'
+          PYFINAL
+      - name: Digest retained native evidence
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PYDIGEST'
+          import hashlib,json,os,pathlib
+          p=pathlib.Path(os.environ['EVIDENCE']); (p/'digests.json').write_text(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted(p.rglob('*')) if f.is_file() and f.name!='digests.json'},indent=2))
+          PYDIGEST
+      - name: Upload targeted native proof (including failures)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr3555-round33-api23-native-evidence
+          path: ${{ env.EVIDENCE }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
