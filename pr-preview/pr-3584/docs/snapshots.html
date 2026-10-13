@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3584/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3584/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3584/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3584/static/js/index.2d3ff978ad.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3584/static/js/index.ac5067b12d.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -317,7 +317,9 @@ checkable.</li>
 (React Native writes <code>Tab</code>, <code>Tab List</code>, <code>Radio Group</code>, <code>Link</code>, <code>Menu</code>), when the class alone would
 not say what the control is. The <code>type</code> stays the class; a consumer maps the description to a role.</li>
 <li><code>value</code> contains an Android text field&#x27;s content, including custom controls that report they are
-editable. Static labels carry text in <code>label</code> and have no <code>value</code>. <code>value: &quot;&quot;</code> means the field
+editable. Static labels carry text in <code>label</code> and have no <code>value</code>. Saved selectors and replay
+scripts that use <code>value=</code> for static labels no longer match; change them to <code>label=</code>.
+<code>value: &quot;&quot;</code> means the field
 reports empty text or <code>hintShowing: true</code>; an absent <code>value</code> means no field text was reported.</li>
 <li><code>placeholder</code> carries the hint separately, whether the field is empty or filled. A field showing
 its hint reports <code>hintShowing: true</code> and <code>value: &quot;&quot;</code>; a field without a hint omits <code>placeholder</code>.
