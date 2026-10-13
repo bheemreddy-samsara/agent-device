@@ -11,7 +11,6 @@ import {
   splitReplayCommandRequest,
 } from '@agent-device/replay-port/replay-dispatch-envelope';
 import type { ReplayCommand } from '@agent-device/replay-port/command-types';
-import type { ObservationClock } from '@agent-device/capture-kit/observe-until';
 
 export type ReplayCommandTestInput = Readonly<{
   req: DaemonRequest;
@@ -21,8 +20,6 @@ export type ReplayCommandTestInput = Readonly<{
   invoke: DaemonInvokeFn;
   tracePath?: string;
   onStep?: ReplayTestAttemptStepSink;
-  /** Paces the target-readiness wait; default: `instantReplayClock`. */
-  clock?: ObservationClock;
 }>;
 
 /**
@@ -31,12 +28,12 @@ export type ReplayCommandTestInput = Readonly<{
  * test's `invoke` sees the same `DaemonRequest` the daemon would.
  */
 export function replayCommandForTest(params: ReplayCommandTestInput): ReplayCommand {
-  const { req, sessionName, logPath, sessionStore, invoke, tracePath, onStep, clock } = params;
+  const { req, sessionName, logPath, sessionStore, invoke, tracePath, onStep } = params;
   return {
     ...splitReplayCommandRequest(req),
     session: createReplaySession(sessionName, logPath, sessionStore),
     invoke: replayInvokeOverDispatch(invoke, req),
-    dependencies: { ...replayDaemonDependencies, clock: clock ?? instantReplayClock() },
+    dependencies: replayDaemonDependencies,
     ...(tracePath === undefined ? {} : { tracePath }),
     ...(onStep === undefined ? {} : { onStep }),
   };
@@ -44,15 +41,4 @@ export function replayCommandForTest(params: ReplayCommandTestInput): ReplayComm
 
 export function runReplayForTest(params: ReplayCommandTestInput): Promise<DaemonResponse> {
   return runReplayCommand(replayCommandForTest(params));
-}
-
-/** Target-readiness waits advance this clock instead of sleeping, so a unit replay spends no wall time. */
-function instantReplayClock(): ObservationClock {
-  let nowMs = Date.now();
-  return {
-    now: () => nowMs,
-    sleep: async (ms) => {
-      nowMs += ms;
-    },
-  };
 }

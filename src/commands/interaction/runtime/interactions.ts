@@ -38,11 +38,6 @@ export type PressCommandOptions = CommandContext &
   RepeatedInput & {
     target: InteractionTarget;
     button?: ClickButton;
-    /**
-     * Polls for the target to exist and become actionable, capped at the promotedTarget row's
-     * maxTimeoutMs. Absent takes one attempt.
-     */
-    readinessTimeoutMs?: number;
     /** ADR 0012 step 4: replay-only post-resolution guard; see resolution.ts. */
     expectedResolvedTarget?: ExpectedResolvedTarget;
     /** #1654: a mutating `find`'s already-resolved node; see resolution.ts. */
@@ -154,7 +149,6 @@ async function tapCommand(
     captureEvidenceBaseline: observation.needsPreActionBaseline,
     expectedResolvedTarget: options.expectedResolvedTarget,
     preresolvedTarget: options.preresolvedTarget,
-    readinessTimeoutMs: options.readinessTimeoutMs,
   });
   if (!runtime.backend.tap) {
     throw new AppError('UNSUPPORTED_OPERATION', 'tap is not supported by this backend');
