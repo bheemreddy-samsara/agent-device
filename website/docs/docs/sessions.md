@@ -21,6 +21,10 @@ A session opened without `--platform` uses the platform-less `default` session, 
 platform still join it as long as they match its device. Agents in different worktrees do not attach
 to each other's implicit session; a named session (`--session <name>`) is shared across worktrees.
 
+Android sessions driven through ADB require a resolved package for `open --relaunch`. If a name or
+alias cannot be resolved, the command fails before stopping or opening an app. Retry with the exact
+installed package name, for example `agent-device open com.example.myapp --platform android --relaunch`.
+
 ## Find a session's logs and artifacts
 
 When a session starts, human output prints a `Session state: <path>` line and JSON output includes

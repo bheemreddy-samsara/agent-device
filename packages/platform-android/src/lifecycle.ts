@@ -102,11 +102,23 @@ async function openAndroidApplication(
 ): Promise<OpenApplicationOutcome> {
   const timing: MutableOpenTiming = {};
   if (input.relaunch && input.target) {
+    if (!input.appBundleId) {
+      throw new AppError(
+        'COMMAND_FAILED',
+        'Android relaunch requires a resolved package for the requested app.',
+        {
+          reason: 'android-relaunch-owner-unresolved',
+          deviceId: binding.device.id,
+          target: input.target,
+          hint: 'Retry open --relaunch with the exact installed package name.',
+        },
+      );
+    }
     const closeStartedAtMs = Date.now();
     await invokeApplicationClose({
       device: binding.device,
       interactor: await binding.resolveInteractor(input.execution, input.appBundleId),
-      positionals: [input.appBundleId ?? input.target],
+      positionals: [input.appBundleId],
     });
     timing.relaunchCloseDurationMs = elapsed(closeStartedAtMs);
   }

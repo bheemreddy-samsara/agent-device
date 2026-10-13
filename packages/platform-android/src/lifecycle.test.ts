@@ -25,6 +25,7 @@ afterEach(() => {
 
 type LifecycleFixture = Readonly<{
   calls: string[];
+  interactorResolutions: Array<string | undefined>;
   lifecycle: ReturnType<typeof bindAndroidApplicationLifecycle>;
 }>;
 
@@ -41,20 +42,25 @@ function createLifecycle(
   }> = {},
 ): LifecycleFixture {
   const calls: string[] = [];
+  const interactorResolutions: Array<string | undefined> = [];
   const localInteractors: LocalApplicationInteractorHost = {
-    resolve: async () =>
-      ({
+    resolve: async (_device, runner) => {
+      interactorResolutions.push(runner.appBundleId);
+      return {
         open: async (app: string) => {
           calls.push(`open:${app}`);
         },
         openDevice: async () => {},
-        close: async () => {},
+        close: async (app: string) => {
+          calls.push(`close:${app}`);
+        },
         setSetting: async () => {},
         snapshot: async (options: SnapshotOptions) => {
           calls.push(`observe:${options.appBundleId}`);
           return await (params.snapshot?.(options) ?? Promise.resolve({ nodes: [] }));
         },
-      }) as unknown as Interactor,
+      } as unknown as Interactor;
+    },
   };
   const host = {
     localInteractors,
@@ -93,7 +99,7 @@ function createLifecycle(
     device,
     signal: params.signal ?? new AbortController().signal,
   });
-  return { calls, lifecycle };
+  return { calls, interactorResolutions, lifecycle };
 }
 
 function openInput(overrides: Partial<OpenApplicationInput> = {}): OpenApplicationInput {
@@ -112,6 +118,48 @@ function openInput(overrides: Partial<OpenApplicationInput> = {}): OpenApplicati
     ...overrides,
   };
 }
+
+test('an Android relaunch with unknown requested package refuses before dispatch', async () => {
+  const { calls, interactorResolutions, lifecycle } = createLifecycle({
+    openedAppBundleId: undefined,
+  });
+  const applyRuntimeHints = vi.fn(async () => {});
+
+  await expect(
+    lifecycle.openApplication(
+      openInput({
+        target: 'settings',
+        positionals: ['settings'],
+        appBundleId: undefined,
+        relaunch: true,
+        runtimeHints: { metroHost: 'localhost' },
+        applyRuntimeHints,
+        execution: { launchArgs: ['-n', 'com.vendor.settings/.Settings'] },
+      }),
+    ),
+  ).rejects.toMatchObject({
+    code: 'COMMAND_FAILED',
+    details: { reason: 'android-relaunch-owner-unresolved', target: 'settings' },
+  });
+
+  expect(interactorResolutions).toEqual([]);
+  expect(calls).toEqual([]);
+  expect(applyRuntimeHints).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['settings', 'com.vendor.settings'],
+  ['com.example.app', 'com.example.app'],
+])('Android relaunch of %s closes its resolved package %s', async (target, appBundleId) => {
+  const { calls, lifecycle } = createLifecycle({ openedAppBundleId: appBundleId });
+
+  const outcome = await lifecycle.openApplication(
+    openInput({ target, positionals: [target], appBundleId, relaunch: true }),
+  );
+
+  expect(calls.slice(0, 2)).toEqual([`close:${appBundleId}`, `open:${target}`]);
+  expect(outcome.appBundleId).toBe(appBundleId);
+});
 
 test('preserves a runtime launch URL duration after the admitted Android follow-up open', async () => {
   const { calls, lifecycle } = createLifecycle();
@@ -215,10 +263,10 @@ test('an app open whose launched package cannot be identified reports it unident
   const { calls, lifecycle } = createLifecycle({ openedAppBundleId: undefined });
 
   const outcome = await lifecycle.openApplication(
-    openInput({ target: 'Example', positionals: ['Example'], appBundleId: undefined }),
+    openInput({ target: 'settings', positionals: ['settings'], appBundleId: undefined }),
   );
 
-  expect(calls).toEqual(['open:Example']);
+  expect(calls).toEqual(['open:settings']);
   expect(outcome.timing.postOpenObservation).toBe('app-unidentified');
 });
 
