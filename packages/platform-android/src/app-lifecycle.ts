@@ -552,6 +552,16 @@ async function waitForAndroidPackageNotForeground(
     if (foreground?.package !== packageName) return;
     await sleep(ANDROID_CLOSE_FOCUS_POLL_MS);
   }
+  throw new AppError(
+    'COMMAND_FAILED',
+    `Android app ${packageName} remained foreground after close`,
+    {
+      reason: 'android-app-close-timeout',
+      phase: 'foreground',
+      packageName,
+      timeoutMs: ANDROID_CLOSE_FOCUS_TIMEOUT_MS,
+    },
+  );
 }
 
 async function readAndroidForegroundApp(device: DeviceInfo): Promise<AppStateRuntimeResult | null> {
@@ -571,6 +581,16 @@ async function waitForAndroidPackageProcessGone(
     }
     await sleep(ANDROID_CLOSE_PROCESS_POLL_MS);
   }
+  throw new AppError(
+    'COMMAND_FAILED',
+    `Android app ${packageName} process remained running after close`,
+    {
+      reason: 'android-app-close-timeout',
+      phase: 'process',
+      packageName,
+      timeoutMs: ANDROID_CLOSE_PROCESS_TIMEOUT_MS,
+    },
+  );
 }
 
 async function isAndroidPackageProcessRunning(
