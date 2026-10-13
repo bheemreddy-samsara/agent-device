@@ -9,14 +9,23 @@ name: Replay Manual
 
 on:
   workflow_dispatch:
+    inputs:
+      readiness_wait:
+        description: Replay readiness comparison mode (private evaluation only)
+        type: choice
+        default: normal
+        options:
+          - normal
+          - enabled
+          - disabled
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}${{ inputs.readiness_wait != 'normal' && format('-comparison-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ inputs.readiness_wait == 'normal' }}
 
 jobs:
   manual-android:
@@ -32,6 +41,12 @@ jobs:
       - name: Setup toolchain
         uses: ./.github/actions/setup-node-pnpm
 
+      - name: Prepare Android comparison source
+        if: inputs.readiness_wait != 'normal'
+        env:
+          READINESS_MODE: ${{ inputs.readiness_wait }}
+        run: node --experimental-strip-types scripts/replays/readiness-experiment.ts prepare "$READINESS_MODE" "$GITHUB_SHA"
+
       - name: Setup Android replay host
         id: android-replay-host
         uses: ./.github/actions/setup-android-replay-host
@@ -39,6 +54,7 @@ jobs:
           package-helpers: 'true'
 
       - name: Restore Android fixture APK
+        if: inputs.readiness_wait == 'normal'
         id: fixture-app
         uses: ./.github/actions/setup-fixture-app
         with:
@@ -51,6 +67,8 @@ jobs:
         run: echo "seconds=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Run Android full emulator suite
+        env:
+          READINESS_MODE: ${{ inputs.readiness_wait }}
         uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
         with:
           api-level: 36
@@ -58,7 +76,7 @@ jobs:
           profile: pixel_7
           target: google_apis_playstore
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: sh scripts/replays/android-manual.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}"
+          script: sh scripts/replays/android-manual.sh "${{ steps.fixture-app.outputs.apk-path }}" "${{ steps.fixture-app.outputs.app-id }}" "${{ steps.android-setup.outputs.seconds }}" "$READINESS_MODE"
 
       - name: Upload Android artifacts
         if: always()
@@ -89,6 +107,14 @@ jobs:
             pnpm-lock.yaml
             examples/test-app/pnpm-lock.yaml
 
+      - name: Prepare and build iOS comparison source
+        if: inputs.readiness_wait != 'normal'
+        env:
+          READINESS_MODE: ${{ inputs.readiness_wait }}
+        run: |
+          node --experimental-strip-types scripts/replays/readiness-experiment.ts prepare "$READINESS_MODE" "$GITHUB_SHA"
+          pnpm gate build
+
       - name: Restore and build iOS XCTest runner
         uses: ./.github/actions/setup-apple-runner-build
         with:
@@ -112,6 +138,7 @@ jobs:
           node --experimental-strip-types src/bin.ts prepare ios-runner --platform ios --udid "${{ steps.ios-simulator.outputs.simulator-udid }}" --timeout "$AGENT_DEVICE_IOS_PREPARE_TIMEOUT_MS" --json
 
       - name: Run iOS simulator replay suite
+        if: inputs.readiness_wait == 'normal'
         uses: ./.github/actions/run-gate
         with:
           gate: replay-ios
@@ -125,22 +152,39 @@ jobs:
             --report-junit
             test/artifacts/replays-ios-simulator.junit.xml
 
+      - name: Run iOS comparison replay suite
+        if: inputs.readiness_wait != 'normal'
+        env:
+          IOS_COMPARISON_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+        run: |
+          node --experimental-strip-types scripts/replays/readiness-experiment.ts begin ios
+          REPLAY_STATUS=0
+          pnpm gate replay-ios --udid "$IOS_COMPARISON_UDID" --debug --retries 0 --artifacts-dir test/artifacts/replays-ios-simulator --report-junit test/artifacts/replays-ios-simulator.junit.xml || REPLAY_STATUS=$?
+          SUMMARY_STATUS=0
+          node --experimental-strip-types scripts/replays/readiness-experiment.ts summarize ios "$AGENT_DEVICE_STATE_DIR" test/artifacts/replays-ios-simulator.junit.xml || SUMMARY_STATUS=$?
+          test "$REPLAY_STATUS" -eq 0 || exit "$REPLAY_STATUS"
+          exit "$SUMMARY_STATUS"
+
       - name: Fetch current fixture app
+        if: inputs.readiness_wait == 'normal'
         id: fixture-app
         uses: ./.github/actions/setup-fixture-app
         with:
           install: 'false'
 
       - name: Report fixture cache source
+        if: inputs.readiness_wait == 'normal'
         run: |
           echo "Fixture app source: ${{ steps.fixture-app.outputs.source }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prove selector drag reaches its destination on iOS
+        if: inputs.readiness_wait == 'normal'
         run: |
           xcrun simctl install "${{ steps.ios-simulator.outputs.simulator-udid }}" "${{ steps.fixture-app.outputs.app-path }}"
           node --experimental-strip-types src/bin.ts replay examples/test-app/replays/drag.ad --platform ios --udid "${{ steps.ios-simulator.outputs.simulator-udid }}" --session nightly-ios-target-drag --json
 
       - name: Run full fixture-backed iOS simulator E2E
+        if: inputs.readiness_wait == 'normal'
         env:
           AGENT_DEVICE_FIXTURE_APP_ID: ${{ steps.fixture-app.outputs.app-id }}
           AGENT_DEVICE_FIXTURE_APP_PATH: ${{ steps.fixture-app.outputs.app-path }}
@@ -152,7 +196,7 @@ jobs:
           node --experimental-strip-types scripts/node-test-tmpdir.ts --test test/integration/smoke-ios-simulator-coverage.test.ts test/integration/smoke-ios-simulator.test.ts
 
       - name: Run iOS physical device replay suite
-        if: env.IOS_UDID != ''
+        if: inputs.readiness_wait == 'normal' && env.IOS_UDID != ''
         env:
           IOS_UDID: ${{ vars.IOS_UDID }}
         uses: ./.github/actions/run-gate

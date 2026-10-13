@@ -1,0 +1,9 @@
+Packages:
+  Package [com.google.android.settings.intelligence] (570547f):
+    appId=10145
+    User 0: ceDataInode=352325 deDataInode=65654 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+      disabledComponents:
+        com.google.android.settings.intelligence.modules.battery.impl.health.BHSettingsActivity
+        com.google.android.settings.intelligence.modules.battery.impl.usage.PeriodicJobReceiver
+        com.google.android.settings.intelligence.modules.battery.impl.usage.BootBroadcastReceiver
+        com.google.android.settings.intelligence.modules.battery.impl.chargingoptimization.ChargingOptimizationActivityInject
