@@ -1047,6 +1047,8 @@ await stopMetroTunnel({
 
 Use `agent-device/remote-config` for profile loading and path resolution, `agent-device/metro` for Metro preparation, reload, and tunnel lifecycle, and `agent-device/contracts` when a server consumer needs daemon request or runtime contract types. For bridged remote Metro, `proxyBaseUrl` is the bridge origin and `publicBaseUrl` is optional; the bridge descriptor supplies cloud iOS wildcard HTTPS hints and Android runtime-route hints. `reloadMetro()` calls Metro's `/reload` endpoint, matching the terminal `r` reload path for connected React Native apps.
 
+`stopMetroTunnel()` releases a companion once per consumer, so it only returns once the companion is gone when it releases the last one. If that companion belongs to another user — you started it with `sudo`, for example — the call fails with its pid, and the profile keeps tracking it so a later stop retries the same process instead of starting a second companion beside it. Stop the surviving process as its owner (`sudo kill <pid>`) and run `stopMetroTunnel()` again.
+
 ## Selector helpers
 
 Use `agent-device/selectors` to parse and match selector expressions in a remote daemon or bridge. The `role=` term matches the platform-neutral `kind` vocabulary that `snapshot --json` publishes (see [Snapshots](/agent-device/pr-preview/pr-3485/docs/snapshots.md#structured-node-fields---json)): pass the nodes as captured, and a node whose `kind` is `text` always matches `role=text`. Separately, the deprecated raw leaf spellings (`statictext`, `edittext`, `textview`, …) also match, each on the nodes that actually carried that class. A leaf spelling matches beside such a node's `kind`, not in place of it — `role=webarea` resolves a macOS-helper `AXWebArea` node whose `kind` is `axwebarea`, for example. Matching stays platform-aware because editability checks differ by backend.
@@ -1192,7 +1194,8 @@ async function main(): Promise<void> {
 
     const snapshot = await client.capture.snapshot({ interactiveOnly: true });
     const target = snapshot.nodes.find((node) => node.role === 'button');
-    if (target) {
+    // A node carries a ref only when something can address it, and press needs that address.
+    if (target?.ref !== undefined) {
       await client.interactions.press({ ref: target.ref });
     }
   } catch (error) {
@@ -1638,7 +1641,7 @@ Fold a foldable device:
 - The iOS response names the lit panel and its size, marked `coordinateSpace: "native-panel"`. That size is not the next snapshot's viewport and cannot place a tap.
 - iOS only: `--keyframes` plays a timed trajectory instead of a preset, for example `fold --keyframes '[{"atMs":0,"angle":0},{"atMs":1667,"angle":160},{"atMs":3333,"angle":100},{"atMs":5000,"angle":180}]'`. Use 2–64 keyframes starting at 0ms, strictly increasing integer timestamps up to 60,000ms, and angles from 0 to 180°.
 - iOS needs an Xcode with the iOS simulator SDK and foldable HID support (verified on Xcode 27.1); Device Hub and Accessibility permission aren't required. The first fold builds a helper cached under `~/.agent-device/fold-helper`; failures report `fold-helper-build-failed` or `fold-hid-dispatch-failed`.
-- `COMMAND_FAILED` with `reason: fold-pose-unverified` means the hinge reports another pose; `fold-pose-unsettled` means it reached `half-open` but never came to rest.
+- `COMMAND_FAILED` with `reason: fold-pose-unverified` means the hinge reports another pose; `fold-pose-unsettled` means it reached `half-open` but never came to rest; `fold-pose-dispatched-unverified` means the pose was sent but the first hinge-angle read returned no sample, so check the lit panel with a screenshot; `hingeReadFailure` holds the read's own failure.
 - `UNSUPPORTED_OPERATION` covers single-panel devices (`single-panel-device` on Android) and simulators in a non-default `--ios-simulator-device-set` (`unsupported-device-scope`; use the default set). Physical devices are refused.
 - On Android, `fold` confirms the pose from the device state the emulator commits and reports `hingeAngleDegrees` as the hinge sensor reads it: the angle the AVD profile defines for the posture, such as 0°, 90°, and 180° on the Pixel folds or 15°, 90°, and 165° on the generic 7.6in Foldable. It also dismisses the lock screen that folding to the cover display can raise. For panels, poses, and timings, see `agent-device help foldable`.
 
@@ -1720,7 +1723,7 @@ agent-device devices --platform android --android-device-allowlist emulator-5554
 - If the selected Xcode can't resolve a scoped simulator for the Apple runner, the runner start fails with `details.reason: "simulator_set_destination_not_found"`, naming the set and, when known, the Xcode version.
 - `--android-device-allowlist <serials>` limits Android discovery and selection to comma- or space-separated serials.
 - Set the same scopes with the `iosSimulatorDeviceSet` and `androidDeviceAllowlist` config keys, or `AGENT_DEVICE_ANDROID_DEVICE_ALLOWLIST`. CLI flags override environment values, except under a `strip` session lock, which ignores conflicting per-call selectors.
-- Start the daemon with `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET=<path>` to scope every request to one simulator set. A request without `--ios-simulator-device-set` uses that set; one naming another set fails with `INVALID_ARGS` and `details.reason: "ios_simulator_device_set_outside_daemon_set"`.
+- Start the daemon with `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET=<path>` to scope every iOS simulator request to one simulator set. A request without `--ios-simulator-device-set` uses that set, so iOS physical devices are not listed on that daemon. A request naming a different path string, including the same path with a trailing slash, fails with `INVALID_ARGS` and `details.reason: "ios_simulator_device_set_outside_daemon_set"`. macOS and other non-iOS requests ignore the set, and the host Mac stays listed. A daemon that the CLI starts inherits the CLI's environment, so later CLI calls with a different value still use the first value until the daemon restarts.
 - Scope applies before `--device`, `--udid`, and `--serial`, so an out-of-scope selector fails with `DEVICE_NOT_FOUND`.
 - On macOS, daemon startup removes any symlink at `~/Library/Developer/XCTestDevices`, including one you made yourself (for example to move it to another volume), and restores `XCTestDevices.agent-device-backup` when it exists. A symlinked `XCTestDevices` is not supported. Only the link is removed, never the directory it points to; `daemon.log` records each step and any failed restore, which doesn't stop the daemon.
 
@@ -1947,6 +1950,8 @@ agent-device gesture transform 200 420 80 -40 2 35 700 # combined pan, zoom, and
 
 A successful `click` or `press` means the action was sent to where the command found the target. It does not confirm that the element received it or that the screen changed. When the next step depends on it, add `--verify` (reports `changedFromBefore`), add `--settle` (returns the diff once the UI goes quiet), or follow with `wait <selector>`. Before retrying a failed interaction, see [Retry after a failed command](#retry-after-a-failed-command).
 
+A `click` or `press` whose target the daemon resolves to a point (`@ref` or selector) re-checks that target's position before dispatching when the session's previous action animated the screen, and dispatches where it came to rest. When that check cannot confirm a stable position — the target was still moving, or a re-check could not measure it — the command refuses with `target_still_moving` and `dispatched: no`: nothing was dispatched, the point the command resolved is in `error.details.rect`, and where the target was last seen is in `error.details.movedToRect` when that last look measured one. Run `wait <selector>` on the target and retry the same command, or add `--settle` so the action waits for the UI to go quiet. A refused `@ref` press needs a fresh `snapshot -i` and a selector, because the wait retires the ref. Two dispatch paths hand off before the check: a press at raw coordinates has no resolved target to re-check, and a dispatch the backend performs on the element itself — `click @ref` on a backend with element dispatch, or a Maestro non-hittable coordinate fallback — goes to that backend rather than through a resolved point.
+
 ### Text entry
 
 - `fill` clears then types. `type` appends to the focused field and accepts text only: use `fill @ref "text"` to target a field, or `press @ref` then `type "text"`.
@@ -1988,6 +1993,7 @@ agent-device wait 'id="field-phone" value="00 062 91 77"'
 - `scroll <direction> [amount]` takes the finger path as a fraction of the viewport (`0.5` is half), or `--pixels <n>` for a fixed distance. Large distances are clamped. The app's scroll physics decide the final offset, so a scroll does not land on an exact position.
 - `scroll <direction> --until <selector>` repeats passes until the selector is on screen and fails if the content runs out first. Add an amount (`scroll down 0.8 --until <selector>`) to widen each pass. Use it in `.ad` scripts too, instead of fixed amounts that depend on screen size; see [Replay & E2E](/agent-device/pr-preview/pr-3485/docs/replay-e2e.md).
 - Default snapshot text summarizes off-screen interactive content instead of listing refs. `scroll <direction> --settle` (and `back --settle`) waits for the UI to go quiet and returns the diff with fresh refs, so you don't need another `snapshot -i`. Settle is best-effort and never fails the action.
+- On Android, settle ignores an allowlist of system-bar containers and shade/keyguard status headers; other SystemUI overlays remain content. Appium settle also applies package rules for keyboard and system chrome.
 - With a keyboard up on iOS or Android, the swipe stays above the keyboard (reported as `keyboardAvoided` and `keyboardMinY`) and the keyboard stays open. If too little room is left, the command refuses with `scroll_keyboard_occludes_surface`; run `keyboard dismiss` first.
 - A directional scroll reports what it observed as `movement`: `moved`, `at-edge` (no change and no more content that way), `unchanged` (no change, no edge signal), or `unobserved` (no reliable comparison). If nothing changed, the swipe ran inside a container, and that container still has hidden content in that direction, it refuses with `scroll_no_progress`; the hint names the usual causes: a focused keyboard, a nested scroller, or a list that needs a raw `swipe`. See `agent-device help scroll`.
 
@@ -2038,6 +2044,7 @@ agent-device is text 'id="greeting"' "Welcome back"
 - `is absent` passes only when the selector has zero matches in one readable, complete, settled, unscoped, full-depth capture. It does not mean hidden: `--scope` and `--depth` are rejected, and sparse, unreadable, truncated, or unsettled captures fail.
 - Predicates that name one element (all except `exists` and `absent`) and `get attrs` fail with `AMBIGUOUS_MATCH` when the selector matches more than one node; that is not a missing element. `error.details.matches` has the count, and up to five candidate `@ref`s are listed, pinned to `error.details.refsGeneration`, so you can act on one directly. Without a stored tree (a sparse capture), only the count is reported. See [Selectors](/agent-device/pr-preview/pr-3485/docs/selectors.md#find-an-element).
 - On iOS, React Native text appears as two nodes with the same label. Selectors that must resolve one element (`is`, `get attrs`, `screenshot --crop-on`, replay) treat the pair as one; `find ... list` and `snapshot --json` show both.
+- On the web, on-screen text the browser cannot hand an action to (static text, a `status` announcement) is in the tree and readable by `wait text`, `find text`, `get text`, and `text=`, but carries no `@ref` and has no rect: `find ... list` prints it as `(no ref)`, and it is never a tap target. Such text is published on `value`, so `value="X"` can match page text as well as a field holding that text, and a predicate that needs one element then reports `AMBIGUOUS_MATCH`; use `text=` for page text, or add `editable=true` to name the field.
 - The first read after `scroll`, `swipe`, or `gesture swipe` waits for two captures to agree. When that proves something about the gesture, `is`, `get`, `find`, `wait`, interactions that captured it, and `snapshot` add a warning, and all but `snapshot` report `postGestureOutcome` (`{ "kind", "gesture": { "action", "positionals" } }`) in `data` or `error.details`:
   - `kind: "unsettled"`: the screen was still changing. A miss is not proof of absence; read again. `is absent` refuses with `observation: "unsettled"`, and `wait absent` keeps polling.
   - `kind: "no-effect"`: nothing changed. The list may be at its edge or ignore synthesized scrolls; a raw `swipe x1 y1 x2 y2` inside it moves such lists.
@@ -2227,8 +2234,8 @@ agent-device apps --platform android
 agent-device apps --platform android --all
 ```
 
-- Android `appstate` reports the live foreground package and activity.
-- iOS `appstate` needs a session and reports that session's app: `appName`, `appBundleId`, and, when a runner is already live, its `state` (`runningForeground`, `runningBackground`, `runningBackgroundSuspended`, `notRunning`, or `unknown`) with `source: runner`. It never starts a runner; without one it reports `source: session` and no `state`. After `home`, the app reports a background state; which app took the screen is not reported. A command that had to bring the app back reports a [`targetActivation` disclosure](#foreground-repairs-on-ios).
+- Android and HarmonyOS `appstate` report the live foreground package and activity.
+- iOS and macOS `appstate` need a session and report that session's app: `appName`, `appBundleId`, and a `source`. On iOS, when a live runner answers the read, the answer carries its `state` (`runningForeground`, `runningBackground`, `runningBackgroundSuspended`, `notRunning`, or `unknown`) with `source: runner`. They never start a runner; when no live runner answers — none is running, or it cannot reply right now — they report `source: session` and no `state`, and on macOS the answer is always session-scoped. On iOS, after `home` the app reports a background state; which app took the screen is not reported. A command that had to bring the app back reports a [`targetActivation` disclosure](#foreground-repairs-on-ios).
 - `apps` shows user-installed apps. Add `--all` to include system and OEM apps.
 
 ## Foreground repairs on iOS
@@ -2365,6 +2372,7 @@ agent-device react-devtools profile report @c5
 - `agent-device` global flags work before or after `react-devtools`. Put `--` before downstream flags only when they share an `agent-device` global flag name.
 - Development builds connect to the DevTools daemon on port 8097. If an Android emulator or device cannot reach the host, run `adb reverse tcp:8097 tcp:8097`. Android `open` of a local Metro URL with a port sets up host reachability; for app/package launches, run `adb reverse tcp:8081 tcp:8081` if the app cannot reach Metro.
 - Remote bridge sessions (Android and iOS) work through the same command; the CLI keeps a tunnel to the remote DevTools daemon alive until `react-devtools stop` or `disconnect`. See [Remote bridge sessions](/agent-device/pr-preview/pr-3485/docs/debugging-profiling.md#remote-bridge-sessions) for the iOS relaunch order and supported React Native versions.
+- `react-devtools stop` reports the tunnel's pid and keeps tracking it when it cannot confirm the tunnel exited — it belongs to another user, for example — instead of starting a second one on the next run. Stop that process as its owner and run `react-devtools stop` again.
 - For cross-platform validation, use separate sessions/devices and restart `react-devtools` between iOS and Android runs.
 
 ```bash
@@ -2730,7 +2738,7 @@ Only the variables below, and those documented on command pages, are supported. 
 | Category                            | Env vars                                                                                                                                                                                                                                                                                                                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CLI defaults and config             | `AGENT_DEVICE_HOME`, `AGENT_DEVICE_CONFIG`, `AGENT_DEVICE_SESSION`, `AGENT_DEVICE_PLATFORM`, `AGENT_DEVICE_SCREENSHOT_SCALE`, `AGENT_DEVICE_SESSION_LOCK`, `AGENT_DEVICE_DAEMON_BASE_URL`, `AGENT_DEVICE_DAEMON_AUTH_TOKEN`, `AGENT_DEVICE_CLOUD_BASE_URL`                                                                   | Public                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Device scoping                      | `AGENT_DEVICE_ANDROID_DEVICE_ALLOWLIST`, `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET`                                                                                                                                                                                                                                             | Public. `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET` is read by the daemon: every request that names no `--ios-simulator-device-set` uses that set, and a request naming another set fails with `INVALID_ARGS` (`details.reason: "ios_simulator_device_set_outside_daemon_set"`). Restart the daemon after changing it.                                                                                                                                                                                                                                                                                   |
+| Device scoping                      | `AGENT_DEVICE_ANDROID_DEVICE_ALLOWLIST`, `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET`                                                                                                                                                                                                                                             | Public. `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET` is read by the daemon: every iOS simulator request that names no `--ios-simulator-device-set` uses that set, so iOS physical devices are not listed, and a request naming a different path string fails with `INVALID_ARGS` (`details.reason: "ios_simulator_device_set_outside_daemon_set"`). macOS and non-iOS requests ignore it. A daemon started by the CLI inherits the CLI's value; restart the daemon after changing it.                                                                                                                     |
 | Android test IME                    | `AGENT_DEVICE_TEST_IME`                                                                                                                                                                                                                                                                                                      | Public. Same setting as `--test-ime` / `--no-test-ime` on `open`, `test`, and `replay`; see known limitations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Local daemon storage                | `AGENT_DEVICE_STATE_DIR`                                                                                                                                                                                                                                                                                                     | Public                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Metro and install helpers           | `AGENT_DEVICE_METRO_BEARER_TOKEN`, `AGENT_DEVICE_BUNDLETOOL_JAR`                                                                                                                                                                                                                                                             | Public                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -3389,6 +3397,8 @@ agent-device connect limrun --platform android
 ```
 
 `--platform android` or `--platform ios` selects the instance type. `connect` checks the credentials for that platform without creating an instance.
+
+When you create an instance through agent-device, the creation request sends `User-Agent: agent-device-cli/<version>` so Limrun can attribute it to agent-device for revenue sharing.
 
 ## Drive an existing instance
 
@@ -4792,6 +4802,10 @@ Text values match the whole field, ignoring case and extra whitespace: `label="s
 Boolean keys: `visible`, `hidden`, `editable`, `selected`, `focused`, `enabled`, `hittable`. Write
 `visible=true` or `visible=false`; a bare `visible` means `visible=true`.
 
+`editable` (and `is editable`) uses the node's native `editable` fact when the snapshot carries one,
+so a custom text view can match and a read-only field cannot. Without the fact it is inferred from
+the element type. A disabled element is never editable.
+
 Quoting and alternatives:
 
 - Quote values that contain spaces, with double or single quotes: `label="Sign in"`. Escape a quote
@@ -5134,6 +5148,12 @@ agent-device snapshot -i
 # [off-screen below] 2 interactive items: "All Contacts", "New List"
 ```
 
+With Android Appium, `snapshot --json` includes `viewport: { "width": …, "height": … }` when the
+driver can measure the display. These dimensions use the same coordinates as node rectangles and
+are refreshed for each capture, including after rotation. Opening the keyboard can shrink the app's
+content without shrinking the display viewport. An empty or sparse tree can still have a viewport;
+when the measurements disagree or either measurement is unavailable, `viewport` is absent.
+
 ## Structured node fields (`--json`)
 
 Every node in `snapshot --json` output carries `kind`, next to `type` when the platform reports one:
@@ -5151,6 +5171,33 @@ Every node in `snapshot --json` output carries `kind`, next to `type` when the p
 
 On iOS, `role` (when present) is the native AX class (`UIButton`), carried only on iOS nodes.
 `kind` is the cross-platform role, present on every node on every platform.
+
+A node the occlusion scan finds covered carries `interactionBlocked: "covered"`, and when the scan
+can name what draws on top of it, `coveredBy` beside it: the cover's `kind`, its accessible `label`
+when it has one, and its `rect`:
+
+```json
+{
+  "ref": "e10",
+  "kind": "text",
+  "label": "Session health",
+  "interactionBlocked": "covered",
+  "coveredBy": {
+    "kind": "group",
+    "label": "Confirm catalog refresh",
+    "rect": { "x": 41, "y": 327, "width": 320, "height": 248 }
+  }
+}
+```
+
+`coveredBy.kind` is the same presented role any other node carries, so a cover can be a generic
+container — an alert's container often arrives as `group` — and the label is what makes it nameable.
+
+A `click`/`press`/`fill`/`find ... focus` refused on that node repeats the same description in
+`error.details.coveredBy` and names it in `error.hint`. `coveredBy` is diagnosis only: it carries no
+ref, so the cover is not an actionable target. It is absent when nothing nameable covers — an
+anonymous container with no accessible name, or a backend policy that reports only the boolean, such
+as an Android replacement surface — and those refusals say only that the target is covered.
 
 `role=` selectors (and `find role=...`) match the `kind` vocabulary: a node whose `kind` is `text`
 or `text-field` always matches `role=text` / `role=text-field`, the bracketed word a snapshot
@@ -5249,11 +5296,29 @@ decides which backends it tries.
   `androidSnapshot.windowCount` describe what was captured.
 - Default and `-i` snapshots keep covered surfaces in the same window visible for diagnosis, and
   mark controls whose drawing order shows they are covered with `interactionBlocked: "covered"`, so
-  selectors can't act on a stale React Native screen underneath.
+  selectors can't act on a stale React Native screen underneath. Such a node also carries a
+  `coveredBy` description whenever the cover has a name, as
+  [Structured node fields (`--json`)](#structured-node-fields---json) describes.
 - Android 6.0 (API 23) doesn't report the drawing order of sibling views, so this check falls back
   to conservative behavior there, and `androidSnapshot.occlusionScanUnavailable: true` tells you so.
 - `--raw` returns the tree as captured. It also keeps nodes Android marks invisible and stale
   application windows.
+
+## iOS node metadata
+
+On iOS, React Native controls can report role and state words in `value`, such as
+`"checkbox, unchecked"`. Snapshot JSON and `get attrs` preserve that value and add `iosValueSemantics`
+for recognized English encodings from Fabric or Paper. Its `source` is
+`react-native-ios-value-heuristic`: an anonymous `Other` node with an identical literal value
+cannot be distinguished from an RN control. Bare words on anonymous nodes, other languages,
+and native-control values stay uninterpreted.
+
+`iosValueSemantics.role` carries the interpreted role while `type` and native `role` retain
+their original evidence. Boolean checked state fills a missing `checked` field; an explicit
+native fact always wins. `iosValueSemantics.checked: "mixed"` never becomes `checked: false`.
+Read explicit expansion and busy evidence from `iosValueSemantics.expanded` and `.busy`;
+an absent expansion field means unknown, not collapsed. There is no general `expanded`
+node field or expansion selector.
 
 ## Android node metadata
 
@@ -5269,11 +5334,47 @@ tree failed (`2` is an input method window); `windowCount` counts only the windo
 when every listed window was read. When it names an input method window, the capture reports the
 keyboard band as unmeasurable rather than absent. An older helper omits it.
 
+The response-level `keyboard` field tells you what the capture observed:
+
+- `visible` carries a directly measured `frame` in the same coordinates as node bounds.
+- `derived` carries a `frame` inferred from a docked keyboard tree, with `derivation: "docked-tree"`.
+- `visibility-only` carries a boolean `visible` from a provider probe, without a frame.
+- `tree-rejected` means the full tree was checked with a usable viewport but could not establish a
+  docked band. Its optional `visible` carries probe visibility. Projecting that tree does not retry
+  the rejected geometry.
+- `absent` means the producer explicitly established absence.
+- `unmeasurable` carries a `reason` when the producer cannot establish a frame or visibility.
+
+Appium iOS and Android snapshots include a visibility probe. Each capture, including a `wait` poll
+or the capture before `fill`, adds one sequential probe with a 500 ms timeout. A timeout leaves the
+probe unknown; it does not discard the tree. Appium iOS and limrun iOS can also report a derived docked
+band during capture. Android Appium can derive the band when a tap resolves the tree's viewport.
+
+Missing keyboard nodes never mean the keyboard is hidden. A positive probe establishes presence but
+cannot locate the covered area. A negative probe establishes absence only when the tree also resolves
+no docked band. Neither probe result overrides a resolvable docked tree. Element taps use measured or
+derived frames to refuse an app target whose dispatched tap point is behind the keyboard.
+Run `snapshot -i` again after ending editing before retrying a refused target.
+
+Android Appium nodes carry the reported native package in `bundleId`.
+Provider snapshot nodes include `keyboardOwned`: `true` identifies a keyboard-owned node; `false`
+means capture evaluated the node and found no keyboard ownership. Both decisions survive filtering
+and scoping. An omitted field means ownership was not evaluated. App-filled assistant hosts do not
+pass keyboard ownership to their descendants.
+
 The Android keyboard band is the input method window's bounds, the box around the area it takes
 touches in. On Android 13 (API 33) and later the helper also checks that this area is one rectangle.
 A floating keyboard's is not (the panel plus the gesture strip, with app content between them), so the
 band is reported as unmeasurable and taps fall back to the tree's own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.
+
+Android ADB and Appium snapshot nodes carry `systemBar: "status"` or `systemBar: "navigation"`
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent `systemBar` means the
+capture did not establish membership. Launcher-hosted navigation buttons carry `"navigation"` too;
+taskbar app icons do not. Android package identity is available as `bundleId`.
+You can read these fields in snapshot JSON and nodes returned by `get attrs` and `find`.
 
 Android snapshot nodes and `get attrs` (including the digest response) carry the native
 `selected`, `checked`, `heading`, `roleDescription`, `editable`, `password`, `hintShowing`,
@@ -5296,12 +5397,15 @@ them. Explicit `false` and `0` are kept; an absent field means the fact was unav
 - `roleDescription` is the localized role description an app sets beside the native class, verbatim
   (React Native writes `Tab`, `Tab List`, `Radio Group`, `Link`, `Menu`), when the class alone would
   not say what the control is. The `type` stays the class; a consumer maps the description to a role.
-- `value: ""` is an explicitly empty accessibility text; a missing `value` means no text was
-  reported. The text of an empty field is its hint on modern Android, so check `hintShowing`
-  before reading `value` as the entered contents.
-- `placeholder` is the field's hint text itself, present whether the field is empty or filled: an
-  empty field shows it (`hintShowing: true`, and `value` repeats it), a filled field no longer does.
-  A field without a hint omits it. iOS nodes carry the same fact from the field's
+- `value` contains an Android text field's content, including custom controls that report they are
+  editable. Static labels carry text in `label` and have no `value`. Saved selectors and replay
+  scripts that use `value=` for static labels no longer match; change them to `label=`.
+  `value: ""` means the field
+  reports empty text or `hintShowing: true`; an absent `value` means no field text was reported.
+- `placeholder` carries the hint separately, whether the field is empty or filled. A field showing
+  its hint reports `hintShowing: true` and `value: ""`; a field without a hint omits `placeholder`.
+  With Appium, when hint state is unavailable, reported field text is preserved even when it equals
+  the placeholder, and `hintShowing` stays absent. iOS nodes carry the same fact from the field's
   `placeholderValue`, on every producer (the XCTest tree, the Simulator AX bridge, and the runner's
   private-AX reader). XCTest reports an empty field's placeholder as its `value` too, so a `value`
   equal to `placeholder` is either an empty field or one holding exactly that text; equality alone
