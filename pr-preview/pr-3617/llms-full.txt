@@ -1415,6 +1415,8 @@ Domain client methods:
 
 `client.capture.snapshot()` carries an optional `viewport: { width, height }` beside `nodes`: the box those rects are measured in, in the same coordinate space and orientation. Scale and clip against it instead of inferring the screen from the largest rect. When no box was measured, the field is absent rather than zero; see [Coordinates and viewport](/agent-device/pr-preview/pr-3617/docs/snapshots.md#coordinates-and-viewport) for what each producer answers with.
 
+It also carries an optional `presentedSurface: 'presented' | 'absent' | 'unknown'` on iOS captures: whether the capture saw a modal presentation over your app's content. `'absent'` is a reading that was earned, so it is safe to act on; `'unknown'` says the capture could not tell and is not `'absent'`. The field is absent on other platforms. See [Presented surface](/agent-device/pr-preview/pr-3617/docs/snapshots.md#presented-surface).
+
 `client.observability.events({ cursor, limit })` reads the session event timeline as paged JSON entries. Use `nextCursor` from the previous page to continue from the daemon-owned `events.ndjson` file without replaying already uploaded/displayed events. Cursors are absolute and survive the file's size rotation; a cursor older than the retained window rejects with `COMMAND_FAILED`, `details.reason: "EVENT_LOG_CURSOR_EXPIRED"`, and `details.earliestCursor` to resume from.
 The timeline leaves out user-entered content such as typed text, selector values, and payloads; see [Sessions](/agent-device/pr-preview/pr-3617/docs/sessions.md#find-a-sessions-logs-and-artifacts) for what it keeps.
 
@@ -3935,7 +3937,9 @@ agent-device disconnect
 
 `--daemon-auth-token <token>` works instead of the environment variable, but it authenticates only the command you pass it to. Later commands need the token again through the environment variable, a `daemonAuthToken` entry in your remote config profile, or the flag on each command.
 
-`connect proxy` stores the proxy profile and client identity. `open` leases the device for you, and the lease expires after five minutes without commands. A lease allocated directly over the RPC without `ttlMs` gets the daemon's one-minute inactivity default instead. Either window starts when allocation completes, not when it was requested. `close` releases the active session and its device lease, unless the lease was allocated with `retainOnClose`; only `leases.release`, expiry, or daemon shutdown ends that one. `disconnect` clears local connection state.
+`connect proxy` stores the proxy profile and client identity. `open` leases the device for you, and the lease expires after five minutes without commands. A lease allocated directly over the RPC without `ttlMs` gets the daemon's one-minute inactivity default instead. Either window starts when allocation completes, not when it was requested. `close` releases the active session and its device lease, unless the lease was allocated with `retainOnClose`; only `leases.release`, expiry, or daemon shutdown ends that one. The reply to any request that closed a session lists the leases it ended in `endedLeases`, as `{ leaseId, outcome: 'released' }`. This covers `close`, a `batch` with a close step, and a `replay` or `test` script that closes, as well as the session cleanup `test` runs after each script. A successful reply has the field in `data`, and a failed one has it in `error.details`. A gateway in front of the daemon reads the lease end from that reply. When the reply names the stored lease, the CLI forgets it, so the next `open` leases a device again. `disconnect` clears local connection state.
+
+Without `--udid` or `--serial`, `open` does not pick the device on the agent machine: it sends `--platform`, `--target`, and `--device` with the lease request, the daemon behind the proxy picks a matching device, and later commands use the device the lease names. The device therefore does not need to exist before `open`, which lets a service in front of the daemon create or choose it at that point. While that lease is active, an `open` that names a different device is refused instead of running on the leased one; close the session first, or run `connect --force` to start over.
 
 `open` names each new lease with an id it makes (32 lowercase hex characters) and sends it with the allocation, so a host in front of the daemon knows the lease id before the daemon allocates. A direct `agent_device.lease.allocate` RPC can pass `leaseId` (16 to 128 hex characters) the same way; an id this daemon has already given a lease, active or ended, is refused with `INVALID_ARGS` and reason `LEASE_ID_IN_USE`, and without one the daemon makes the id. Use the id the reply carries: a run that already holds a lease gets that lease back, and an older daemon ignores the requested id.
 
@@ -4086,6 +4090,8 @@ These rules apply to requests made under the lease. To refuse requests that name
 start the daemon with a policy that requires one (`leases.require`, below). The proxy token is shared
 by every client of the proxy, so a host serving several clients through one proxy authenticates each
 client itself and sets each request's tenant, session isolation, and lease before forwarding it.
+Embedding `@agent-device/proxy` with its `authenticate` option does the tenant and session
+isolation part: the proxy sends each client's requests as the tenant `authenticate` returns. A tenant id is 1-128 letters, numbers, dots, underscores or hyphens; any other id fails the request with a 500. On `/rpc` the proxy accepts only `agent_device.command` and the `agent_device.lease.*` methods, and refuses others with a 401. Upload tickets carry the client's own `authorization` and `x-agent-device-token` headers, or the `uploadHeaders` that `authenticate` returns, and never the daemon's token.
 
 ## Restrict what clients can do
 
@@ -5253,6 +5259,31 @@ snapshot was taken on instead of guessing it from the largest rect.
   separate.
 
 For Android pixel units and density, see [Android node metadata](#android-node-metadata).
+
+## Presented surface
+
+`snapshot --json` reports `presentedSurface` — whether the capture saw a modal presentation over your
+app's own content: `"presented"`, `"absent"`, or `"unknown"`. Read it instead of counting windows in
+the tree to work out whether a sheet or alert was up.
+
+- `"presented"` means the capture saw the presentation directly — a dimming view, an alert's own
+  view classes, or an element typed as a sheet, drawer, alert, or dialog.
+- `"absent"` is an earned answer, not a default. The capture checked every window it read and each
+  one held only its own content. This is the answer you can act on, for example to confirm a tap
+  dismissed a sheet.
+- `"unknown"` means the capture could not tell, and it is not a hedge — it says the capture lacks the
+  evidence absence needs. Absence is only reachable from a capture that reads UIKit class names, so a
+  screen served by a backend that publishes none answers `"unknown"` even when nothing is presented.
+  That is the private accessibility backend (`snapshotQuality.backend: "private-ax"`, which `--actions`
+  asks for) and an Appium or Limrun tree. Never treat `"unknown"` as `"absent"`.
+- A physical iOS device has one capture backend, and it publishes no class names, so there the answer
+  is `"presented"` or `"unknown"` and never `"absent"`.
+- The field is absent entirely when the platform publishes no reading at all: Android, web, Linux,
+  and macOS captures.
+
+The answer describes the screen, not the view of it you asked for, so `--raw`, `-i`, `-d`, and
+`--scope` all report the same value for one screen. Use `-i` or a `--scope` to keep the output small
+and still trust the answer.
 
 ## iOS capture behavior
 
