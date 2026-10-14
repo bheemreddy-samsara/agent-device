@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3599/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3599/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3599/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3599/static/js/index.f8ecc040d1.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3599/static/js/index.23a05b6e27.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -90,6 +90,7 @@
 <li><code>open &lt;app&gt; --launch-console &lt;path&gt;</code> captures launch-time stdout/stderr for iOS simulator app launches. It is not valid for URL opens or other targets.</li>
 <li><code>open --platform macos --surface app|frontmost-app|desktop|menubar</code> selects the macOS session surface; <code>app</code> is the default when you name an app. See <a href="#desktop-targets" class="rp-link">Desktop targets</a>. <code>--save-script</code> records the surface so <code>replay</code> reopens it; with no surface given, replay opens an app session.</li>
 <li>Android React Native: <code>open --relaunch</code> needs an installed package name. Install or reinstall the APK first; <code>open &lt;apk|aab&gt; --relaunch</code> is rejected. For Metro-backed JS changes, run <code>metro reload</code> before reaching for <code>open &lt;app&gt; --relaunch</code>.</li>
+<li>Android (adb): an intent target such as <code>open settings</code> records the package that opened as <code>appBundleId</code>. <code>open settings --relaunch</code> stops and restarts that app. If the intent matches more than one activity, <code>--relaunch</code> fails.</li>
 </ul>
 <p>iOS Simulator launch behavior:</p>
 <ul>
