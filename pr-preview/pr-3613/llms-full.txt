@@ -2357,10 +2357,15 @@ For the measurement workflow, data sources, and output examples, see [Performanc
 agent-device react-devtools profile start
 agent-device react-devtools profile stop
 agent-device react-devtools profile stop --limit 10
+agent-device react-devtools profile report <Component>
+agent-device react-devtools profile commit <N>
+agent-device react-devtools profile slow --limit 5
+agent-device react-devtools profile rerenders --limit 5
+agent-device react-devtools profile timeline --limit 20 --sort duration
 agent-device react-devtools profile status
 ```
 
-- `profile start` begins recording React renders in the app; `profile stop` ends it and prints the commit count, render time, commits over the 16 ms frame budget, and up to five findings (`--limit` changes that). It also saves the profile for the session.
+- `profile start` begins recording React renders in the app; `profile stop` ends it and prints the commit count, render time, commits over the 16 ms frame budget, and up to five findings (`--limit` changes that). It also saves the profile for the session, so `report`, `commit`, `slow`, `rerenders`, and `timeline` read it without the app.
 - Profiling connects through the app's Metro dev server and needs no app or Metro setup. It works with development builds of React Native 0.74 and later; Android emulators and iOS simulators are verified, remote bridge sessions are not yet.
 - `--app <bundle-id>` picks the app when several share the dev server, and `--metro-device <name>` picks the device when one app runs on several. `--metro-port` and `--metro-host` pick the dev server when it is neither the session's Metro server nor `localhost:8081`.
 - With `--json`, `profile stop` returns the findings and the path of the saved profile.
@@ -2799,6 +2804,16 @@ React profile 8.3s: 8 commits, 1303ms rendering, 8 over 16ms (worst #6 188ms)
 | `render-storm`    | One component commits many times per second.                                                    |
 | `eager-mount`     | Hundreds of instances of one component mount in a single commit.                                |
 | `slow-commit`     | A commit took three frames or more, and other findings leave most of it unexplained.            |
+
+To dig into a finding, use the saved profile:
+
+```bash
+agent-device react-devtools profile report ContactRow
+agent-device react-devtools profile commit 6
+agent-device react-devtools profile slow --limit 5
+agent-device react-devtools profile rerenders --limit 5
+agent-device react-devtools profile timeline --limit 20 --sort duration
+```
 
 Profiling works with development builds of React Native 0.74 and later, including Expo, and is verified on Android emulators and iOS simulators. It connects to the app through the Metro dev server, so the app, Metro config, and Babel config need no changes. If several apps use the same dev server, pass `--app <bundle-id>`. If one app runs on several devices connected to the same dev server, pass `--metro-device <name>` with a device name the error lists. If the dev server is not the session's Metro server or `localhost:8081`, pass `--metro-port` and `--metro-host`.
 
@@ -4581,7 +4596,7 @@ Keep the target binding, such as `--platform ios`, on the `replay` or `test` com
 
 - Flows: `launchApp` (with `clearState`, `permissions`, and Apple-only launch arguments; `permissions` apply after state clearing but before launch, and a `launchApp` without `permissions` touches nothing — there is no silent `all: allow` default); `setPermissions` (mid-flow permission grants, denials, and resets; `all` resolves in the backend — one simctl call on iOS, the declared permissions on Android — with specific entries overriding after it); `runFlow` file/inline; `runFlow.when` and `repeat.while` conditions (`platform`, `visible`, `notVisible`, and `true`, all re-evaluated before every `repeat` iteration); `onFlowStart`/`onFlowComplete`; `repeat` with `times`, `while`, or both; and retry.
 - Interactions: `tapOn`, `doubleTapOn`, `longPressOn`, `inputText` on the focused element, `eraseText`, `openLink`, `hideKeyboard`, basic `pressKey`, and `back`; selector targets poll until available and support recursive `index`, `childOf`, `above`, `below`, `leftOf`, `rightOf`, `containsChild`, `containsDescendants`, points, and `optional`; outer command labels are metadata, not target selectors.
-- Assertions and navigation: `assertVisible`, `assertNotVisible`, `assertTrue` (literal values and `${VAR}` lookups only; `""`, `"false"`, `"0"`, `"null"`, and `"undefined"` are falsy, everything else is truthy), `extendedWaitUntil`, `scroll`, `scrollUntilVisible`, absolute/percentage/target `swipe`, `takeScreenshot`, `waitForAnimationToEnd`, `clearState`, and `stopApp`.
+- Assertions and navigation: `assertVisible`, `assertNotVisible`, `assertTrue` (literal values and `${VAR}` lookups only; `""`, `"false"`, `"0"`, `"null"`, and `"undefined"` are falsy, everything else is truthy), `extendedWaitUntil`, `scroll`, `scrollUntilVisible`, absolute/percentage/target `swipe`, `takeScreenshot`, `waitForAnimationToEnd`, `clearState`, `stopApp`, and `killApp` (system-initiated process death: `am kill` on ADB-backed Android devices, which refuse a foreground target with `android-kill-requires-background-app` — background the app first, for example `pressKey: Home` — and fail a target whose process survives with `android-kill-process-survived`; iOS, Limrun, and WebDriver-provider backends run it as `stopApp`).
 - Scripts: ordered `runScript` file/env scripts with `http.post`, `json`, and `output` variables; `evalScript` inline expressions run flow-scoped JavaScript and write `output.*` leaves for later steps.
 
 ## Boundaries
