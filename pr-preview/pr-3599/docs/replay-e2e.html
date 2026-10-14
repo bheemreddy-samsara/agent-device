@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3599/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3599/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3599/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3599/static/js/index.74abe63043.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3599/static/js/index.6c1f16595b.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -85,8 +85,9 @@ session:</p>
 cleans up its own session.</p>
 </li>
 <li>
-<p><code>press</code>, <code>click</code>, and <code>longpress</code> steps resolve their target once. If a screen needs time to
-load, add an explicit wait before the interaction, such as <code>wait &#x27;label=&quot;Continue&quot;&#x27; 5000</code>.
+<p><code>press</code>, <code>click</code>, and <code>longpress</code> steps do not wait for a missing target to appear. If a screen
+needs time to load, add an explicit wait before the interaction, such as
+<code>wait &#x27;label=&quot;Continue&quot;&#x27; 5000</code>.
 Covered, off-screen, and ambiguous targets fail as they do in live commands.</p>
 </li>
 <li>
