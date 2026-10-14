@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3613/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3613/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3613/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3613/static/js/index.496c0adf2f.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3613/static/js/index.5c6065939f.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -737,7 +737,7 @@ hardware keys) still start a stopped app.</li>
 <ul>
 <li><code>profile start</code> begins recording React renders in the app; <code>profile stop</code> ends it and prints the commit count, render time, commits over the 16 ms frame budget, and up to five findings (<code>--limit</code> changes that). It also saves the profile for the session, so <code>report</code>, <code>commit</code>, <code>slow</code>, <code>rerenders</code>, and <code>timeline</code> read it without the app.</li>
 <li>Profiling connects through the app&#x27;s Metro dev server and needs no app or Metro setup. It works with development builds of React Native 0.74 and later; Android emulators and iOS simulators are verified, remote bridge sessions are not yet.</li>
-<li><code>--app &lt;bundle-id&gt;</code> picks the app when several share the dev server, and <code>--metro-device &lt;name&gt;</code> picks the device when one app runs on several. <code>--metro-port</code> and <code>--metro-host</code> pick the dev server when it is neither the session&#x27;s Metro server nor <code>localhost:8081</code>.</li>
+<li><code>--app &lt;bundle-id&gt;</code> picks the app when several share the dev server, and <code>--metro-device &lt;name&gt;</code> picks the device when one app runs on several. <code>--metro-port</code> and <code>--metro-host</code>, or <code>--bundle-url</code> for a dev server behind a URL path, pick the dev server when it is neither the session&#x27;s Metro server nor <code>localhost:8081</code>.</li>
 <li>With <code>--json</code>, <code>profile stop</code> returns the findings and the path of the saved profile.</li>
 <li>See <a href="/agent-device/pr-preview/pr-3613/docs/debugging-profiling#react-native-performance-profiling" class="rp-link">Debugging &amp; Profiling</a> for the findings and the workflow.</li>
 </ul>
