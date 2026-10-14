@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3589/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3589/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3589/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3589/static/js/index.8589759ef4.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3589/static/js/index.6b614265bf.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -313,6 +313,13 @@ touches in. On Android 13 (API 33) and later the helper also checks that this ar
 A floating keyboard&#x27;s is not (the panel plus the gesture strip, with app content between them), so the
 band is reported as unmeasurable and taps fall back to the tree&#x27;s own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.</p>
+<p>Android ADB and Appium snapshot nodes carry <code>systemBar: &quot;status&quot;</code> or <code>systemBar: &quot;navigation&quot;</code>
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent <code>systemBar</code> means the
+capture did not establish membership. Launcher-hosted navigation buttons carry <code>&quot;navigation&quot;</code> too;
+taskbar app icons do not. Android package identity is available as <code>bundleId</code>.
+You can read these fields in snapshot JSON and nodes returned by <code>get attrs</code> and <code>find</code>.</p>
 <p>Android snapshot nodes and <code>get attrs</code> (including the digest response) carry the native
 <code>selected</code>, <code>checked</code>, <code>heading</code>, <code>roleDescription</code>, <code>editable</code>, <code>password</code>, <code>hintShowing</code>,
 <code>placeholder</code>, <code>selectionStart</code>, and <code>selectionEnd</code> facts whenever the accessibility tree reports
@@ -334,12 +341,15 @@ checkable.</li>
 <li><code>roleDescription</code> is the localized role description an app sets beside the native class, verbatim
 (React Native writes <code>Tab</code>, <code>Tab List</code>, <code>Radio Group</code>, <code>Link</code>, <code>Menu</code>), when the class alone would
 not say what the control is. The <code>type</code> stays the class; a consumer maps the description to a role.</li>
-<li><code>value: &quot;&quot;</code> is an explicitly empty accessibility text; a missing <code>value</code> means no text was
-reported. The text of an empty field is its hint on modern Android, so check <code>hintShowing</code>
-before reading <code>value</code> as the entered contents.</li>
-<li><code>placeholder</code> is the field&#x27;s hint text itself, present whether the field is empty or filled: an
-empty field shows it (<code>hintShowing: true</code>, and <code>value</code> repeats it), a filled field no longer does.
-A field without a hint omits it. iOS nodes carry the same fact from the field&#x27;s
+<li><code>value</code> contains an Android text field&#x27;s content, including custom controls that report they are
+editable. Static labels carry text in <code>label</code> and have no <code>value</code>. Saved selectors and replay
+scripts that use <code>value=</code> for static labels no longer match; change them to <code>label=</code>.
+<code>value: &quot;&quot;</code> means the field
+reports empty text or <code>hintShowing: true</code>; an absent <code>value</code> means no field text was reported.</li>
+<li><code>placeholder</code> carries the hint separately, whether the field is empty or filled. A field showing
+its hint reports <code>hintShowing: true</code> and <code>value: &quot;&quot;</code>; a field without a hint omits <code>placeholder</code>.
+With Appium, when hint state is unavailable, reported field text is preserved even when it equals
+the placeholder, and <code>hintShowing</code> stays absent. iOS nodes carry the same fact from the field&#x27;s
 <code>placeholderValue</code>, on every producer (the XCTest tree, the Simulator AX bridge, and the runner&#x27;s
 private-AX reader). XCTest reports an empty field&#x27;s placeholder as its <code>value</code> too, so a <code>value</code>
 equal to <code>placeholder</code> is either an empty field or one holding exactly that text; equality alone
