@@ -1992,6 +1992,7 @@ agent-device wait 'id="field-phone" value="00 062 91 77"'
 - `scroll <direction> [amount]` takes the finger path as a fraction of the viewport (`0.5` is half), or `--pixels <n>` for a fixed distance. Large distances are clamped. The app's scroll physics decide the final offset, so a scroll does not land on an exact position.
 - `scroll <direction> --until <selector>` repeats passes until the selector is on screen and fails if the content runs out first. Add an amount (`scroll down 0.8 --until <selector>`) to widen each pass. Use it in `.ad` scripts too, instead of fixed amounts that depend on screen size; see [Replay & E2E](/agent-device/docs/replay-e2e.md).
 - Default snapshot text summarizes off-screen interactive content instead of listing refs. `scroll <direction> --settle` (and `back --settle`) waits for the UI to go quiet and returns the diff with fresh refs, so you don't need another `snapshot -i`. Settle is best-effort and never fails the action.
+- On Android, settle ignores an allowlist of system-bar containers and shade/keyguard status headers; other SystemUI overlays remain content. Appium settle also applies package rules for keyboard and system chrome.
 - With a keyboard up on iOS or Android, the swipe stays above the keyboard (reported as `keyboardAvoided` and `keyboardMinY`) and the keyboard stays open. If too little room is left, the command refuses with `scroll_keyboard_occludes_surface`; run `keyboard dismiss` first.
 - A directional scroll reports what it observed as `movement`: `moved`, `at-edge` (no change and no more content that way), `unchanged` (no change, no edge signal), or `unobserved` (no reliable comparison). If nothing changed, the swipe ran inside a container, and that container still has hidden content in that direction, it refuses with `scroll_no_progress`; the hint names the usual causes: a focused keyboard, a nested scroller, or a list that needs a raw `swipe`. See `agent-device help scroll`.
 
@@ -5321,6 +5322,14 @@ touches in. On Android 13 (API 33) and later the helper also checks that this ar
 A floating keyboard's is not (the panel plus the gesture strip, with app content between them), so the
 band is reported as unmeasurable and taps fall back to the tree's own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.
+
+Android ADB and Appium snapshot nodes carry `systemBar: "status"` or `systemBar: "navigation"`
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent `systemBar` means the
+capture did not establish membership. Launcher-hosted navigation buttons carry `"navigation"` too;
+taskbar app icons do not. Android package identity is available as `bundleId`.
+You can read these fields in snapshot JSON and nodes returned by `get attrs` and `find`.
 
 Android snapshot nodes and `get attrs` (including the digest response) carry the native
 `selected`, `checked`, `heading`, `roleDescription`, `editable`, `password`, `hintShowing`,

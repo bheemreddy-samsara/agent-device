@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.4af861a3b4.js"></script>
+<script defer src="/agent-device/static/js/index.8dd6fc46d2.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -300,6 +300,13 @@ touches in. On Android 13 (API 33) and later the helper also checks that this ar
 A floating keyboard&#x27;s is not (the panel plus the gesture strip, with app content between them), so the
 band is reported as unmeasurable and taps fall back to the tree&#x27;s own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.</p>
+<p>Android ADB and Appium snapshot nodes carry <code>systemBar: &quot;status&quot;</code> or <code>systemBar: &quot;navigation&quot;</code>
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent <code>systemBar</code> means the
+capture did not establish membership. Launcher-hosted navigation buttons carry <code>&quot;navigation&quot;</code> too;
+taskbar app icons do not. Android package identity is available as <code>bundleId</code>.
+You can read these fields in snapshot JSON and nodes returned by <code>get attrs</code> and <code>find</code>.</p>
 <p>Android snapshot nodes and <code>get attrs</code> (including the digest response) carry the native
 <code>selected</code>, <code>checked</code>, <code>heading</code>, <code>roleDescription</code>, <code>editable</code>, <code>password</code>, <code>hintShowing</code>,
 <code>placeholder</code>, <code>selectionStart</code>, and <code>selectionEnd</code> facts whenever the accessibility tree reports
