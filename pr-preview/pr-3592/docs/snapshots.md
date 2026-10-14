@@ -109,6 +109,12 @@ agent-device snapshot -i
 # [off-screen below] 2 interactive items: "All Contacts", "New List"
 ```
 
+With Android Appium, `snapshot --json` includes `viewport: { "width": …, "height": … }` when the
+driver can measure the display. These dimensions use the same coordinates as node rectangles and
+are refreshed for each capture, including after rotation. Opening the keyboard can shrink the app's
+content without shrinking the display viewport. An empty or sparse tree can still have a viewport;
+when the measurements disagree or either measurement is unavailable, `viewport` is absent.
+
 ## Structured node fields (`--json`)
 
 Every node in `snapshot --json` output carries `kind`, next to `type` when the platform reports one:
@@ -279,6 +285,14 @@ A floating keyboard's is not (the panel plus the gesture strip, with app content
 band is reported as unmeasurable and taps fall back to the tree's own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.
 
+Android ADB and Appium snapshot nodes carry `systemBar: "status"` or `systemBar: "navigation"`
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent `systemBar` means the
+capture did not establish membership. Launcher-hosted navigation buttons carry `"navigation"` too;
+taskbar app icons do not. Android package identity is available as `bundleId`.
+You can read these fields in snapshot JSON and nodes returned by `get attrs` and `find`.
+
 Android snapshot nodes and `get attrs` (including the digest response) carry the native
 `selected`, `checked`, `heading`, `roleDescription`, `editable`, `password`, `hintShowing`,
 `placeholder`, `selectionStart`, and `selectionEnd` facts whenever the accessibility tree reports
@@ -315,12 +329,15 @@ same native facts.
 - `roleDescription` is the localized role description an app sets beside the native class, verbatim
   (React Native writes `Tab`, `Tab List`, `Radio Group`, `Link`, `Menu`), when the class alone would
   not say what the control is. The `type` stays the class; a consumer maps the description to a role.
-- `value: ""` is an explicitly empty accessibility text; a missing `value` means no text was
-  reported. The text of an empty field is its hint on modern Android, so check `hintShowing`
-  before reading `value` as the entered contents.
-- `placeholder` is the field's hint text itself, present whether the field is empty or filled: an
-  empty field shows it (`hintShowing: true`, and `value` repeats it), a filled field no longer does.
-  A field without a hint omits it. iOS nodes carry the same fact from the field's
+- `value` contains an Android text field's content, including custom controls that report they are
+  editable. Static labels carry text in `label` and have no `value`. Saved selectors and replay
+  scripts that use `value=` for static labels no longer match; change them to `label=`.
+  `value: ""` means the field
+  reports empty text or `hintShowing: true`; an absent `value` means no field text was reported.
+- `placeholder` carries the hint separately, whether the field is empty or filled. A field showing
+  its hint reports `hintShowing: true` and `value: ""`; a field without a hint omits `placeholder`.
+  With Appium, when hint state is unavailable, reported field text is preserved even when it equals
+  the placeholder, and `hintShowing` stays absent. iOS nodes carry the same fact from the field's
   `placeholderValue`, on every producer (the XCTest tree, the Simulator AX bridge, and the runner's
   private-AX reader). XCTest reports an empty field's placeholder as its `value` too, so a `value`
   equal to `placeholder` is either an empty field or one holding exactly that text; equality alone
