@@ -193,6 +193,7 @@ agent-device devices --platform android --android-device-allowlist emulator-5554
 - If the selected Xcode can't resolve a scoped simulator for the Apple runner, the runner start fails with `details.reason: "simulator_set_destination_not_found"`, naming the set and, when known, the Xcode version.
 - `--android-device-allowlist <serials>` limits Android discovery and selection to comma- or space-separated serials.
 - Set the same scopes with the `iosSimulatorDeviceSet` and `androidDeviceAllowlist` config keys, or `AGENT_DEVICE_ANDROID_DEVICE_ALLOWLIST`. CLI flags override environment values, except under a `strip` session lock, which ignores conflicting per-call selectors.
+- Start the daemon with `AGENT_DEVICE_IOS_SIMULATOR_DEVICE_SET=<path>` to scope every iOS simulator request to one simulator set. A request without `--ios-simulator-device-set` uses that set, so iOS physical devices are not listed on that daemon. A request naming a different path string, including the same path with a trailing slash, fails with `INVALID_ARGS` and `details.reason: "ios_simulator_device_set_outside_daemon_set"`. macOS and other non-iOS requests ignore the set, and the host Mac stays listed. A daemon that the CLI starts inherits the CLI's environment, so later CLI calls with a different value still use the first value until the daemon restarts.
 - Scope applies before `--device`, `--udid`, and `--serial`, so an out-of-scope selector fails with `DEVICE_NOT_FOUND`.
 - On macOS, daemon startup removes any symlink at `~/Library/Developer/XCTestDevices`, including one you made yourself (for example to move it to another volume), and restores `XCTestDevices.agent-device-backup` when it exists. A symlinked `XCTestDevices` is not supported. Only the link is removed, never the directory it points to; `daemon.log` records each step and any failed restore, which doesn't stop the daemon.
 
@@ -825,17 +826,12 @@ For the measurement workflow, data sources, and output examples, see [Performanc
 agent-device react-devtools profile start
 agent-device react-devtools profile stop
 agent-device react-devtools profile stop --limit 10
-agent-device react-devtools profile report <Component>
-agent-device react-devtools profile commit <N>
-agent-device react-devtools profile slow --limit 5
-agent-device react-devtools profile rerenders --limit 5
-agent-device react-devtools profile timeline --limit 20 --sort duration
 agent-device react-devtools profile status
 ```
 
-- `profile start` begins recording React renders in the app; `profile stop` ends it and prints the commit count, render time, frames over budget, and up to five findings (`--limit` changes that). It also saves the profile for the session, so `report`, `commit`, `slow`, `rerenders`, and `timeline` read it without the app.
-- Profiling connects through the app's Metro dev server and needs no app or Metro setup. It works with development builds of React Native 0.74 and later.
-- `--app <bundle-id>` picks the app when several share the dev server. `--metro-port` and `--metro-host` pick the dev server when it is neither the session's Metro server nor `localhost:8081`.
+- `profile start` begins recording React renders in the app; `profile stop` ends it and prints the commit count, render time, frames over budget, and up to five findings (`--limit` changes that). It also saves the profile for the session.
+- Profiling connects through the app's Metro dev server and needs no app or Metro setup. It works with development builds of React Native 0.74 and later; Android emulators and iOS simulators are verified, remote bridge sessions are not yet.
+- `--app <bundle-id>` picks the app when several share the dev server, and `--metro-device <name>` picks the device when one app runs on several. `--metro-port` and `--metro-host` pick the dev server when it is neither the session's Metro server nor `localhost:8081`.
 - With `--json`, `profile stop` returns the findings and the path of the saved profile.
 - See [Debugging & Profiling](/agent-device/pr-preview/pr-3613/docs/debugging-profiling.md#react-native-render-profiling) for the findings and the workflow.
 
