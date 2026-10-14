@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3597/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3597/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3597/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3597/static/js/index.9ce83f20ed.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3597/static/js/index.c0c36b3618.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -350,6 +350,9 @@ You can read these fields in snapshot JSON and nodes returned by <code>get attrs
 <code>placeholder</code>, <code>selectionStart</code>, and <code>selectionEnd</code> facts whenever the accessibility tree reports
 them. Explicit <code>false</code> and <code>0</code> are kept; an absent field means the fact was unavailable, not false.
 <code>hintShowing</code> and <code>placeholder</code> need Android API 26 or later, <code>heading</code> API 28 or later.</p>
+<p>On iOS, the Apple runner, Simulator accessibility bridge, Appium, and Limrun publish native
+<code>checked</code>, <code>password</code>, and <code>editable</code> facts when available. macOS runner snapshots publish the
+same native facts.</p>
 <ul>
 <li><code>selected</code> is the accessibility selected state an app sets on a control — the active bottom-tab or
 segmented-control item, or the chosen row of a list. Android reports it explicitly as <code>true</code> or
@@ -360,9 +363,20 @@ selector, and a Maestro <code>selected:</code> qualifier all match on it.</li>
 view an app marked checkable. Android reports it as <code>true</code> or <code>false</code> on those nodes only; a node
 that cannot be checked, or an older helper APK, omits the field. Snapshot text marks the node
 <code>[checked]</code> or <code>[unchecked]</code>, so a toggle that reads as plain text is one Android did not report as
-checkable.</li>
+checkable. On iOS and the macOS runner, native switches, checkboxes, radio buttons, and toggles
+carry <code>checked</code> when their native value reports a boolean state; an unavailable or unrecognized
+state stays absent.</li>
+<li><code>editable</code> is the native text-entry capability when available. <code>is editable</code> returns false for a
+disabled node, even when <code>editable</code> is true. Otherwise it uses the published fact, including
+explicit false, and falls back to the platform type only when the fact is absent. Android
+Appium leaves <code>editable</code> absent when the source does not report it.</li>
+<li><code>password</code> identifies secure text entry. On iOS and the macOS runner, native secure fields report
+true and ordinary native text-entry fields report false. Android carries the reported native
+password flag.</li>
 <li><code>heading</code> is the accessibility heading flag an app sets on a node, the way React Native&#x27;s
-<code>accessibilityRole=&quot;header&quot;</code> does on a plain <code>View</code>; it is present only as <code>true</code>.</li>
+<code>accessibilityRole=&quot;header&quot;</code> does on a plain <code>View</code>. The Android helper publishes true for a
+heading; Appium preserves an explicit true or false when reported. Limrun reports true when
+the node carries the native heading trait.</li>
 <li><code>roleDescription</code> is the localized role description an app sets beside the native class, verbatim
 (React Native writes <code>Tab</code>, <code>Tab List</code>, <code>Radio Group</code>, <code>Link</code>, <code>Menu</code>), when the class alone would
 not say what the control is. The <code>type</code> stays the class; a consumer maps the description to a role.</li>
