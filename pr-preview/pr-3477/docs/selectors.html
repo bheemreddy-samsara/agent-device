@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3477/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3477/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3477/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3477/static/js/index.40c5f3c490.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3477/static/js/index.2ec0321a90.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -118,6 +118,9 @@ query.</p>
 <code>Sign In</code> but not <code>Sign In Now</code>. For partial matches, use <code>find</code>.</p>
 <p>Boolean keys: <code>visible</code>, <code>hidden</code>, <code>editable</code>, <code>selected</code>, <code>focused</code>, <code>enabled</code>, <code>hittable</code>. Write
 <code>visible=true</code> or <code>visible=false</code>; a bare <code>visible</code> means <code>visible=true</code>.</p>
+<p><code>editable</code> (and <code>is editable</code>) uses the node&#x27;s native <code>editable</code> fact when the snapshot carries one,
+so a custom text view can match and a read-only field cannot. Without the fact it is inferred from
+the element type. A disabled element is never editable.</p>
 <p>Quoting and alternatives:</p>
 <ul>
 <li>Quote values that contain spaces, with double or single quotes: <code>label=&quot;Sign in&quot;</code>. Escape a quote
