@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3597/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3597/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3597/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3597/static/js/index.1f0563ffe3.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3597/static/js/index.4c91289a1b.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -150,6 +150,11 @@ records a baseline (<code>baselineInitialized: true</code> in JSON). Later runs 
 <span class="line"><span style="color:var(--shiki-token-comment)">#     @e8 [other] &quot;John Doe&quot;</span></span>
 <span class="line"><span style="color:var(--shiki-token-comment)">#       @e9 [other] &quot;John Doe&quot;</span></span>
 <span class="line"><span style="color:var(--shiki-token-comment)"># [off-screen below] 2 interactive items: &quot;All Contacts&quot;, &quot;New List&quot;</span></span></code></pre></div><div class="rp-code-button-group"><button class="rp-code-button-group__button rp-code-wrap-button" title="Toggle code wrap"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" class="rp-code-button-group__icon rp-code-button-group__icon--wrapped"><path fill="currentColor" d="M21 5H3v2h18zM3 19h7v-2H3zm0-6h15c1 0 2 .43 2 2s-1 2-2 2h-2v-2l-4 3 4 3v-2h2c2.95 0 4-1.27 4-4 0-2.72-1-4-4-4H3z"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" class="rp-code-button-group__icon rp-code-button-group__icon--wrap"><path fill="currentColor" d="M16 7H3V5h13zM3 19h13v-2H3zm19-7-4-3v2H3v2h15v2z"></path></svg></button><button class="rp-code-button-group__button rp-code-copy-button" title="Copy code"><svg xmlns="http://www.w3.org/2000/svg" width="272" height="272" viewBox="0 0 272 272" class="rp-code-button-group__icon rp-code-copy-button__icon rp-code-copy-button__icon--copy"><path fill="currentColor" fill-rule="evenodd" d="M45.883 23.368h123.823v22.514H68.396v146.336H45.883zm45.026 45.027H225.99v180.107H90.91zm22.514 22.513v135.08h90.053V90.908z" clip-rule="evenodd"></path></svg><svg xmlns="http://www.w3.org/2000/svg" width="271" height="271" viewBox="0 0 271 271" class="rp-code-button-group__icon rp-code-copy-button__icon rp-code-copy-button__icon--success"><path fill="currentColor" d="M112.687 203.223H90.174v-22.514h22.512v-22.514h22.512v22.514h-22.511zm-22.514-22.514H67.66v-22.514h22.513zm-22.514-22.514H45.146v-22.512H67.66zm90.054 0h-22.514v-22.512h22.514zm22.514-22.512h-22.514v-22.514h22.514zm22.513-22.514h-22.513V90.655h22.513zm22.514-22.514H202.74V68.143h22.514z"></path></svg></button></div></div></div>
+<p>With Android Appium, <code>snapshot --json</code> includes <code>viewport: { &quot;width&quot;: …, &quot;height&quot;: … }</code> when the
+driver can measure the display. These dimensions use the same coordinates as node rectangles and
+are refreshed for each capture, including after rotation. Opening the keyboard can shrink the app&#x27;s
+content without shrinking the display viewport. An empty or sparse tree can still have a viewport;
+when the measurements disagree or either measurement is unavailable, <code>viewport</code> is absent.</p>
 <h2 class="rp-toc-include" id="structured-node-fields---json"><a href="#structured-node-fields---json" class="rp-header-anchor rp-link" aria-hidden="true">#</a>Structured node fields (<code>--json</code>)</h2>
 <p>Every node in <code>snapshot --json</code> output carries <code>kind</code>, next to <code>type</code> when the platform reports one:</p>
 <ul>
@@ -290,11 +295,43 @@ helper listed but could not serialize, for example because the window&#x27;s roo
 tree failed (<code>2</code> is an input method window); <code>windowCount</code> counts only the windows it did serialize. It is empty
 when every listed window was read. When it names an input method window, the capture reports the
 keyboard band as unmeasurable rather than absent. An older helper omits it.</p>
+<p>The response-level <code>keyboard</code> field tells you what the capture observed:</p>
+<ul>
+<li><code>visible</code> carries a directly measured <code>frame</code> in the same coordinates as node bounds.</li>
+<li><code>derived</code> carries a <code>frame</code> inferred from a docked keyboard tree, with <code>derivation: &quot;docked-tree&quot;</code>.</li>
+<li><code>visibility-only</code> carries a boolean <code>visible</code> from a provider probe, without a frame.</li>
+<li><code>tree-rejected</code> means the full tree was checked with a usable viewport but could not establish a
+docked band. Its optional <code>visible</code> carries probe visibility. Projecting that tree does not retry
+the rejected geometry.</li>
+<li><code>absent</code> means the producer explicitly established absence.</li>
+<li><code>unmeasurable</code> carries a <code>reason</code> when the producer cannot establish a frame or visibility.</li>
+</ul>
+<p>Appium iOS and Android snapshots include a visibility probe. Each capture, including a <code>wait</code> poll
+or the capture before <code>fill</code>, adds one sequential probe with a 500 ms timeout. A timeout leaves the
+probe unknown; it does not discard the tree. Appium iOS and limrun iOS can also report a derived docked
+band during capture. Android Appium can derive the band when a tap resolves the tree&#x27;s viewport.</p>
+<p>Missing keyboard nodes never mean the keyboard is hidden. A positive probe establishes presence but
+cannot locate the covered area. A negative probe establishes absence only when the tree also resolves
+no docked band. Neither probe result overrides a resolvable docked tree. Element taps use measured or
+derived frames to refuse an app target whose dispatched tap point is behind the keyboard.
+Run <code>snapshot -i</code> again after ending editing before retrying a refused target.</p>
+<p>Android Appium nodes carry the reported native package in <code>bundleId</code>.
+Provider snapshot nodes include <code>keyboardOwned</code>: <code>true</code> identifies a keyboard-owned node; <code>false</code>
+means capture evaluated the node and found no keyboard ownership. Both decisions survive filtering
+and scoping. An omitted field means ownership was not evaluated. App-filled assistant hosts do not
+pass keyboard ownership to their descendants.</p>
 <p>The Android keyboard band is the input method window&#x27;s bounds, the box around the area it takes
 touches in. On Android 13 (API 33) and later the helper also checks that this area is one rectangle.
 A floating keyboard&#x27;s is not (the panel plus the gesture strip, with app content between them), so the
 band is reported as unmeasurable and taps fall back to the tree&#x27;s own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.</p>
+<p>Android ADB and Appium snapshot nodes carry <code>systemBar: &quot;status&quot;</code> or <code>systemBar: &quot;navigation&quot;</code>
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent <code>systemBar</code> means the
+capture did not establish membership. Launcher-hosted navigation buttons carry <code>&quot;navigation&quot;</code> too;
+taskbar app icons do not. Android package identity is available as <code>bundleId</code>.
+You can read these fields in snapshot JSON and nodes returned by <code>get attrs</code> and <code>find</code>.</p>
 <p>Android snapshot nodes and <code>get attrs</code> (including the digest response) carry the native
 <code>selected</code>, <code>checked</code>, <code>heading</code>, <code>roleDescription</code>, <code>editable</code>, <code>password</code>, <code>hintShowing</code>,
 <code>placeholder</code>, <code>selectionStart</code>, and <code>selectionEnd</code> facts whenever the accessibility tree reports
@@ -316,12 +353,15 @@ checkable.</li>
 <li><code>roleDescription</code> is the localized role description an app sets beside the native class, verbatim
 (React Native writes <code>Tab</code>, <code>Tab List</code>, <code>Radio Group</code>, <code>Link</code>, <code>Menu</code>), when the class alone would
 not say what the control is. The <code>type</code> stays the class; a consumer maps the description to a role.</li>
-<li><code>value: &quot;&quot;</code> is an explicitly empty accessibility text; a missing <code>value</code> means no text was
-reported. The text of an empty field is its hint on modern Android, so check <code>hintShowing</code>
-before reading <code>value</code> as the entered contents.</li>
-<li><code>placeholder</code> is the field&#x27;s hint text itself, present whether the field is empty or filled: an
-empty field shows it (<code>hintShowing: true</code>, and <code>value</code> repeats it), a filled field no longer does.
-A field without a hint omits it. iOS nodes carry the same fact from the field&#x27;s
+<li><code>value</code> contains an Android text field&#x27;s content, including custom controls that report they are
+editable. Static labels carry text in <code>label</code> and have no <code>value</code>. Saved selectors and replay
+scripts that use <code>value=</code> for static labels no longer match; change them to <code>label=</code>.
+<code>value: &quot;&quot;</code> means the field
+reports empty text or <code>hintShowing: true</code>; an absent <code>value</code> means no field text was reported.</li>
+<li><code>placeholder</code> carries the hint separately, whether the field is empty or filled. A field showing
+its hint reports <code>hintShowing: true</code> and <code>value: &quot;&quot;</code>; a field without a hint omits <code>placeholder</code>.
+With Appium, when hint state is unavailable, reported field text is preserved even when it equals
+the placeholder, and <code>hintShowing</code> stays absent. iOS nodes carry the same fact from the field&#x27;s
 <code>placeholderValue</code>, on every producer (the XCTest tree, the Simulator AX bridge, and the runner&#x27;s
 private-AX reader). XCTest reports an empty field&#x27;s placeholder as its <code>value</code> too, so a <code>value</code>
 equal to <code>placeholder</code> is either an empty field or one holding exactly that text; equality alone
