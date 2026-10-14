@@ -109,6 +109,12 @@ agent-device snapshot -i
 # [off-screen below] 2 interactive items: "All Contacts", "New List"
 ```
 
+With Android Appium, `snapshot --json` includes `viewport: { "width": …, "height": … }` when the
+driver can measure the display. These dimensions use the same coordinates as node rectangles and
+are refreshed for each capture, including after rotation. Opening the keyboard can shrink the app's
+content without shrinking the display viewport. An empty or sparse tree can still have a viewport;
+when the measurements disagree or either measurement is unavailable, `viewport` is absent.
+
 ## Structured node fields (`--json`)
 
 Every node in `snapshot --json` output carries `kind`, next to `type` when the platform reports one:
@@ -206,6 +212,31 @@ snapshot was taken on instead of guessing it from the largest rect.
 
 For Android pixel units and density, see [Android node metadata](#android-node-metadata).
 
+## Presented surface
+
+`snapshot --json` reports `presentedSurface` — whether the capture saw a modal presentation over your
+app's own content: `"presented"`, `"absent"`, or `"unknown"`. Read it instead of counting windows in
+the tree to work out whether a sheet or alert was up.
+
+- `"presented"` means the capture saw the presentation directly — a dimming view, an alert's own
+  view classes, or an element typed as a sheet, drawer, alert, or dialog.
+- `"absent"` is an earned answer, not a default. The capture checked every window it read and each
+  one held only its own content. This is the answer you can act on, for example to confirm a tap
+  dismissed a sheet.
+- `"unknown"` means the capture could not tell, and it is not a hedge — it says the capture lacks the
+  evidence absence needs. Absence is only reachable from a capture that reads UIKit class names, so a
+  screen served by a backend that publishes none answers `"unknown"` even when nothing is presented.
+  That is the private accessibility backend (`snapshotQuality.backend: "private-ax"`, which `--actions`
+  asks for) and an Appium or Limrun tree. Never treat `"unknown"` as `"absent"`.
+- A physical iOS device has one capture backend, and it publishes no class names, so there the answer
+  is `"presented"` or `"unknown"` and never `"absent"`.
+- The field is absent entirely when the platform publishes no reading at all: Android, web, Linux,
+  and macOS captures.
+
+The answer describes the screen, not the view of it you asked for, so `--raw`, `-i`, `-d`, and
+`--scope` all report the same value for one screen. Use `-i` or a `--scope` to keep the output small
+and still trust the answer.
+
 ## iOS capture behavior
 
 iOS snapshots use XCTest on simulators and physical devices. You can't pick the capture backend. `--raw` switches between two strategies, and each strategy
@@ -259,6 +290,22 @@ decides which backends it tries.
 - `--raw` returns the tree as captured. It also keeps nodes Android marks invisible and stale
   application windows.
 
+## iOS node metadata
+
+On iOS, React Native controls can report role and state words in `value`, such as
+`"checkbox, unchecked"`. Snapshot JSON and `get attrs` preserve that value and add `iosValueSemantics`
+for recognized English encodings from Fabric or Paper. Its `source` is
+`react-native-ios-value-heuristic`: an anonymous `Other` node with an identical literal value
+cannot be distinguished from an RN control. Bare words on anonymous nodes, other languages,
+and native-control values stay uninterpreted.
+
+`iosValueSemantics.role` carries the interpreted role while `type` and native `role` retain
+their original evidence. Boolean checked state fills a missing `checked` field; an explicit
+native fact always wins. `iosValueSemantics.checked: "mixed"` never becomes `checked: false`.
+Read explicit expansion and busy evidence from `iosValueSemantics.expanded` and `.busy`;
+an absent expansion field means unknown, not collapsed. There is no general `expanded`
+node field or expansion selector.
+
 ## Android node metadata
 
 Android bounds are physical pixels, as the accessibility tree reports them, and so are the points
@@ -273,17 +320,57 @@ tree failed (`2` is an input method window); `windowCount` counts only the windo
 when every listed window was read. When it names an input method window, the capture reports the
 keyboard band as unmeasurable rather than absent. An older helper omits it.
 
+The response-level `keyboard` field tells you what the capture observed:
+
+- `visible` carries a directly measured `frame` in the same coordinates as node bounds.
+- `derived` carries a `frame` inferred from a docked keyboard tree, with `derivation: "docked-tree"`.
+- `visibility-only` carries a boolean `visible` from a provider probe, without a frame.
+- `tree-rejected` means the full tree was checked with a usable viewport but could not establish a
+  docked band. Its optional `visible` carries probe visibility. Projecting that tree does not retry
+  the rejected geometry.
+- `absent` means the producer explicitly established absence.
+- `unmeasurable` carries a `reason` when the producer cannot establish a frame or visibility.
+
+Appium iOS and Android snapshots include a visibility probe. Each capture, including a `wait` poll
+or the capture before `fill`, adds one sequential probe with a 500 ms timeout. A timeout leaves the
+probe unknown; it does not discard the tree. Appium iOS and limrun iOS can also report a derived docked
+band during capture. Android Appium can derive the band when a tap resolves the tree's viewport.
+
+Missing keyboard nodes never mean the keyboard is hidden. A positive probe establishes presence but
+cannot locate the covered area. A negative probe establishes absence only when the tree also resolves
+no docked band. Neither probe result overrides a resolvable docked tree. Element taps use measured or
+derived frames to refuse an app target whose dispatched tap point is behind the keyboard.
+Run `snapshot -i` again after ending editing before retrying a refused target.
+
+Android Appium nodes carry the reported native package in `bundleId`.
+Provider snapshot nodes include `keyboardOwned`: `true` identifies a keyboard-owned node; `false`
+means capture evaluated the node and found no keyboard ownership. Both decisions survive filtering
+and scoping. An omitted field means ownership was not evaluated. App-filled assistant hosts do not
+pass keyboard ownership to their descendants.
+
 The Android keyboard band is the input method window's bounds, the box around the area it takes
 touches in. On Android 13 (API 33) and later the helper also checks that this area is one rectangle.
 A floating keyboard's is not (the panel plus the gesture strip, with app content between them), so the
 band is reported as unmeasurable and taps fall back to the tree's own keyboard check. Earlier releases
 cannot report the area, so their bounds are used as they are.
 
+Android ADB and Appium snapshot nodes carry `systemBar: "status"` or `systemBar: "navigation"`
+when they belong to a recognized Android system-bar subtree. Membership stays on each node when a
+snapshot omits its ancestors. The notification shade, including its clock/header, dialogs,
+popups, and other SystemUI overlays have no bar membership. An absent `systemBar` means the
+capture did not establish membership. Launcher-hosted navigation buttons carry `"navigation"` too;
+taskbar app icons do not. Android package identity is available as `bundleId`.
+You can read these fields in snapshot JSON and nodes returned by `get attrs` and `find`.
+
 Android snapshot nodes and `get attrs` (including the digest response) carry the native
 `selected`, `checked`, `heading`, `roleDescription`, `editable`, `password`, `hintShowing`,
 `placeholder`, `selectionStart`, and `selectionEnd` facts whenever the accessibility tree reports
 them. Explicit `false` and `0` are kept; an absent field means the fact was unavailable, not false.
 `hintShowing` and `placeholder` need Android API 26 or later, `heading` API 28 or later.
+
+On iOS, the Apple runner, Simulator accessibility bridge, Appium, and Limrun publish native
+`checked`, `password`, and `editable` facts when available. macOS runner snapshots publish the
+same native facts.
 
 - `selected` is the accessibility selected state an app sets on a control — the active bottom-tab or
   segmented-control item, or the chosen row of a list. Android reports it explicitly as `true` or
@@ -294,18 +381,32 @@ them. Explicit `false` and `0` are kept; an absent field means the fact was unav
   view an app marked checkable. Android reports it as `true` or `false` on those nodes only; a node
   that cannot be checked, or an older helper APK, omits the field. Snapshot text marks the node
   `[checked]` or `[unchecked]`, so a toggle that reads as plain text is one Android did not report as
-  checkable.
+  checkable. On iOS and the macOS runner, native switches, checkboxes, radio buttons, and toggles
+  carry `checked` when their native value reports a boolean state; an unavailable or unrecognized
+  state stays absent.
+- `editable` is the native text-entry capability when available. `is editable` returns false for a
+  disabled node, even when `editable` is true. Otherwise it uses the published fact, including
+  explicit false, and falls back to the platform type only when the fact is absent. Android
+  Appium leaves `editable` absent when the source does not report it.
+- `password` identifies secure text entry. On iOS and the macOS runner, native secure fields report
+  true and ordinary native text-entry fields report false. Android carries the reported native
+  password flag.
 - `heading` is the accessibility heading flag an app sets on a node, the way React Native's
-  `accessibilityRole="header"` does on a plain `View`; it is present only as `true`.
+  `accessibilityRole="header"` does on a plain `View`. The Android helper publishes true for a
+  heading; Appium preserves an explicit true or false when reported. Limrun reports true when
+  the node carries the native heading trait.
 - `roleDescription` is the localized role description an app sets beside the native class, verbatim
   (React Native writes `Tab`, `Tab List`, `Radio Group`, `Link`, `Menu`), when the class alone would
   not say what the control is. The `type` stays the class; a consumer maps the description to a role.
-- `value: ""` is an explicitly empty accessibility text; a missing `value` means no text was
-  reported. The text of an empty field is its hint on modern Android, so check `hintShowing`
-  before reading `value` as the entered contents.
-- `placeholder` is the field's hint text itself, present whether the field is empty or filled: an
-  empty field shows it (`hintShowing: true`, and `value` repeats it), a filled field no longer does.
-  A field without a hint omits it. iOS nodes carry the same fact from the field's
+- `value` contains an Android text field's content, including custom controls that report they are
+  editable. Static labels carry text in `label` and have no `value`. Saved selectors and replay
+  scripts that use `value=` for static labels no longer match; change them to `label=`.
+  `value: ""` means the field
+  reports empty text or `hintShowing: true`; an absent `value` means no field text was reported.
+- `placeholder` carries the hint separately, whether the field is empty or filled. A field showing
+  its hint reports `hintShowing: true` and `value: ""`; a field without a hint omits `placeholder`.
+  With Appium, when hint state is unavailable, reported field text is preserved even when it equals
+  the placeholder, and `hintShowing` stays absent. iOS nodes carry the same fact from the field's
   `placeholderValue`, on every producer (the XCTest tree, the Simulator AX bridge, and the runner's
   private-AX reader). XCTest reports an empty field's placeholder as its `value` too, so a `value`
   equal to `placeholder` is either an empty field or one holding exactly that text; equality alone
