@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3476/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3476/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3476/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3476/static/js/index.e7802bdf16.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3476/static/js/index.e79e4488ab.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -156,7 +156,7 @@ start the daemon with a policy that requires one (<code>leases.require</code>, b
 by every client of the proxy, so a host serving several clients through one proxy authenticates each
 client itself and sets each request&#x27;s tenant, session isolation, and lease before forwarding it.
 Embedding <code>@agent-device/proxy</code> with its <code>authenticate</code> option does the tenant and session
-isolation part: the proxy sends each client&#x27;s requests as the tenant <code>authenticate</code> returns. A tenant id is 1-128 letters, numbers, dots, underscores or hyphens; any other id fails the request with a 500. On <code>/rpc</code> the proxy accepts only <code>agent_device.command</code> and the <code>agent_device.lease.*</code> methods, and refuses others with a 401.</p>
+isolation part: the proxy sends each client&#x27;s requests as the tenant <code>authenticate</code> returns. A tenant id is 1-128 letters, numbers, dots, underscores or hyphens; any other id fails the request with a 500. On <code>/rpc</code> the proxy accepts only <code>agent_device.command</code> and the <code>agent_device.lease.*</code> methods, and refuses others with a 401. Upload tickets carry the client&#x27;s own <code>authorization</code> and <code>x-agent-device-token</code> headers, or the <code>uploadHeaders</code> that <code>authenticate</code> returns, and never the daemon&#x27;s token.</p>
 <h2 class="rp-toc-include" id="restrict-what-clients-can-do"><a href="#restrict-what-clients-can-do" class="rp-header-anchor rp-link" aria-hidden="true">#</a>Restrict what clients can do</h2>
 <p>Start the proxy with a daemon policy to confine every client to named devices and commands. The
 daemon enforces the policy on every request, including <code>batch</code> steps and <code>replay</code> actions:</p>
