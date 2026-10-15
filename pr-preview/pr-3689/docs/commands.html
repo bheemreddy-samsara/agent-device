@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3689/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3689/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3689/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3689/static/js/index.04d252fa85.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3689/static/js/index.ce29fcb86d.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -577,6 +577,7 @@ restart; reconnect and take the hold again. See <a href="/agent-device/pr-previe
 <li>macOS supports only <code>settings appearance &lt;light|dark|toggle&gt;</code> and <code>settings permission &lt;grant|reset&gt; &lt;accessibility|screen-recording|input-monitoring&gt;</code>.</li>
 <li><code>settings appearance</code> sets macOS appearance, iOS simulator appearance, or Android night mode.</li>
 <li><code>settings location set &lt;lat&gt; &lt;lon&gt;</code> sets coordinates on iOS simulators and Android emulators.</li>
+<li>A target that does not serve a setting refuses it with <code>UNSUPPORTED_OPERATION</code> and <code>error.details.reason</code> (for example <code>unsupported-platform-leaf</code>) before anything changes. A request that names an app the change cannot take is refused first, with <code>INVALID_ARGS</code> and <code>setting_app_not_consumed</code>. <code>settings --help</code> describes where each setting runs.</li>
 </ul>
 <p>Device settings:</p>
 <ul>
