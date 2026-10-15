@@ -87,6 +87,7 @@ Open apps and links:
 - `open --platform macos --surface app|frontmost-app|desktop|menubar` selects the macOS session surface; `app` is the default when you name an app. See [Desktop targets](#desktop-targets). `--save-script` records the surface so `replay` reopens it; with no surface given, replay opens an app session.
 - Android React Native: `open --relaunch` needs an installed package name. Install or reinstall the APK first; `open <apk|aab> --relaunch` is rejected. For Metro-backed JS changes, run `metro reload` before reaching for `open <app> --relaunch`.
 - Android (adb): an intent target such as `open settings` records the package that opened as `appBundleId`. `open settings --relaunch` stops and restarts that app. If the intent matches more than one activity, `--relaunch` fails.
+- Android (ADB): `close` force-stops the app, then checks for 2 seconds that it has left the foreground and for 2 more that its process has exited. If either check window ends first, `close` fails with `details.reason: android-app-close-timeout` and `details.phase` set to `foreground` or `process`; apps Android restarts at once, such as the launcher, fail this way.
 
 iOS Simulator launch behavior:
 
@@ -829,10 +830,10 @@ agent-device react-devtools inspect <@ref|Name>
 agent-device react-devtools errors [--limit 10]
 ```
 
-- `tree` prints the mounted component tree with `@c` refs; wrapper chains collapse onto one line and runs of same-name siblings into one counted line. Pass a ref or a unique name to print one branch.
+- `tree` prints the mounted component tree with `@c` refs. A chain of single-child wrappers, such as providers, prints on one line. Three or more consecutive siblings whose subtrees match exactly, in names, types, and logged errors and warnings, print as one counted line; other siblings, including same-name screens with different contents, keep their own lines. Pass a ref or a unique name to print one branch.
 - `find` lists components whose name contains the text, ignoring case, or equals it with `--exact`, each with the components that rendered it.
 - `inspect` prints a component's owners, props, state, hooks, and the errors and warnings it logged while rendering. It takes a ref, or a name only one mounted component has.
-- `errors` lists the components that logged console errors or warnings while rendering, with the messages.
+- `errors` lists the components that logged console errors or warnings while rendering, with the messages. When the app's React DevTools backend does not attribute every log to a component, as on React Native 0.74 and 0.76, it says the list can be incomplete.
 - These commands connect the same way as profiling, below. A connected React DevTools window owns the component tree, so `tree`, `find`, and `errors` fail with `tree-unavailable` until it is closed and the app reloads.
 
 ## React Native performance profiling
@@ -848,8 +849,8 @@ agent-device react-devtools profile commit <N>
 ```
 
 - `profile start` begins recording React renders in the app; `profile stop` ends it and prints the commit count, render time, commits over the 16 ms frame budget, and up to five findings (`--limit` changes that). It also saves the recording for the session, so `report` and `commit` read it without the app.
-- `profile report` lists components by self time with why they rendered; `profile report <Component>` shows one component's causes, changed props, owners, costliest commits, and findings. `profile commit` lists commits in order, or the slowest ones in order when there are more than `--limit` (default 20); `profile commit <N>` shows what rendered in one commit. `--limit` caps the rows of the list views.
-- Profiling connects through the app's Metro dev server and needs no app or Metro setup. It works with development builds of React Native 0.74 and later; Android emulators and iOS simulators are verified, remote bridge sessions are not yet.
+- `profile report` lists components by self time with why they rendered; `profile report <Component>` shows every component of that name, such as `Row` and memoized `Row`, each with its causes, changed props, owners, costliest commits, and findings. `profile commit` lists commits in order, or the slowest ones in order when there are more than `--limit` (default 20); `profile commit <N>` shows what rendered in one commit. `--limit` caps the rows of the list views.
+- Profiling connects through the app's Metro dev server and needs no app or Metro setup. It works with development builds of React Native 0.74 and later on Android emulators, iOS simulators, `agent-device proxy` connections, and remote bridge sessions. On a remote bridge it uses the Metro server next to the agent: the session's binding from `metro prepare`, or `--metro-host`/`--metro-port`. Metro accepts the debugger connection only from its own machine, so the bridge or `metroPublicBaseUrl` cannot carry it.
 - `--app <bundle-id>` picks the app when several share the dev server, and `--metro-device <name>` picks the device when one app runs on several. `--metro-port` and `--metro-host`, or `--bundle-url` for a dev server behind a URL path, pick the dev server when it is neither the session's Metro server nor `localhost:8081`.
 - With `--json`, `profile stop` returns the findings and the path of the saved profile.
 - See [Debugging & Profiling](/agent-device/pr-preview/pr-3613/docs/debugging-profiling.md#react-native-performance-profiling) for the findings and the workflow.
