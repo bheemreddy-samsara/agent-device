@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.39281bafad.js"></script>
+<script defer src="/agent-device/static/js/index.00e1061ff2.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -66,7 +66,7 @@
 <p>Boot and shut down:</p>
 <ul>
 <li><code>boot</code> gets the selected target ready without launching an app. It needs an active session or a device selector. You mainly need it when <code>open</code> fails because no simulator or emulator is booted.</li>
-<li>Android: <code>boot --platform android --device &lt;avd-name&gt;</code> launches that emulator with a window; add <code>--headless</code> to launch it without one.</li>
+<li>Android: <code>boot --platform android --device &lt;avd-name&gt;</code> launches that emulator with a window; add <code>--headless</code> to launch it without one. On macOS the window opens behind the focused app, which keeps focus (also when <code>open</code> boots a stopped AVD). This is best-effort: the emulator can still take focus if the focused app cannot be read, or if its window appears after the startup budget runs out.</li>
 <li><code>shutdown</code> turns off the selected Apple simulator or Android emulator. It refuses the active session&#x27;s device; use <code>close --shutdown</code> to end the session and turn the device off.</li>
 <li><code>--timeout &lt;ms&gt;</code> on <code>boot</code>, <code>open &lt;app&gt;</code>, and <code>prepare ios-runner</code> is the startup budget for booting an iOS Simulator or Android emulator (for <code>prepare ios-runner</code>, shared with runner preparation). A never-booted iOS Simulator can take several minutes. When the budget runs out, the command fails with <code>error.details.reason: boot_timeout</code> and the device keeps booting, so a retry finds it further along. See <a href="/agent-device/docs/sessions#wait-for-a-slow-or-busy-device" class="rp-link">Sessions</a>.</li>
 </ul>
