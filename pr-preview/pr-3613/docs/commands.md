@@ -62,7 +62,7 @@ agent-device daemon stop --clean
 Boot and shut down:
 
 - `boot` gets the selected target ready without launching an app. It needs an active session or a device selector. You mainly need it when `open` fails because no simulator or emulator is booted.
-- Android: `boot --platform android --device <avd-name>` launches that emulator with a window; add `--headless` to launch it without one.
+- Android: `boot --platform android --device <avd-name>` launches that emulator with a window; add `--headless` to launch it without one. On macOS the window opens behind the focused app, which keeps focus (also when `open` boots a stopped AVD). This is best-effort: the emulator can still take focus if the focused app cannot be read, or if its window appears after the startup budget runs out.
 - `shutdown` turns off the selected Apple simulator or Android emulator. It refuses the active session's device; use `close --shutdown` to end the session and turn the device off.
 - `--timeout <ms>` on `boot`, `open <app>`, and `prepare ios-runner` is the startup budget for booting an iOS Simulator or Android emulator (for `prepare ios-runner`, shared with runner preparation). A never-booted iOS Simulator can take several minutes. When the budget runs out, the command fails with `error.details.reason: boot_timeout` and the device keeps booting, so a retry finds it further along. See [Sessions](/agent-device/pr-preview/pr-3613/docs/sessions.md#wait-for-a-slow-or-busy-device).
 
@@ -819,6 +819,21 @@ agent-device perf trace stop --kind perfetto --out app.perfetto-trace
   - HarmonyOS is memory-only: CPU profiling, frame sampling, and memory snapshots are unavailable.
 
 For the measurement workflow, data sources, and output examples, see [Performance snapshots](/agent-device/pr-preview/pr-3613/docs/debugging-profiling.md#performance-snapshots).
+
+## React Native components
+
+```bash
+agent-device react-devtools tree [@ref|Name] [--depth 8] [--limit 60]
+agent-device react-devtools find <Name> [--exact] [--limit 20]
+agent-device react-devtools inspect <@ref|Name>
+agent-device react-devtools errors [--limit 10]
+```
+
+- `tree` prints the mounted component tree with `@c` refs; wrapper chains collapse onto one line and runs of same-name siblings into one counted line. Pass a ref or a unique name to print one branch.
+- `find` lists components whose name contains the text, ignoring case, or equals it with `--exact`, each with the components that rendered it.
+- `inspect` prints a component's owners, props, state, hooks, and the errors and warnings it logged while rendering. It takes a ref, or a name only one mounted component has.
+- `errors` lists the components that logged console errors or warnings while rendering, with the messages.
+- These commands connect the same way as profiling, below. A connected React DevTools window owns the component tree, so `tree`, `find`, and `errors` fail with `tree-unavailable` until it is closed and the app reloads.
 
 ## React Native performance profiling
 

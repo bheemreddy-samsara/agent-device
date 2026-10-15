@@ -16,7 +16,7 @@ Use it when an agent needs to inspect and operate a running app, not only reason
 - **Token-efficient UI context**: accessibility snapshots give agents structured UI state instead of screenshots alone.
 - **Runtime evidence**: capture screenshots, recordings, logs, network traffic, audio-level probes for browser and host-rendered simulator/emulator audio, traces, CPU/memory/perf snapshots, and crash-related logs when the happy path breaks.
 - **Replayable checks**: turn stable exploratory sessions into `.ad` replay scripts that run again without AI.
-- **React Native and Expo workflows**: pair device automation with React Native performance profiling that names slow renders, rerenders, and their causes.
+- **React Native and Expo workflows**: pair device automation with React component inspection and performance profiling that names slow renders, rerenders, and their causes.
 - **Local devices and app surfaces**: drive simulators, emulators, physical devices, TV targets, desktop apps, and browser sessions through one CLI.
 
 If you know `agent-browser`, `agent-device` brings the same workflow to mobile, TV, desktop, and a limited managed web browser.
@@ -118,7 +118,7 @@ For a normal app-driving task, start immediately. Do not probe first with `--hel
 For TV, Fire TV, or Vega OS tasks, read `agent-device help tv`.
 For exploratory QA, read `agent-device help dogfood`.
 For logs, network, audio, traces, or runtime failures, read `agent-device help debugging`.
-For React Native performance profiling (slow renders, rerenders, and their causes), read `agent-device help react-devtools`.
+For React Native component internals (tree, props, state, hooks) and performance profiling (slow renders, rerenders, and their causes), read `agent-device help react-devtools`.
 For React Native JavaScript heap growth, heap snapshots, allocation hotspots, or retained-object leaks, read `agent-device help cdp`.
 For React Native apps, overlays, Metro/Fast Refresh blockers, and routing to profiling or debugging evidence, read `agent-device help react-native`.
 
@@ -1593,7 +1593,7 @@ agent-device daemon stop --clean
 Boot and shut down:
 
 - `boot` gets the selected target ready without launching an app. It needs an active session or a device selector. You mainly need it when `open` fails because no simulator or emulator is booted.
-- Android: `boot --platform android --device <avd-name>` launches that emulator with a window; add `--headless` to launch it without one.
+- Android: `boot --platform android --device <avd-name>` launches that emulator with a window; add `--headless` to launch it without one. On macOS the window opens behind the focused app, which keeps focus (also when `open` boots a stopped AVD). This is best-effort: the emulator can still take focus if the focused app cannot be read, or if its window appears after the startup budget runs out.
 - `shutdown` turns off the selected Apple simulator or Android emulator. It refuses the active session's device; use `close --shutdown` to end the session and turn the device off.
 - `--timeout <ms>` on `boot`, `open <app>`, and `prepare ios-runner` is the startup budget for booting an iOS Simulator or Android emulator (for `prepare ios-runner`, shared with runner preparation). A never-booted iOS Simulator can take several minutes. When the budget runs out, the command fails with `error.details.reason: boot_timeout` and the device keeps booting, so a retry finds it further along. See [Sessions](/agent-device/pr-preview/pr-3613/docs/sessions.md#wait-for-a-slow-or-busy-device).
 
@@ -2351,6 +2351,21 @@ agent-device perf trace stop --kind perfetto --out app.perfetto-trace
 
 For the measurement workflow, data sources, and output examples, see [Performance snapshots](/agent-device/pr-preview/pr-3613/docs/debugging-profiling.md#performance-snapshots).
 
+## React Native components
+
+```bash
+agent-device react-devtools tree [@ref|Name] [--depth 8] [--limit 60]
+agent-device react-devtools find <Name> [--exact] [--limit 20]
+agent-device react-devtools inspect <@ref|Name>
+agent-device react-devtools errors [--limit 10]
+```
+
+- `tree` prints the mounted component tree with `@c` refs; wrapper chains collapse onto one line and runs of same-name siblings into one counted line. Pass a ref or a unique name to print one branch.
+- `find` lists components whose name contains the text, ignoring case, or equals it with `--exact`, each with the components that rendered it.
+- `inspect` prints a component's owners, props, state, hooks, and the errors and warnings it logged while rendering. It takes a ref, or a name only one mounted component has.
+- `errors` lists the components that logged console errors or warnings while rendering, with the messages.
+- These commands connect the same way as profiling, below. A connected React DevTools window owns the component tree, so `tree`, `find`, and `errors` fail with `tree-unavailable` until it is closed and the app reloads.
+
 ## React Native performance profiling
 
 ```bash
@@ -2776,6 +2791,33 @@ When UI automation is not enough, use these commands to collect runtime evidence
 - Apple crash symbolication with `debug symbols`
 - Screenshots, recordings, and replayable repro flows
 
+## React Native components
+
+To see what React renders behind a screen, read the component tree and inspect a component:
+
+```bash
+agent-device react-devtools find ContactRow
+agent-device react-devtools inspect @c42
+agent-device react-devtools tree @c40 --depth 3
+agent-device react-devtools errors
+```
+
+`find` and `tree` print `@c` refs. `inspect` shows the owners that rendered a component, its props, state, and hooks, and the errors and warnings it logged while rendering:
+
+```text
+@c42 ContactRow key=3
+rendered by: ContactList @c40 < MemoDefeatedScenario @c38 < PerfLabScreen @c12
+props:
+  contact: {id: 3, name: "Ada Lovelace"}
+  onSelect: ƒ onSelect() {}
+hooks:
+  State: false
+```
+
+`inspect` also takes a component name when only one mounted component has it. `errors` lists the components that logged console errors or warnings while rendering, with the messages. Refs change when a component remounts or the app reloads.
+
+These commands use the same connection as profiling, described below. If a React DevTools window is connected to the app, close it and reload the app first.
+
 ## React Native performance profiling
 
 To find out why an interaction renders slowly, record a React profile around it:
@@ -2903,7 +2945,7 @@ agent-device debug symbols --artifact crash.ips --search-path ./build --out cras
 
 The command supports Apple `.ips`, `.crash`, and log-style crash artifacts that contain Binary Images or IPS `usedImages`. It matches UUIDs from the crash artifact against `dwarfdump --uuid` output from `.dSYM` bundles, runs `atos`, writes a symbolicated artifact, and prints only the output path plus a compact crash report: app/thread, exception or termination, top symbolicated frames, and the first actionable frame finding. The full symbolicated artifact stays on disk, so agent context stays small.
 
-`debug` covers symbolication only. Use `logs` for app logs, `network` for HTTP evidence, `perf` for performance samples, `record`/`trace` for media and traces, and `react-devtools` for React Native performance profiling. `debug symbols` does not handle Android Java/R8 `mapping.txt` or native `ndk-stack`/`addr2line` symbolication; capture Android crash evidence with `logs` and symbolicate it with other tools.
+`debug` covers symbolication only. Use `logs` for app logs, `network` for HTTP evidence, `perf` for performance samples, `record`/`trace` for media and traces, and `react-devtools` for React Native components and performance profiling. `debug symbols` does not handle Android Java/R8 `mapping.txt` or native `ndk-stack`/`addr2line` symbolication; capture Android crash evidence with `logs` and symbolicate it with other tools.
 
 ## Core commands
 
@@ -5687,6 +5729,6 @@ url: /agent-device/pr-preview/pr-3613/index.md
 - **Interactions by ref, selector, or finder**: Tap, pan, fling, pinch, rotate, scroll, focus, type, assert, and find visible UI through refs, selectors, and semantic finders.
 - **Debugging and profiling**: Collect logs, inspect network traffic, capture screenshots and recordings, and sample performance where the target supports it.
 - **Session and replay**: Keep app state across commands in a session, and replay recorded `.ad` scripts to reproduce flows without an AI agent.
-- **React Native internals**: Use `agent-device react-devtools profile` for React Native performance profiling, and `agent-device cdp` for JS heap snapshots, diffs, and leak retainers.
+- **React Native internals**: Use `agent-device react-devtools` to inspect React Native components and profile their renders, and `agent-device cdp` for JS heap snapshots, diffs, and leak retainers.
 
 
