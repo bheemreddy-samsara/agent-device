@@ -200,7 +200,7 @@ Recording:
     summary: 'Full multi-touch gesture shapes and platform quirks',
     body: `agent-device help gestures
 
-Full command shapes and platform quirks for touch/pointer gestures beyond scroll/swipe. Read this when a task needs multi-touch, a repeated gesture series, or exact per-platform verification.
+Use this topic for full command shapes and platform quirks of touch/pointer gestures beyond scroll/swipe. Read it when a task needs multi-touch, a repeated gesture series, or exact per-platform verification.
 
 Shapes:
   agent-device longpress 300 500 800
@@ -213,22 +213,27 @@ Shapes:
   agent-device gesture pinch 0.5 200 400
   agent-device gesture rotate 35 200 420
   agent-device gesture transform 200 420 80 -40 2 35 700
-  scroll <dir> --until <selector> repeats scroll-and-check passes until that element is on screen, then stops: one request instead of a scroll-then-snapshot loop, and it stops on the target rather than overshooting it. It reports the passes it spent, fails when the content runs out first, and is refused on top/bottom, which already stop themselves.
-  longpress accepts coordinates, @refs, or selectors; prefer @ref/selector, coordinates only as a fallback. Duration and gesture scale/center are positional. gesture pan is one finger by default; add --pointer-count 2 for a parallel two-finger pan. Keep count/pause/pattern on one swipe: --count (cap 200), --pause-ms (cap 10000ms), --pattern ping-pong; the combined swipe/pause schedule is capped at 60000ms.
-  For repeated iOS smoke checks: press <x> <y> --count <n> --jitter-px <n> for tap series, swipe <x1> <y1> <x2> <y2> --count <n> for drag series.
+  scroll <dir> --until <selector> repeats scroll-and-check passes until that element is on screen, then stops. It is one request instead of a scroll-then-snapshot loop, and it stops on the target instead of going past it. It reports the passes that it used. It fails when the content ends first. It is refused on top/bottom, which already stop by themselves.
+  longpress accepts coordinates, @refs, or selectors. Prefer an @ref or a selector. Use coordinates only as a fallback. Duration and gesture scale/center are positional. gesture pan uses one finger by default. For a parallel two-finger pan, add --pointer-count 2. Keep count/pause/pattern on one swipe: --count (cap 200), --pause-ms (cap 10000ms), --pattern ping-pong. The combined swipe/pause schedule is capped at 60000ms.
+  For repeated iOS smoke checks, use press <x> <y> --count <n> --jitter-px <n> for tap series, and swipe <x1> <y1> <x2> <y2> --count <n> for drag series.
 
 Platform quirks:
-  iOS simulator transform/pinch/rotate use private XCTest synthesis for a continuous two-finger pan/scale/rotation path; verify app metrics instead of assuming requested values map exactly to recognizer output.
-  Android transform injects a geometric two-finger path; app recognizers may report non-exact pan/scale/rotation -- verify semantic app state or coarse per-component effects instead of exact numeric deltas unless the app exposes stable metrics. If Android needs exact values, prefer isolated gesture pan --pointer-count 2, gesture pinch, or gesture rotate over one combined transform:
+  iOS simulator transform/pinch/rotate use private XCTest synthesis for a continuous two-finger pan/scale/rotation path. Verify app metrics. Do not assume that requested values map exactly to recognizer output.
+  Android transform injects a geometric two-finger path. App recognizers may report pan/scale/rotation values that are not exact. Unless the app exposes stable metrics, verify semantic app state or coarse per-component effects instead of exact numeric deltas. If you need exact values on Android, prefer isolated gesture pan --pointer-count 2, gesture pinch, or gesture rotate over one combined transform:
     agent-device gesture transform 200 420 80 -40 2 35 700 --platform android
     agent-device wait text "pan changed yes" 3000 --platform android
-  tvOS coordinate pan and fling preserve only the dominant direction as a remote swipe; authored endpoints and duration are not preserved.
-  Gesture planning prefers the active-app frame; a backend without a gesture viewport resolver falls back to the visible snapshot union, which can be less accurate near edges.
-  Rare iOS accessibility gap: a row shown disabled/hittable:false where press reports success but no UI change, or a collapsed composite control with no child refs -- run snapshot -i --json, compute the target center from rects, press x y, then diff snapshot -i. Coordinates are fallback-only; document why you used them.
+  tvOS coordinate pan and fling preserve only the dominant direction as a remote swipe. They do not preserve the authored endpoints and duration.
+  Gesture planning prefers the active-app frame. If a backend has no gesture viewport resolver, it falls back to the visible snapshot union. That union can be less accurate near edges.
+  Rare iOS accessibility gap: a row shows disabled/hittable:false, and press reports success but the UI does not change. Or a collapsed composite control has no child refs. In these cases, do these steps:
+    1. Run snapshot -i --json.
+    2. Compute the target center from rects.
+    3. Run press x y.
+    4. Run diff snapshot -i.
+  Coordinates are fallback-only. Document why you used them.
 
 macOS:
   Context menus are secondary clicks, not long presses: agent-device click @e66 --button secondary --platform macos, then snapshot -i.
-  For fast desktop list traversal, prefer fixed pixel wheel steps and batch them when no snapshot is needed between passes:
+  For fast desktop list traversal, prefer fixed pixel wheel steps. If you need no snapshot between passes, batch the steps:
     agent-device scroll down --pixels 200 --duration-ms 50 --platform macos
     agent-device batch --steps '[{"command":"scroll","input":{"direction":"down","pixels":200,"durationMs":50}},{"command":"scroll","input":{"direction":"down","pixels":200,"durationMs":50}}]' --platform macos`,
   },
