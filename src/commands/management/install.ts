@@ -26,19 +26,19 @@ import { managementCliOutputFormatters } from './output.ts';
 
 const installCommandMetadata = defineFieldCommandMetadata(
   'install',
-  'Install an app binary from a local path. Provide an app identifier with the path when the target needs explicit app selection; use reinstall to replace an already installed app.',
+  'Install an app binary from a local path. If the target needs explicit app selection, give an app identifier with the path. To replace an app that is already installed, use reinstall.',
   {
     app: stringField('Optional app identifier hint.'),
-    appPath: requiredField(stringField('Path to app binary.')),
+    appPath: requiredField(stringField('Path to the app binary.')),
   },
 );
 
 const reinstallCommandMetadata = defineFieldCommandMetadata(
   'reinstall',
-  'Replace an installed app with a binary from a local path. Use this when preserving the same app identity while installing a new build on the selected device.',
+  'Replace an installed app with a binary from a local path. Use this command to install a new build on the selected device and keep the same app identity.',
   {
     app: requiredField(stringField()),
-    appPath: requiredField(stringField('Path to app binary.')),
+    appPath: requiredField(stringField('Path to the app binary.')),
   },
 );
 
@@ -52,7 +52,7 @@ const uninstallCommandMetadata = defineFieldCommandMetadata(
 
 const installFromSourceCommandMetadata = defineFieldCommandMetadata(
   'install-from-source',
-  'Install app builds from URLs, remote source specs, or CI artifacts resolved by a remote daemon.',
+  'Install app builds from URLs, remote source specs, or CI artifacts that a remote daemon resolves.',
   {
     source: requiredField(
       jsonSchemaField<DaemonInstallSource>(looseObjectSchema('Install source object.')),
