@@ -81,7 +81,7 @@ Bootstrap:
   open --foreground -> snapshot. Selection: explicit --device/--udid/--serial, then session, booted/bootable local, or provider; --platform/--target only filter. An ambiguous or empty selection fails with bounded retry selectors. There is no provider fallback.
   Install arguments are the app/package id, then the artifact path: agent-device install com.example.app ./dist/app.apk --platform android, then open <id> --relaunch for fresh state. Use reinstall only when explicitly requested.
   If the app id is unknown, run devices, then apps, then open <discovered-app-id>. Never open artifact paths or invent package ids. If the lookup misses the target, ask.
-  Apple CI: prepare ios-runner after boot/install, before replay/test (help prepare). Remote/cloud: connect -> open -> commands -> close -> disconnect (help remote). Reusable scripts, secret-safe fills, replay repair: help scripting.
+  Apple CI: prepare ios-runner after boot/install, before replay/test (help prepare). Remote/cloud: connect -> open -> commands -> close -> disconnect (help remote: config, leases, tunnels). Reusable scripts, secret-safe fills, replay repair: help scripting.
 
 Snapshots and refs:
   snapshot reads visible state. snapshot -i gets current interactive refs only -- the fast path before interaction. The default text is token-efficient. Use --raw/--json for the full provider tree.
@@ -107,11 +107,11 @@ Session ordering:
 
 Read-only and waits:
 ${WAIT_FAILURE_CONTRACT}
-  snapshot/get/is/find answer read-only questions. snapshot -i is for refs. --settle confirms that the local UI quieted. For delayed results, use wait text "Expected result" or wait <selector> instead of polling. For strict disappearance, use wait absent <selector>.
+  snapshot/get/is/find answer read-only questions. --settle confirms that the local UI quieted. For delayed results, use wait text "Expected result" or wait <selector> instead of polling. For strict disappearance, use wait absent <selector>.
   wait stable [quietMs] [timeoutMs] (defaults 500/10000) is the fallback for open/relaunch/navigation, or an intentionally-unsettled mutation -- not after a --settle whose diff already shows the change. Ambiguous find: add --first or --last.
 
 Navigation:
-  Pick a coordinate gesture point near the target's center, away from edges/tab bars/nav bars/the home indicator, which trigger system navigation instead. macOS context menus are secondary clicks (help macos). Action sheets/menus/camera screens are normal UI: run snapshot -i, press by label/ref, and handle permission sheets through UI/alert. If back is ambiguous, prefer a nav/back ref, tab-bar ref, or deep link to another back.
+  Pick a coordinate gesture point near the target's center, away from edges/tab bars/nav bars/the home indicator, which trigger system navigation instead. macOS context menus are secondary clicks (help macos). Action sheets/menus/camera screens are normal UI: run snapshot -i, press by label/ref, and handle permission sheets through UI/alert (alerts: help debugging). If back is ambiguous, prefer a nav/back ref, tab-bar ref, or deep link instead of another back.
 
 Validation and evidence:
   Nearby mutation diff: diff snapshot -i. With no prior snapshot, it initializes the baseline (zero changes) instead of failing.
@@ -120,7 +120,7 @@ Validation and evidence:
   iOS merged: child ref => press it; else press parent @ref --settle. Names are not selectors.
   Perf/memory/log/network/trace/crash: help debugging. Recording, save-script, batch, replay repair: help scripting.
 
-React Native: help react-native for Metro/Re.Pack reload, DevTools, RN overlays. For a JS-only change, run metro reload, then find "Home". For a native reset, use open --relaunch.
+React Native: help react-native for Metro/Re.Pack reload, DevTools, RN overlays, hazards, and routing. For a JS-only change, run metro reload, then find "Home". For a native reset, use open --relaunch.
 
 Lifecycle facts (trust these instead of probing): open without --relaunch is idempotent-foreground. --relaunch restarts the app. close keeps a healthy iOS runner warm by default. Runners and daemons both self-idle after 5 minutes. A stale lease is reclaimed automatically. The device claim that open takes also reclaims the retained warm runner of another worktree. "already owned by another agent-device daemon" = owner outside claim arbitration. Env vars: help physical-device.
 
@@ -131,6 +131,7 @@ Escalate:
   help scripting recording, save-script, batch, replay repair
   help gestures multi-touch gesture shapes/quirks
   help react-devtools RN components, props/state/hooks, render profiling
+  help macos desktop, frontmost-app, menu bar
   help web minimal browser loop
   help ios-system-ui SpringBoard, widget, system-UI`,
   },
