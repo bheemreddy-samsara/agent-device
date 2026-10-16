@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3765/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3765/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3765/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3765/static/js/index.13e281170b.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3765/static/js/index.1a41973236.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -206,6 +206,8 @@ Use it for BrowserStack, AWS Device Farm, or TestMu AI session videos/logs after
 <div class="rp-table-scroll-container rp-scrollbar"><table><thead><tr><th>Mode</th><th>What the client does with the daemon</th></tr></thead><tbody><tr><td><code>&#x27;managed&#x27;</code> (default)</td><td>Starts a missing daemon, replaces one that does not match the client, and retires an unresponsive one after a timeout.</td></tr><tr><td><code>&#x27;attach&#x27;</code></td><td>Connects to the running daemon. Never starts, replaces or stops one, even after a timeout.</td></tr></tbody></table></div>
 <p><code>&#x27;managed&#x27;</code> stays the default until 0.22. Use <code>&#x27;attach&#x27;</code> when your code, or another process, owns the daemon, and call <code>ensureDaemon()</code> to start or replace it deliberately:</p>
 <div class="rp-codeblock language-ts"><div class="rp-codeblock__content"><div class="rp-codeblock__content__scroll-container rp-scrollbar rp-scrollbar--always"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0" data-lang="ts"><code><span class="line"><span style="color:var(--shiki-token-keyword)">import</span><span style="color:var(--shiki-foreground)"> { createAgentDeviceClient</span><span style="color:var(--shiki-token-punctuation)">,</span><span style="color:var(--shiki-foreground)"> ensureDaemon } </span><span style="color:var(--shiki-token-keyword)">from</span><span style="color:var(--shiki-token-string-expression)"> &#x27;agent-device&#x27;</span><span style="color:var(--shiki-foreground)">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:var(--shiki-token-keyword)">const</span><span style="color:var(--shiki-token-constant)"> stateDir</span><span style="color:var(--shiki-token-keyword)"> =</span><span style="color:var(--shiki-token-string-expression)"> &#x27;/var/run/my-app/agent-device&#x27;</span><span style="color:var(--shiki-foreground)">;</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:var(--shiki-token-keyword)">await</span><span style="color:var(--shiki-token-function)"> ensureDaemon</span><span style="color:var(--shiki-foreground)">({</span></span>
 <span class="line"><span style="color:var(--shiki-foreground)">  stateDir</span><span style="color:var(--shiki-token-punctuation)">,</span></span>

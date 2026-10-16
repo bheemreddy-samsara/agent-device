@@ -1254,6 +1254,8 @@ A client talks to one local daemon per state directory. `daemonLifecycle` says w
 ```ts
 import { createAgentDeviceClient, ensureDaemon } from 'agent-device';
 
+const stateDir = '/var/run/my-app/agent-device';
+
 await ensureDaemon({
   stateDir,
   onStart: (reason, previous) => console.log(`started a daemon: ${reason}`, previous),
