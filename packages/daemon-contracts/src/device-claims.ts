@@ -11,7 +11,6 @@ import {
 } from '@agent-device/kernel/device';
 import type { DeviceBootObservationService } from '@agent-device/contracts/device-boot';
 import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
-import { safeSessionName } from '@agent-device/host-kit/session-paths';
 import { ownerIdentityMatches, readCurrentOwnerIdentity } from '@agent-device/host-kit/process';
 
 import {
@@ -87,9 +86,12 @@ export type TransientDeviceClaimResult =
  * in flight; the `exec` prefix names the wrapper that holds it for the whole
  * lifetime of its child process. The command is a raw argv token and this label
  * is echoed into `device status` and conflict messages, so it is sanitized the
- * way session names are before being recorded.
+ * way session names are before being recorded. `safeSessionName`'s module stays
+ * behind this dynamic edge: the claim store's eager closure is budgeted, and a
+ * wrapper claim is taken on a cold CLI path that must not pay for it.
  */
-function wrapperDeviceClaimSession(command: string): string {
+async function wrapperDeviceClaimSession(command: string): Promise<string> {
+  const { safeSessionName } = await import('@agent-device/host-kit/session-paths');
   return `exec:${safeSessionName(command)}`;
 }
 
@@ -138,7 +140,7 @@ export async function acquireWrapperDeviceClaim(params: {
         ...params,
         deviceKey,
         identity,
-        session: wrapperDeviceClaimSession(params.command),
+        session: await wrapperDeviceClaimSession(params.command),
         claimOwnerKind: 'wrapper',
       }),
   );
