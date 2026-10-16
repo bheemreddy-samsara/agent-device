@@ -592,22 +592,22 @@ Providers:
   Cloud: agent-device connect or agent-device connect cloud discovers the agent-device cloud profile.
   Remote config: agent-device connect --remote-config ./remote-config.json uses a local profile.
   Direct proxy: agent-device connect proxy --daemon-base-url <proxy-agent-device-url> stores the shared proxy profile and client identity.
-  BrowserStack: agent-device connect browserstack verifies credentials, the exact device, and a bs:// app reference, then stores a local provider profile. It does not create an App Automate session.
-  AWS Device Farm: agent-device connect aws-device-farm verifies credentials and the exact project, device, and optional app upload, then stores a local provider profile. It does not create a remote access session.
-  TestMu AI: agent-device connect testmu verifies credentials and the exact virtual device (emulator or simulator) or, with --provider-device-type real, real device and OS version, then stores a local provider profile. --provider-app takes an lt:// app reference, an https URL, or a local path: connect looks an lt:// id up among your uploads for that device pool, while URL and local sources are uploaded and validated when open creates the session. It does not create a hub session.
-  Limrun: agent-device connect limrun verifies access to the selected iOS or Android instance service, then stores a local provider profile. It does not create an instance.
+  BrowserStack: agent-device connect browserstack verifies credentials, the exact device, and a bs:// app reference. Then it stores a local provider profile. It does not create an App Automate session.
+  AWS Device Farm: agent-device connect aws-device-farm verifies credentials and the exact project, device, and optional app upload. Then it stores a local provider profile. It does not create a remote access session.
+  TestMu AI: agent-device connect testmu verifies credentials and the exact virtual device (emulator or simulator). With --provider-device-type real, it verifies the real device and OS version. Then it stores a local provider profile. --provider-app takes an lt:// app reference, an https URL, or a local path. For an lt:// id, connect finds the id among your uploads for that device pool. A URL or local source is uploaded and validated when open creates the session. It does not create a hub session.
+  Limrun: agent-device connect limrun verifies access to the selected iOS or Android instance service. Then it stores a local provider profile. It does not create an instance.
 
 After direct-provider connect:
   Read the printed Device, App, Next, and workflow-note lines. They are also available as verification/device/app/liveSession/nextSteps/notes in --json output.
   BrowserStack, AWS Device Farm, and TestMu AI create the hosted session on open. open needs the installed package or bundle identifier, not the app artifact name, ARN, or lt:// id.
-  Before provider allocation, apps lists compatible uploaded app assets without creating an instance when the selected provider exposes a catalog. open <exact-asset-name> creates the instance with that asset, resolves its installed app id, and launches it. install remains available when the app comes from a fresh local path or URL.
-  AWS Device Farm cannot install after allocation. If connect reports no attached app, run its printed reconnect command, which includes --session <name> --force, before open.
-  Do not run devices as a pre-open catalog probe for direct providers; it can allocate the deferred provider session. Limrun is the exception for apps: before allocation it lists uploaded assets for the selected platform.
+  Before provider allocation, if the selected provider exposes a catalog, apps lists compatible uploaded app assets and does not create an instance. open <exact-asset-name> creates the instance with that asset, resolves its installed app id, and launches it. If the app comes from a fresh local path or URL, install remains available.
+  AWS Device Farm cannot install after allocation. If connect reports no attached app, run its printed reconnect command before open. That command includes --session <name> --force.
+  Do not run devices as a pre-open catalog probe for direct providers. It can allocate the deferred provider session. Limrun is the exception for apps: before allocation it lists uploaded assets for the selected platform.
 
 Device cloud interfaces:
-  CLI is the canonical bootstrap path: connect limrun/browserstack/aws-device-farm/testmu, then use normal open/snapshot/click/close/artifacts/disconnect commands.
-  JavaScript can skip persisted connect state by passing leaseProvider plus provider fields to createAgentDeviceClient or per-command options.
-  MCP exposes operational tools such as open, snapshot, click, close, and artifacts. It does not expose connect/disconnect; run CLI connect first in the same state dir before relying on MCP tools.
+  The CLI is the canonical bootstrap path. Run connect limrun/browserstack/aws-device-farm/testmu, then use normal open/snapshot/click/close/artifacts/disconnect commands.
+  JavaScript can skip the persisted connect state: pass leaseProvider and the provider fields to createAgentDeviceClient or to per-command options.
+  MCP exposes operational tools such as open, snapshot, click, close, and artifacts. It does not expose connect/disconnect. Before you rely on MCP tools, run CLI connect in the same state dir.
 
 Direct proxy flow for a remote Mac/simulator:
   On the Mac with simulator/device access:
@@ -623,11 +623,11 @@ Direct proxy flow for a remote Mac/simulator:
     agent-device disconnect
 
 Human takeover of a leased remote device:
-  Run agent-device takeover using the active remote connection and session. It pauses state-changing agent commands until Ctrl+C while snapshots and other read-only diagnostics remain available. Tenant requests can control only their admitted lease device. Local takeover without a remote device lease is not supported.
+  Run agent-device takeover with the active remote connection and session. Until Ctrl+C, it pauses state-changing agent commands. Snapshots and other read-only diagnostics remain available. Tenant requests can control only their admitted lease device. Local takeover without a remote device lease is not supported.
     agent-device takeover --session remote-session
     agent-device takeover status
     agent-device takeover release <hold-id>
-  An HTTP-mode daemon also accepts authenticated GET/PUT/DELETE requests at /admin/human-control/holds on its loopback listener. Host administrators supply the exact lease backend/provider/device key and use the local daemon token, not a tenant credential. This host-admin route is intentionally not forwarded by agent-device proxy. Holds do not survive daemon restart; re-establish them after reconnecting. The same listener and token serve GET/PUT/DELETE /admin/leases, where a host allocates a macos-app lease confining a client to one app (<bundleId> or <bundleId>@<pid>); tenants cannot allocate one.
+  An HTTP-mode daemon also accepts authenticated GET/PUT/DELETE requests at /admin/human-control/holds on its loopback listener. Host administrators supply the exact lease backend/provider/device key, and use the local daemon token, not a tenant credential. This host-admin route is intentionally not forwarded by agent-device proxy. Holds do not survive a daemon restart. After you reconnect, re-establish them. The same listener and token serve GET/PUT/DELETE /admin/leases. There, a host allocates a macos-app lease that confines a client to one app (<bundleId> or <bundleId>@<pid>). Tenants cannot allocate one.
 
 Cloud profile flow:
   agent-device connect
@@ -647,7 +647,7 @@ TestMu AI virtual-device flow (emulators and simulators):
 
 TestMu AI real-device flow:
   agent-device connect testmu --provider-device-type real --platform ios --device "iPhone 16" --provider-os-version 18 --provider-app ./MyApp.ipa
-  Real iOS devices are listed by major OS version (18, not 18.0) and install a signed .ipa. Real and virtual devices have separate upload APIs, so pass an lt:// id uploaded for the pool you connect to.
+  Real iOS devices are listed by major OS version (18, not 18.0), and they install a signed .ipa. Real and virtual devices have separate upload APIs. Thus pass an lt:// id that was uploaded for the pool that you connect to.
 
 BrowserStack hosted-device flow:
   BROWSERSTACK_USERNAME=... BROWSERSTACK_ACCESS_KEY=...
@@ -666,15 +666,15 @@ AWS Device Farm hosted-device flow:
   agent-device close
   agent-device artifacts --json
   agent-device disconnect
-  AWS Device Farm currently supports Android and iOS WebDriver sessions only; Vega OS and Vega Fire TV ARNs are not routed.
+  AWS Device Farm currently supports Android and iOS WebDriver sessions only. Vega OS and Vega Fire TV ARNs are not routed.
 
 Limrun direct-device flow:
   LIMRUN_API_KEY=...
   agent-device connect limrun --platform android
 
   Limrun creates remote iOS simulators and Android emulators only. Do not pass local device selectors such as --udid, --serial, or --device.
-  To drive an existing instance without the API key, set LIM_IOS_INSTANCE_URL and LIM_IOS_INSTANCE_TOKEN, or LIM_ANDROID_INSTANCE_URL, LIM_ANDROID_INSTANCE_TOKEN, and LIM_ANDROID_INSTANCE_ADB_URL, from the instance status before connect. agent-device then never creates or deletes that instance; install, and apps before the first open, still need LIMRUN_API_KEY.
-  Set LIMRUN_KEEP_ALIVE=1 to ping the instance every 30 seconds while a session is open, so an idle session does not hit the Limrun inactivity timeout. It is off by default.
+  To drive an existing instance without the API key, set these variables from the instance status before connect: LIM_IOS_INSTANCE_URL and LIM_IOS_INSTANCE_TOKEN, or LIM_ANDROID_INSTANCE_URL, LIM_ANDROID_INSTANCE_TOKEN, and LIM_ANDROID_INSTANCE_ADB_URL. Then agent-device never creates or deletes that instance. install, and apps before the first open, still need LIMRUN_API_KEY.
+  Set LIMRUN_KEEP_ALIVE=1 to ping the instance every 30 seconds while a session is open. Then an idle session does not reach the Limrun inactivity timeout. It is off by default.
   agent-device apps
   agent-device open Example.apk
   agent-device snapshot -i
@@ -694,32 +694,32 @@ Script flow, per-command config:
 
 Rules:
   connect and disconnect are top-level commands. Do not write agent-device remote connect or agent-device remote disconnect.
-  Use connect without --remote-config when the cloud control plane owns the connection profile.
-  Prefer connect --remote-config over --daemon-base-url, --tenant, --run-id, and --lease-id when using a local profile.
-  Use agent-device proxy for direct tunnel access to a Mac you control. Expose the printed proxy URL through cloudflared/ngrok, then run agent-device connect proxy with the tunnel URL and printed token before normal commands.
-  Use Limrun, BrowserStack, AWS Device Farm, and TestMu AI through local provider profiles; they do not accept a remote agent-device daemon URL.
+  If the cloud control plane owns the connection profile, use connect without --remote-config.
+  If you use a local profile, prefer connect --remote-config over --daemon-base-url, --tenant, --run-id, and --lease-id.
+  Use agent-device proxy for direct tunnel access to a Mac that you control. Expose the printed proxy URL through cloudflared/ngrok. Then, before normal commands, run agent-device connect proxy with the tunnel URL and the printed token.
+  Use Limrun, BrowserStack, AWS Device Farm, and TestMu AI through local provider profiles. They do not accept a remote agent-device daemon URL.
   Device cloud credentials must be available before the command starts. Limrun uses LIMRUN_API_KEY, or the LIM_*_INSTANCE_* variables for an existing instance. BrowserStack uses BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY. TestMu AI uses LT_USERNAME and LT_ACCESS_KEY. AWS Device Farm uses the AWS CLI credential chain, including CI-provided AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN, AWS profiles, or web identity role variables.
-  A local daemon keeps the Limrun, BrowserStack, and TestMu AI credentials it started with. When the shell holds different ones, the first command that allocates a lease refuses with reason provider-credentials-changed; run agent-device daemon stop with the same --state-dir, then rerun the command. A shell that sets none of them uses the daemon's. A daemon with an HTTP auth hook serves remote callers and does not compare.
-  Direct-provider connect performs read-only provider calls and saves active connection state only after verification succeeds. It never creates a device, instance, App Automate session, or AWS remote access session.
-  connect without --session always creates a fresh remote session and prints that session in its next-step commands. Concurrent callers must pass the returned --session on every command; the ambient active connection is only a single-workflow convenience.
-  To replace an existing connection, pass its returned session explicitly with --session <name> --force. --force without --session creates another fresh session and does not release or overwrite an unrelated active connection.
+  A local daemon keeps the Limrun, BrowserStack, and TestMu AI credentials that it started with. If the shell holds different credentials, the first command that allocates a lease refuses with reason provider-credentials-changed. Then run agent-device daemon stop with the same --state-dir, and run the command again. A shell that sets none of them uses the credentials of the daemon. A daemon with an HTTP auth hook serves remote callers and does not compare credentials.
+  Direct-provider connect makes read-only provider calls. It saves the active connection state only after verification succeeds. It never creates a device, instance, App Automate session, or AWS remote access session.
+  connect without --session always creates a fresh remote session, and prints that session in its next-step commands. Concurrent callers must pass the returned --session on every command. The ambient active connection is only a single-workflow convenience.
+  To replace an existing connection, pass its returned session explicitly with --session <name> --force. --force without --session creates another fresh session. It does not release or overwrite an unrelated active connection.
   Prefer short-lived AWS role credentials in CI. Generated connection profiles store app/device selectors and ARNs, not Limrun API keys or instance tokens, BrowserStack or TestMu AI access keys, or AWS credentials.
-  Limrun Android supports direct ADB port reverse for local Metro. Limrun iOS requires a public Metro URL because it cannot reach local host ports directly.
-  After closing a device cloud session, run agent-device artifacts --json to retrieve provider video/log/dashboard URLs when the provider has made them available.
-  connect proxy stores the connection profile and client identity. Proxy device leases are acquired on open and expire after five minutes without commands; when a lease expires or is released, the daemon ends the session opened under it and frees its device; devices may inspect proxy inventory without allocating.
+  Limrun Android supports direct ADB port reverse for local Metro. Limrun iOS requires a public Metro URL, because it cannot reach local host ports directly.
+  After you close a device cloud session, run agent-device artifacts --json to get the provider video/log/dashboard URLs, if the provider made them available.
+  connect proxy stores the connection profile and client identity. Proxy device leases are acquired on open and expire after five minutes without commands. When a lease expires or is released, the daemon ends the session that was opened under the lease and frees its device. devices may examine the proxy inventory without an allocation.
   Multiple agents can share one proxy when each uses connect proxy, open, commands, close, and disconnect.
-  disconnect releases local connection state; close releases the active session and device lease.
+  disconnect releases local connection state. close releases the active session and device lease.
   A busy direct-proxy device error means another agent owns the device until it closes or its inactivity lease expires.
   Keep the proxy token secret. Anyone with the token can control the proxied daemon.
-  A daemon with AGENT_DEVICE_HTTP_AUTH_HOOK configured treats HTTP requests as remote: host-path install sources are rejected, uploaded artifacts remain supported, and Maestro runScript HTTP helpers allow only public network destinations. No-hook local HTTP and socket flows retain their local behavior.
-  A daemon started with AGENT_DEVICE_DAEMON_POLICY=<policy.json> enforces that policy for every request, including batch steps and replay actions: it can limit which devices are visible and bindable, allow or deny commands (Maestro flows reach the daemon as the runtime command), and deny device-shutdown. A denial is UNAUTHORIZED with details.reason DAEMON_POLICY_DENIED; do not retry it. Use an allowed command or device, or ask the daemon operator to change the policy; a denied capability such as device-shutdown has no allowed alternative.
-  If local/proxy iOS reports that the runner is already owned by another agent-device daemon after lease admission, retry after the owning session closes or after lease expiry. If the conflict repeats, clean stale daemon state on the machine with simulator access.
-  Do not use --config as a remote profile flag. --config loads CLI defaults; --remote-config selects remote daemon/profile settings.
-  For self-contained scripts, pass the same --remote-config to every operational command, including disconnect; a preceding connect is optional but not required.
-  For remote artifact installs, use install-from-source <url> or install-from-source --github-actions-artifact org/repo:artifact; do not download CI artifacts locally first.
+  A daemon with AGENT_DEVICE_HTTP_AUTH_HOOK configured treats HTTP requests as remote: host-path install sources are rejected, uploaded artifacts remain supported, and Maestro runScript HTTP helpers allow only public network destinations. No-hook local HTTP and socket flows keep their local behavior.
+  A daemon started with AGENT_DEVICE_DAEMON_POLICY=<policy.json> enforces that policy for every request, including batch steps and replay actions. The policy can limit which devices are visible and bindable, allow or deny commands, and deny device-shutdown. Maestro flows reach the daemon as the runtime command. A denial is UNAUTHORIZED with details.reason DAEMON_POLICY_DENIED. Do not retry it. Use an allowed command or device, or ask the daemon operator to change the policy. A denied capability such as device-shutdown has no allowed alternative.
+  If local/proxy iOS reports that the runner is already owned by another agent-device daemon after lease admission, retry after the owning session closes or the lease expires. If the conflict occurs again, clean the stale daemon state on the machine that has simulator access.
+  Do not use --config as a remote profile flag. --config loads CLI defaults. --remote-config selects remote daemon/profile settings.
+  For self-contained scripts, pass the same --remote-config to every operational command, including disconnect. A preceding connect is optional.
+  For remote artifact installs, use install-from-source <url> or install-from-source --github-actions-artifact org/repo:artifact. Do not download CI artifacts locally first.
   After connect, let the active remote connection supply runtime hints.
   For connected phone/tablet setup and iOS signing prerequisites, read agent-device help physical-device.
-  Use --debug when remote connection or transport errors need diagnostic ids and remote log hints.`,
+  If remote connection or transport errors need diagnostic ids and remote log hints, use --debug.`,
   },
   macos: {
     summary: 'macOS desktop, frontmost-app, and menu bar surfaces',
