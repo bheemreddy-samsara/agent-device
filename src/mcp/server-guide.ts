@@ -46,7 +46,7 @@ export function terminalOnlyCommandNames(): string[] {
  */
 export const HELP_TOOL: { name: string; description: string; inputSchema: JsonSchema } = {
   name: HELP_TOOL_NAME,
-  description: `Usage guides. Without a topic, it returns the full workflow card. Set topic to one of ${helpTopicIds().join(', ')} for that guide, or to a tool name for its complete flag reference. Use it only for specialized work or an unclear command shape. It is not a startup step. It is not necessary after an error that carries a hint.`,
+  description: `Usage guides. Without a topic, it returns the root decision card. Set topic to one of ${helpTopicIds().join(', ')} for that guide, or to a tool name for its complete flag reference. Use it only for specialized work or an unclear command shape. It is not a startup step. It is not necessary after an error that carries a hint.`,
   inputSchema: {
     type: 'object',
     properties: {
