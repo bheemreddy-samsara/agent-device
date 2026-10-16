@@ -63,23 +63,23 @@ export const DEVICE_MANAGEMENT_COMMAND_OUTPUT_SCHEMAS = {
 
 const devicesCommandMetadata = defineFieldCommandMetadata(
   'devices',
-  'List available devices and simulators that can be selected for automation. Use platform, device, udid, or serial inputs on later commands to target one result.',
+  'List the available devices and simulators that you can select for automation. To target one result, use the platform, device, udid, or serial inputs on later commands.',
   {},
 );
 
 const capabilitiesCommandMetadata = defineFieldCommandMetadata(
   'capabilities',
-  'List the commands supported by the selected device or active session. Use device-selection inputs when checking support before a session is open.',
+  'List the commands that the selected device or the active session supports. To examine support before a session is open, use the device-selection inputs.',
   {},
 );
 
 const bootCommandMetadata = defineFieldCommandMetadata(
   'boot',
-  'Boot or prepare the selected device or simulator so later commands can target it. The device is chosen through the device-selection inputs, not by naming it here.',
+  'Boot or prepare the selected device or simulator, so that later commands can target it. Choose the device through the device-selection inputs. Do not give its name here.',
   {
-    headless: booleanField('Boot without showing simulator UI when supported.'),
+    headless: booleanField('Boot without the simulator UI when this is supported.'),
     timeoutMs: integerField(
-      'Startup budget in milliseconds. Bounds the boot wait, so a never-booted Simulator can finish its first-boot migration or a cold emulator its boot; omit for the default startup behavior.',
+      'Startup budget in milliseconds. It limits the boot wait, so that a never-booted Simulator can finish its first-boot migration, or a cold emulator can finish its boot. For the default startup behavior, omit it.',
       { min: 1 },
     ),
   },
@@ -87,7 +87,7 @@ const bootCommandMetadata = defineFieldCommandMetadata(
 
 const shutdownCommandMetadata = defineFieldCommandMetadata(
   'shutdown',
-  'Shutdown a selected simulator or emulator.',
+  'Shut down a selected simulator or emulator.',
   {},
 );
 

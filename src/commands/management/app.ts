@@ -24,21 +24,21 @@ import { managementCliOutputFormatters } from './output.ts';
 
 const appsCommandMetadata = defineFieldCommandMetadata(
   'apps',
-  'List the apps installed on the selected device. Include system or OEM apps only when they are needed as automation targets.',
+  'List the apps installed on the selected device. Include system or OEM apps only when you need them as automation targets.',
   {
     appsFilter: enumField(
       ['user-installed', 'all'],
-      'Restrict the listing to user-installed apps, or include system and OEM apps.',
+      'Limit the list to user-installed apps, or include system and OEM apps.',
     ),
   },
 );
 
 const openCommandMetadata = defineFieldCommandMetadata(
   'open',
-  'Boot the selected device when needed, then open an app, deep link, or URL in a session. Use the app or URL inputs to choose what becomes the foreground automation target.',
+  'If necessary, boot the selected device. Then open an app, deep link, or URL in a session. To choose what becomes the foreground automation target, use the app or URL inputs.',
   {
     app: stringField('App name, bundle id, package, or URL.'),
-    url: stringField('Optional URL passed with an app shell.'),
+    url: stringField('Optional URL to give to an app shell.'),
     surface: enumField(
       SESSION_SURFACES,
       'macOS presentation surface to open: the app itself, the frontmost app, the desktop, or the menu bar.',
@@ -46,11 +46,11 @@ const openCommandMetadata = defineFieldCommandMetadata(
     activity: stringField('Android activity name.'),
     launchConsole: stringField('Launch console mode.'),
     launchArgs: stringArrayField(
-      'Launch arguments forwarded verbatim to the platform launch command.',
+      'Launch arguments that the command forwards verbatim to the platform launch command.',
     ),
-    relaunch: booleanField('Force relaunch.'),
+    relaunch: booleanField('Force a relaunch.'),
     timeoutMs: integerField(
-      'Startup budget in milliseconds. Bounds the Simulator boot wait, so a never-booted Simulator can finish its first-boot migration; omit for the default startup behavior.',
+      'Startup budget in milliseconds. It limits the Simulator boot wait, so that a never-booted Simulator can finish its first-boot migration. For the default startup behavior, omit it.',
       { min: 1 },
     ),
     waitMs: optionField('waitMs'),
@@ -59,38 +59,38 @@ const openCommandMetadata = defineFieldCommandMetadata(
       oneOf: [booleanSchema(), stringSchema()],
     }),
     force: booleanField(
-      'Overwrite an existing --save-script target instead of refusing (alias: --overwrite).',
+      'Overwrite an existing --save-script target instead of a refusal (alias: --overwrite).',
     ),
     testIme: booleanField(
-      'Activate the headless Android test IME for deterministic Unicode text entry (default on for emulators; opt-in on real devices).',
+      'Activate the headless Android test IME for deterministic Unicode text entry (default: on for emulators, opt-in on real devices).',
     ),
     noRecord: booleanField('Do not record this action.'),
-    metroHost: stringField('Session-scoped Metro/debug host hint applied to the opened app.'),
+    metroHost: stringField('Session-scoped Metro or debug host hint for the opened app.'),
     metroPort: integerField(
-      'Session-scoped Metro/debug port hint applied to the opened app. On an emulator/simulator the host defaults to the loopback alias (Android 10.0.2.2, iOS 127.0.0.1) when --metro-host is omitted; physical devices still require an explicit --metro-host.',
+      'Session-scoped Metro or debug port hint for the opened app. On an emulator or simulator without --metro-host, the host defaults to the loopback alias (Android 10.0.2.2, iOS 127.0.0.1). Physical devices still require an explicit --metro-host.',
       {
         min: 1,
         max: 65535,
       },
     ),
-    bundleUrl: stringField('Session-scoped bundle URL hint applied to the opened app.'),
+    bundleUrl: stringField('Session-scoped bundle URL hint for the opened app.'),
     launchUrl: stringField(
-      'Launch URL for the opened app; does not select the server used by metro reload.',
+      'Launch URL for the opened app. It does not select the server that metro reload uses.',
     ),
   },
 );
 
 const closeCommandMetadata = defineFieldCommandMetadata(
   'close',
-  'Close the named app, or close the active session app when app is omitted. Use shutdown only when the selected simulator or emulator should also stop. Android ADB close fails with android-app-close-timeout if the app stays foreground, or its process stays running, past its 2s check window.',
+  'Close the named app. If app is omitted, close the active session app. Use shutdown only when the selected simulator or emulator should also stop. Android ADB close fails with android-app-close-timeout if the app stays in the foreground, or its process stays running, after its 2s check window.',
   {
     app: stringField('Optional app to close.'),
-    shutdown: booleanField('Shutdown the session/device where supported.'),
+    shutdown: booleanField('Shut down the session or device where this is supported.'),
     saveScript: jsonSchemaField<boolean | string>({
       oneOf: [booleanSchema(), stringSchema()],
     }),
     force: booleanField(
-      'Overwrite an existing --save-script target instead of refusing (alias: --overwrite).',
+      'Overwrite an existing --save-script target instead of a refusal (alias: --overwrite).',
     ),
   },
 );
@@ -182,7 +182,7 @@ export const appsCommandFacet = defineCommandFacet({
   text: {
     summary: 'List installed apps or deferred provider app assets',
     cliDetail:
-      'Before provider allocation, lists uploaded app assets when the selected provider exposes a catalog. On a live device, defaults to user-installed apps; use --all to include system/OEM apps.',
+      'Before provider allocation, the command lists uploaded app assets when the selected provider exposes a catalog. On a live device, it defaults to user-installed apps. To include system and OEM apps, use --all.',
   },
   metadata: appsCommandMetadata,
   run: (client, input) => client.apps.list(input),
@@ -195,11 +195,11 @@ export const appsCommandFacet = defineCommandFacet({
 export const openCommandFacet = defineCommandFacet({
   name: 'open',
   text: {
-    summary: 'Open an app, deep link or URL, save replays',
+    summary: 'Open an app, deep link, or URL, and save replays',
     cliDetail:
-      'Use --platform to bind URL/deep-link opens to the target platform. For iOS simulator initial stdout/stderr, put --launch-console <path> on this open command, for example agent-device open "Agent Device Tester" --platform ios --launch-console artifacts/launch-console.log. Expo Go/dev-client shells accept host + URL, for example agent-device open "Expo Go" exp://127.0.0.1:8081 --platform ios. macOS also supports --surface app|frontmost-app|desktop|menubar. --metro-host/--metro-port/--bundle-url choose the app\'s Metro server and save that address for later metro reload calls in the same session. A fresh open without Metro hints clears an older same-name binding; close also clears it. --launch-url supplies the app\'s launch URL; it does not select the reload server. On an iOS simulator without --launch-url, open connects a detected Expo development client through its expo-development-client URL. The app must declare a single exp+<slug> scheme that no other installed app owns. If detection is inconclusive, the app opens normally. Bare React Native apps receive their server settings before launch. On an iOS simulator, when --launch-url raises an "Open in <App>?" prompt that keeps open from seeing the app, open accepts it if the URL scheme belongs to the session app (data.launchConfirmation: "accepted"); if the scheme belongs to another installed app, the prompt stays on screen and open fails with details.reason launch_confirmation_foreign_app; if no single installed app owns the scheme, the prompt stays on screen and open returns as usual. The prompt is read whenever open cannot see the app afterwards, including on a slow host where the app\'s target discovery fails on its own deadline. When an accept leaves the app provably not running, open hands the same URL over once more and reads again; still not running, it fails with details.reason launch_confirmation_unanswered. A recognized prompt still visible after a failed accept also fails with this reason, even if the app is running behind it; answer it with alert accept or alert dismiss. A simulator openurl that CoreSimulator never answers fails within 20s with details.reason ios-simulator-openurl-timeout. Only the English prompt title with Cancel and Open buttons is recognized, so on a Simulator set to another language the prompt stays on screen. A prompt that appears after open has already seen the app is not answered; use alert accept. A device another session is holding refuses at once; add --wait <ms> to block up to that budget for it and only then fail with DEVICE_IN_USE naming the owning session.',
+      'To bind URL or deep-link opens to the target platform, use --platform. For the initial stdout and stderr of an iOS simulator, put --launch-console <path> on this open command, for example agent-device open "Agent Device Tester" --platform ios --launch-console artifacts/launch-console.log. Expo Go and dev-client shells accept a host and a URL, for example agent-device open "Expo Go" exp://127.0.0.1:8081 --platform ios. macOS also supports --surface app|frontmost-app|desktop|menubar. --metro-host/--metro-port/--bundle-url choose the Metro server of the app and save that address for later metro reload calls in the same session. A fresh open without Metro hints clears an older same-name binding. close also clears it. --launch-url gives the launch URL of the app. It does not select the reload server. On an iOS simulator without --launch-url, open connects a detected Expo development client through its expo-development-client URL. The app must declare a single exp+<slug> scheme that no other installed app owns. If detection is inconclusive, the app opens normally. Bare React Native apps receive their server settings before launch. On an iOS simulator, --launch-url can show an "Open in <App>?" prompt that prevents open from seeing the app. If the URL scheme belongs to the session app, open accepts the prompt (data.launchConfirmation: "accepted"). If the scheme belongs to a different installed app, the prompt stays on the screen, and open fails with details.reason launch_confirmation_foreign_app. If no single installed app owns the scheme, the prompt stays on the screen, and open returns as usual. open reads the prompt whenever it cannot see the app afterwards. This includes a slow host where the target discovery of the app fails on its own deadline. If an accept leaves the app provably not running, open gives the same URL once more and reads again. If the app is still not running, open fails with details.reason launch_confirmation_unanswered. A recognized prompt that is still visible after a failed accept also fails with this reason, even if the app is running behind it. Answer the prompt with alert accept or alert dismiss. A simulator openurl that CoreSimulator never answers fails within 20s with details.reason ios-simulator-openurl-timeout. open recognizes only the English prompt title with Cancel and Open buttons. On a Simulator set to a different language, the prompt stays on the screen. open does not answer a prompt that appears after open has already seen the app. For that prompt, use alert accept. If another session holds the device, open refuses immediately. To block for the device up to a budget, add --wait <ms>. Only after that budget does open fail with DEVICE_IN_USE, which names the owning session.',
     mcpDetail:
-      "metroHost, metroPort, and bundleUrl choose the app's Metro server and save its address for later reloads. launchUrl selects the app's launch URL and does not select the reload server. A fresh open without Metro hints clears an older same-name binding; close also clears it.",
+      'metroHost, metroPort, and bundleUrl choose the Metro server of the app and save its address for later reloads. launchUrl selects the launch URL of the app. It does not select the reload server. A fresh open without Metro hints clears an older same-name binding. close also clears it.',
   },
   metadata: openCommandMetadata,
   run: (client, input) => client.apps.open(toAppOpenOptions(input)),

@@ -54,12 +54,14 @@ export const DOCTOR_COMMAND_OUTPUT_SCHEMAS = {
 
 const doctorCommandMetadata = defineFieldCommandMetadata(
   'doctor',
-  'Diagnose device, app, development-server, and React Native or Expo readiness issues. Returns compact evidence for local inventory, sessions, optional app discovery, toolchains, and server reachability.',
+  'Diagnose device, app, development-server, and React Native or Expo readiness issues. It returns compact evidence for local inventory, sessions, optional app discovery, toolchains, and server reachability.',
   {
     targetApp: stringField(
-      'Installed app package/bundle id or app name to verify without opening a session.',
+      'Installed app package, bundle id, or app name to confirm without opening a session.',
     ),
-    remote: booleanField('Check remote connection setup instead of local device inventory.'),
+    remote: booleanField(
+      'Examine the remote connection setup instead of the local device inventory.',
+    ),
   },
 );
 
@@ -81,9 +83,9 @@ export const doctorCommandFacet = defineCommandFacet({
   text: {
     summary: 'Diagnose device, app, dev-server, and RN/Expo readiness',
     cliDetail:
-      'Metro reachability is inferred from cwd/runtime. On iOS simulators it also warms the XCTest runner build cache in the background when missing. Pass --app to verify a target app on the one matching booted device without opening a session. Use --remote to check remote connection setup without probing local devices. Default output is compact; use --json for full checks and evidence.',
+      'The command infers Metro reachability from cwd and runtime. On iOS simulators, if the XCTest runner build cache is missing, the command also prepares it in the background. To confirm a target app on the one matching booted device without opening a session, pass --app. To examine the remote connection setup without a probe of local devices, use --remote. The default output is compact. For full checks and evidence, use --json.',
     mcpDetail:
-      'On iOS simulators it also warms the XCTest runner build cache in the background when missing, so run it before the first Apple snapshot or interaction of a session.',
+      'On iOS simulators, if the XCTest runner build cache is missing, this command also prepares it in the background. Thus, run it before the first Apple snapshot or interaction of a session.',
   },
   metadata: doctorCommandMetadata,
   run: (client, input) => client.command.doctor(input),
