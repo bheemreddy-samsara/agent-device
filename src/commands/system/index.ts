@@ -305,7 +305,7 @@ const appSwitcherCommandDescription =
 const keyboardCommandDescription =
   'Examine the Android keyboard visibility and type, or press or dismiss the device keyboard. To hide the keyboard, use keyboard dismiss. When the keyboard exposes a dismiss or hide key, keyboard dismiss taps it and confirms that the keyboard closed. If no dismiss key exists, it reports UNSUPPORTED_OPERATION. It never tries background taps.';
 const clipboardCommandDescription =
-  'Read the current device clipboard text, or replace its contents with the given text. Android runs both actions through the clipboard service shell command. A build that implements neither action (Android 16 does not) refuses with UNSUPPORTED_OPERATION. It does not report an empty clipboard.';
+  'Read the current device clipboard text, or replace its contents with the given text. Android runs both actions through the clipboard service shell command. If a build implements neither action (Android 16 does not), the command refuses with UNSUPPORTED_OPERATION instead of reporting an empty clipboard.';
 const actionButtonCommandDescription =
   'Press the iPhone or iPad Action Button once. The command dispatches the press without activation of the session app, and observes nothing again afterwards. Thus, the app keeps the state that the press found. This command does not observe what the system does with the press. Simulators run no Shortcuts or App Intents, so you can verify delivery to an assigned Shortcut only on a physical iPhone.';
 const tvRemoteCommandDescription =
