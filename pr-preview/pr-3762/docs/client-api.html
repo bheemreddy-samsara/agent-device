@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3762/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3762/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3762/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3762/static/js/index.b8257f2ae2.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3762/static/js/index.99d20ea8c7.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -327,6 +327,7 @@ without request or response bodies.</p>
 <li><code>client.recording.record()</code> and <code>client.recording.trace()</code></li>
 <li><code>client.settings.update()</code></li>
 </ul>
+<p>If the daemon returns a missing or non-object lease, or a lease without a non-empty string for <code>leaseId</code>, <code>tenantId</code>, <code>runId</code>, or <code>backend</code>, <code>client.leases.allocate()</code> and <code>client.leases.heartbeat()</code> reject with <code>COMMAND_FAILED</code> and <code>details.reason: &quot;INVALID_LEASE_RESPONSE&quot;</code>.</p>
 <p><code>client.devices.list()</code> returns <code>AgentDeviceDevice</code> entries. Their optional <code>model</code> and <code>osVersion</code> fields describe the hardware and OS when discovery reports them; see <a href="/agent-device/pr-preview/pr-3762/docs/commands#device-discovery" class="rp-link">Device discovery</a> for the sources.</p>
 <p><code>client.capture.snapshot()</code> carries an optional <code>viewport: { width, height }</code> beside <code>nodes</code>: the box those rects are measured in, in the same coordinate space and orientation. Scale and clip against it instead of inferring the screen from the largest rect. When no box was measured, the field is absent rather than zero; see <a href="/agent-device/pr-preview/pr-3762/docs/snapshots#coordinates-and-viewport" class="rp-link">Coordinates and viewport</a> for what each producer answers with.</p>
 <p>It also carries an optional <code>presentedSurface: &#x27;presented&#x27; | &#x27;absent&#x27; | &#x27;unknown&#x27;</code> on iOS captures: whether the capture saw a modal presentation over your app&#x27;s content. <code>&#x27;absent&#x27;</code> is a reading that was earned, so it is safe to act on; <code>&#x27;unknown&#x27;</code> says the capture could not tell and is not <code>&#x27;absent&#x27;</code>. The field is absent on other platforms. See <a href="/agent-device/pr-preview/pr-3762/docs/snapshots#presented-surface" class="rp-link">Presented surface</a>.</p>
