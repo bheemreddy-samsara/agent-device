@@ -597,7 +597,7 @@ Providers:
   Direct proxy: agent-device connect proxy --daemon-base-url <proxy-agent-device-url> stores the shared proxy profile and client identity.
   BrowserStack: agent-device connect browserstack verifies credentials, the exact device, and a bs:// app reference. Then it stores a local provider profile. It does not create an App Automate session.
   AWS Device Farm: agent-device connect aws-device-farm verifies credentials and the exact project, device, and optional app upload. Then it stores a local provider profile. It does not create a remote access session.
-  TestMu AI: agent-device connect testmu verifies credentials and the exact virtual device (emulator or simulator). With --provider-device-type real, it verifies the real device and OS version. Then it stores a local provider profile. --provider-app takes an lt:// app reference, an https URL, or a local path. For an lt:// id, connect finds the id among your uploads for that device pool. A URL or local source is uploaded and validated when open creates the session. It does not create a hub session.
+  TestMu AI: agent-device connect testmu verifies credentials and, by default, the exact virtual device (emulator or simulator). With --provider-device-type real, it verifies the real device and OS version instead. Then it stores a local provider profile. --provider-app takes an lt:// app reference, an https URL, or a local path. For an lt:// id, connect finds the id among your uploads for that device pool. A URL or local source is uploaded and validated when open creates the session. It does not create a hub session.
   Limrun: agent-device connect limrun verifies access to the selected iOS or Android instance service. Then it stores a local provider profile. It does not create an instance.
 
 After direct-provider connect:
@@ -609,7 +609,7 @@ After direct-provider connect:
 
 Device cloud interfaces:
   The CLI is the canonical bootstrap path. Run connect limrun/browserstack/aws-device-farm/testmu, then use normal open/snapshot/click/close/artifacts/disconnect commands.
-  JavaScript can skip the persisted connect state: pass leaseProvider and the provider fields to createAgentDeviceClient or to per-command options.
+  To skip the persisted connect state, JavaScript can pass leaseProvider and the provider fields to createAgentDeviceClient or to per-command options.
   MCP exposes operational tools such as open, snapshot, click, close, and artifacts. It does not expose connect/disconnect. Before you rely on MCP tools, run CLI connect in the same state dir.
 
 Direct proxy flow for a remote Mac/simulator:
