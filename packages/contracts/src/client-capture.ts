@@ -35,8 +35,8 @@ export type CaptureSnapshotOptions = AgentDeviceRequestOverrides &
      * React Native accessibilityActions). For example, a card whose reply and options
      * controls are not separate elements still lists them here. The names are for
      * PLANNING, not invocation. No API triggers them. Reach the affordance through the
-     * element detail screen, through the same control as a labeled element in a different
-     * location, or by coordinates from its rect. iOS simulator only. It costs one
+     * element detail screen, through the same control exposed as a labeled element in a
+     * different location, or by coordinates from its rect. iOS simulator only. It costs one
      * accessibility round trip for each merged element.
      */
     customActions?: SnapshotCommandOptionFields['customActions'];
