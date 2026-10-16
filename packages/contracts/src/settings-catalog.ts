@@ -167,7 +167,7 @@ export const SETTINGS = {
     ],
     app: 'input',
     appScope: { apple: 'app-scoped', mobile: 'app-scoped', 'macos-host': 'device-level' },
-    help: 'Changes a permission of the --app app or the session app. An iOS simulator resolves --app to an installed bundle id or display name. Android resolves it to an installed package. A Limrun iOS session resolves it only through the settings alias. On Android, deny|reset of a held permission kills a running app. The response reports priorGrantState and a warning, and open <app> --relaunch restores it. Android needs a resolvable foreground user, and without one it changes nothing. On the macOS host, grant|reset change the host TCC grants for the three desktop targets and take no --app.',
+    help: 'Changes a permission of the --app app or the session app. An iOS simulator resolves --app to an installed bundle id or display name. Android resolves it to an installed package. A Limrun iOS session resolves it only through the settings alias. On Android, deny|reset of a held permission kills a running app. The response reports priorGrantState and a warning, and open <app> --relaunch restores the app. Android needs a resolvable foreground user, and without one it changes nothing. On the macOS host, grant|reset change the host TCC grants for the three desktop targets and take no --app.',
   },
 } as const satisfies Record<string, SettingDefinition>;
 
