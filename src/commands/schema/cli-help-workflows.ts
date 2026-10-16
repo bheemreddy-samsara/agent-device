@@ -268,7 +268,7 @@ Rules:
     summary: 'Engineering self-validation with device evidence and cleanup',
     body: `agent-device help validate
 
-Use this when validating a code change, release candidate, performance fix, visual behavior, logging path, replay, or device-facing regression.
+Use this topic when you validate a code change, release candidate, performance fix, visual behavior, logging path, replay, or device-facing regression.
 
 Contract:
   Prove the changed behavior through public agent-device surfaces. Do not validate against stale dist output, a retained stale daemon, or a runner built before the change.
@@ -276,30 +276,30 @@ Contract:
 
 Required freshness gate before device verification:
   For a TypeScript runtime or CLI output change, start with pnpm build. For non-Android device verification, run pnpm clean:daemon next.
-  Before local Android verification, run pnpm build:android before pnpm clean:daemon so the bundled helpers match current source.
-  For an Apple runner change, run pnpm build:xcuitest and avoid inherited retained runners from older source. Do not build the Apple runner for TypeScript-only changes.
-  Use open --relaunch when startup state matters. Use a purpose-specific --session for multi-step validation.
-  CI may cache ~/.agent-device/apple-runner/derived with an exact key that includes the agent-device package and Xcode version. Runner reuse is authorized only by the cache metadata's content manifest, so a restore that fails validation rebuilds; prepare ios-runner already recovers one retryable non-connecting runner launch.
+  Before local Android verification, run pnpm build:android before pnpm clean:daemon, so that the bundled helpers match the current source.
+  For an Apple runner change, run pnpm build:xcuitest. Avoid inherited retained runners from older source. Do not build the Apple runner for TypeScript-only changes.
+  If startup state is important, use open --relaunch. For multi-step validation, use a purpose-specific --session.
+  CI may cache ~/.agent-device/apple-runner/derived with an exact key that includes the agent-device package and Xcode version. Runner reuse is authorized only by the cache metadata's content manifest. Thus a restore that fails validation rebuilds. prepare ios-runner already recovers one retryable runner launch that does not connect.
 
 Loop:
   1. Build or prepare the changed surface with the repo command that owns it.
   2. Open the target app/device state explicitly.
-  3. Use snapshot -i and press/fill/click/longpress --settle for UI-driving steps.
-  4. Use the settled diff as evidence when it shows the changed behavior; otherwise verify with wait/get/is/find, screenshot, logs, network, perf, or trace based on the claim.
+  3. For UI-driving steps, use snapshot -i and press/fill/click/longpress --settle.
+  4. Use the settled diff as evidence if it shows the changed behavior. If not, verify with wait/get/is/find, screenshot, logs, network, perf, or trace, as the claim requires.
   5. Record timings, token/output size, screenshots/videos, logs, or perf artifacts only when they answer the validation question.
-  6. Close sessions and release leases before finishing.
+  6. Close sessions and release leases before you finish.
 
 Evidence:
   CLI/runtime freshness: pnpm build, pnpm clean:daemon, then agent-device --version or the command under test.
   Apple runner freshness: pnpm build:xcuitest, then a live agent-device command on the target simulator/device.
-  Visual claim: screenshot, optionally screenshot --overlay-refs when target mapping matters.
+  Visual claim: screenshot. If target mapping is important, you can also use screenshot --overlay-refs.
   Runtime/logging claim: logs clear --restart, logs mark, reproduce, logs path.
-  Network claim: network dump --include headers when headers are relevant.
+  Network claim: network dump --include headers, if headers are relevant.
   Performance claim: perf frames, perf memory sample, native profile reports, or trace artifacts with bounded output.
   Replay/regression claim: replay or test through the public command path.
 
 Report:
-  Summarize what changed, exact validation commands, pass/fail observations, artifact paths, and residual risk.
-  If live validation is blocked, state the blocker, device/session, and exact next command needed.`,
+  Summarize what changed, the exact validation commands, pass/fail observations, artifact paths, and residual risk.
+  If live validation is blocked, state the blocker, the device/session, and the exact next command that is necessary.`,
   },
 } as const;

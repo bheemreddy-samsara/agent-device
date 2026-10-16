@@ -72,7 +72,7 @@ test('usageForCommand resolves validate help topic', async () => {
   const help = await usageForCommand('validate');
   if (help === null) throw new Error('Expected validate help text');
   assert.match(help, /^agent-device \S+ — validate/);
-  assert.match(help, /validating a code change/);
+  assert.match(help, /validate a code change/);
   assert.match(help, /Required freshness gate before device verification/);
   assert.match(help, /For a TypeScript runtime or CLI output change, start with pnpm build/);
   assert.match(help, /For non-Android device verification, run pnpm clean:daemon next/);
