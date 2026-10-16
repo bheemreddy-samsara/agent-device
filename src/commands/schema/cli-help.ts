@@ -296,7 +296,11 @@ Focus and visual truth:
     summary: 'React Native components, props/state/hooks, and render profiling',
     body: `agent-device help react-devtools
 
-Use this for React Native internals the accessibility tree cannot show: the component tree, a component's props, state, hooks, and owners, errors and warnings components logged while rendering, and render performance (slow renders, rerenders and their causes, commits over a 16 ms frame).
+Use this topic for React Native internals the accessibility tree cannot show:
+  - the component tree
+  - the props, state, hooks, and owners of a component
+  - errors and warnings that components logged during render
+  - render performance: slow renders, rerenders and their causes, and commits over a 16 ms frame
 
 Components:
   agent-device react-devtools tree [@ref|Name] [--depth 8] [--limit 60]
@@ -311,31 +315,38 @@ Render profiling:
   agent-device react-devtools profile commit [N]
 
 Connection:
-  Every command except profile report and profile commit, which read the saved profile, attaches to the app's JavaScript runtime through its Metro dev server: a development build on React Native 0.74 or newer, with no app, Metro, or Babel changes and no start or connect step. It is verified on Android emulators and iOS simulators, through agent-device proxy, and on remote bridge sessions, where it uses the Metro server next to the agent: the session's binding from metro prepare, or --metro-host/--metro-port. A device-facing Metro URL, such as the bridge's, refuses the debugger connection.
-  Add --app <bundle-id> when several apps share the dev server, --metro-device <name> when one app runs on several devices connected to it, and --metro-port/--metro-host (or --bundle-url) when the dev server is neither the session's nor localhost:8081.
+  profile report and profile commit read the saved profile. Every other command attaches to the JavaScript runtime of the app through its Metro dev server. It needs a development build on React Native 0.74 or newer, with no app, Metro, or Babel changes and no start or connect step. It is verified on Android emulators and iOS simulators, through agent-device proxy, and on remote bridge sessions. On remote bridge sessions, it uses the Metro server next to the agent: the session's binding from metro prepare, or --metro-host/--metro-port. A device-facing Metro URL, such as the bridge's URL, refuses the debugger connection.
+  Add --app <bundle-id> when several apps share the dev server. Add --metro-device <name> when one app runs on several devices connected to it. Add --metro-port/--metro-host (or --bundle-url) when the dev server is neither the session's server nor localhost:8081.
 
 Component inspection:
-  Start with find <part of a name> or tree; both print @c refs. Wrapper chains such as providers collapse onto one line, and three or more consecutive siblings with identical subtrees, such as list rows, collapse into one line with a count; run tree @ref to open a branch.
-  inspect takes an @c ref, or a name only one mounted component has. It prints the owners that rendered it, its props, state, hooks (custom hooks list the hooks they call), and what it logged while rendering. Deep values print as short previews.
-  errors lists the mounted components that logged console errors or warnings while rendering, with the messages. When the app's React DevTools backend does not attribute every log to a component, as on React Native 0.74 and 0.76, errors says its list can be incomplete; check logs as well.
-  Refs are DevTools element ids: they change when a component remounts or the app reloads, so find again after either.
-  With a React DevTools window connected to the app, tree, find, errors, and inspect by name fail with tree-unavailable; close it and reload the app.
+  Start with find <part of a name> or tree. Both print @c refs. Wrapper chains, such as providers, collapse onto one line. Three or more consecutive siblings with identical subtrees, such as list rows, collapse into one line with a count. To open a branch, run tree @ref.
+  inspect takes an @c ref, or a name that only one mounted component has. It prints the owners that rendered the component, its props, state, and hooks (custom hooks list the hooks that they call), and what it logged during render. Deep values print as short previews.
+  errors lists the mounted components that logged console errors or warnings during render, with the messages. If the React DevTools backend of the app does not attribute every log to a component (as on React Native 0.74 and 0.76), errors says that its list can be incomplete. In that case, also examine logs.
+  Refs are DevTools element ids. They change when a component remounts or the app reloads. After either event, run find again.
+  If a React DevTools window is connected to the app, tree, find, errors, and inspect by name fail with tree-unavailable. Close that window and reload the app.
 
 Profiling loop:
-  1. Run profile start immediately before the interaction; keep the window narrow.
-  2. Drive the interaction with normal agent-device commands. When correlating with logs, run logs clear --restart before the first logs mark.
-  3. Run profile stop. It saves the recording, then prints the commit count, render time, commits over the 16 ms frame budget, and ranked findings, each naming a component, its evidence, and a fix. If changed-prop inspection is interrupted after collection, profile report and profile commit can still read the saved recording.
-  4. Drill into one finding with profile report <Component> or profile commit <N>. Without an argument, report lists components by self time with why they rendered, and commit lists commits in order (the slowest when capped).
+  1. Run profile start immediately before the interaction. Keep the window narrow.
+  2. Do the interaction with normal agent-device commands. To correlate with logs, run logs clear --restart before the first logs mark.
+  3. Run profile stop. It saves the recording. Then it prints the commit count, render time, commits over the 16 ms frame budget, and ranked findings. Each finding names a component, its evidence, and a fix. If changed-prop inspection is interrupted after collection, profile report and profile commit can still read the saved recording.
+  4. To examine one finding in detail, use profile report <Component> or profile commit <N>. Without an argument, report lists components by self time, with the reason that each one rendered. Without an argument, commit lists commits in order (the slowest commits when the list is capped).
   5. After a fix, repeat the same start, interaction, and stop, and compare the findings.
 
 Findings:
-  slow-render: the component's own render is expensive. memo-defeated: a memoized component often re-renders because props change identity. parent-cascade: the component often re-renders with unchanged props, state, and context when its owner renders. context-cascade: most of the component's renders come from context changes. effect-chain: the component triggers a follow-up commit right after rendering, likely state set in an effect. render-storm: one component commits many times per second. eager-mount: hundreds of instances mount in one commit. slow-commit: a commit of three frames or more that other findings leave mostly unexplained.
-  Timings come from development builds and run slower than release builds; compare runs instead of reading absolute numbers.
+  slow-render: the component's own render is expensive.
+  memo-defeated: a memoized component often re-renders because props change identity.
+  parent-cascade: the component often re-renders with unchanged props, state, and context when its owner renders.
+  context-cascade: most of the component's renders come from context changes.
+  effect-chain: the component triggers a follow-up commit right after it renders, probably because an effect sets state.
+  render-storm: one component commits many times per second.
+  eager-mount: hundreds of instances mount in one commit.
+  slow-commit: a commit of three frames or more that other findings leave mostly unexplained.
+  Timings come from development builds, which run slower than release builds. Compare runs instead of reading absolute numbers.
 
 Rules:
   Every command is an agent-device subcommand: agent-device react-devtools ...
-  Do not repeatedly raise table limits such as --limit 50 or --limit 200; drill into one component with profile report instead.
-  For network evidence, use agent-device network dump --include headers; headers is not a positional argument.
+  Do not repeatedly raise table limits such as --limit 50 or --limit 200. Instead, examine one component with profile report.
+  For network evidence, use agent-device network dump --include headers. headers is not a positional argument.
 
 Example:
   agent-device logs clear --restart
@@ -348,11 +359,11 @@ Example:
   agent-device network dump --include headers
 
 Device busy and ownership:
-  DEVICE_IN_USE has two flavors. "already in use by session X" is this daemon: reuse it with --session X, or run close --session X first. "owned by session X in workspace Y" is another worktree's daemon holding the host-global device claim: it is never retriable — run the error's exact recovery command instead of retrying.
-  Inspect ownership without any daemon: agent-device device status (add --stale for proven-dead owners; settle and release those with agent-device device release --stale). devices marks rows that are claimed, so pick an unclaimed device instead of contending.
-  A live foreign owner is released by closing its session from its own workspace or stopping its daemon: agent-device daemon stop --state-dir <owner state dir> (the error names the state dir). The device itself can settle a claim: when it rebooted after that claim was taken, its app, runner, and accessibility session were destroyed, so open reconciles the owner's resources, takes the claim, and reports the release in warnings. Never recover by hunting PIDs with ps/kill. boot/install/shutdown take the same claims as open and refuse foreign-claimed devices identically; they do not ask the device about its boot.
+  DEVICE_IN_USE has two forms. "already in use by session X" means that this daemon holds the device. Reuse it with --session X, or run close --session X first. "owned by session X in workspace Y" means that the daemon of another worktree holds the host-global device claim. This error is never retriable. Run the exact recovery command from the error. Do not retry.
+  To examine ownership without a daemon, run agent-device device status. Add --stale for proven-dead owners. To settle and release those owners, run agent-device device release --stale. devices marks claimed rows. Pick an unclaimed device instead of contending for a claimed one.
+  To release a live foreign owner, close its session from its own workspace, or stop its daemon: agent-device daemon stop --state-dir <owner state dir>. The error names the state dir. The device itself can settle a claim. If the device rebooted after the claim was taken, the reboot destroyed its app, runner, and accessibility session. Then open reconciles the resources of the owner, takes the claim, and reports the release in warnings. Never find and kill PIDs with ps/kill to recover. boot/install/shutdown take the same claims as open, and refuse foreign-claimed devices in the same way. They do not ask the device about its boot.
 
-Use snapshot, screenshot, logs, network, perf frames, and perf memory for device/app runtime evidence. Use react-devtools when component internals or React rendering performance matter.`,
+Use snapshot, screenshot, logs, network, perf frames, and perf memory for device/app runtime evidence. Use react-devtools when component internals or React render performance are important.`,
   },
   cdp: {
     summary: 'React Native CDP targets, JS heap snapshots, and leak triage',
