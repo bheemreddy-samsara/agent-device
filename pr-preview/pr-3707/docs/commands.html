@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3707/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3707/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3707/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3707/static/js/index.b395bc0ac1.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3707/static/js/index.9c8fe045ae.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -394,6 +394,8 @@ restart; reconnect and take the hold again. See <a href="/agent-device/pr-previe
 <p>Text-entry errors and what to do:</p>
 <ul>
 <li><code>TEXT_INPUT_NOT_FOCUSED</code> (<code>type</code>): focus a visible text input and retry. If accessibility does not expose the input, focus it by coordinates.</li>
+<li><code>NO_TEXT_INPUT_AT_POINT</code> (iOS <code>fill</code> under a degraded XCTest channel — coordinate, ref, selector, and replay fills all aim at a point): the runner identified no text input under that point, so it refused before dispatching anything (<code>error.details.reason</code> is <code>no_text_input_at_point</code>, <code>dispatched: no</code>) and no field changed. A ref or selector fill aims at the centre of the rect it resolved to, so an outer container or a non-input node can land outside the real field: run <code>snapshot -i</code>, pick the input node itself, and aim inside its rect.</li>
+<li><code>TEXT_INPUT_PROBE_UNAVAILABLE</code> (iOS <code>fill</code> under a degraded XCTest channel): the runner&#x27;s input lookup for the point could not answer, so it refused before dispatching anything (<code>error.details.reason</code> is <code>text_input_probe_unavailable</code>, <code>dispatched: no</code>). Unlike the refusal above this does not mean the point has no input — retry the fill, or run <code>snapshot -i</code> once its capture reads back.</li>
 <li><code>TEXT_INPUT_SYNTHESIS_UNAVAILABLE</code> (iOS <code>type &quot;\n&quot;</code> with the software keyboard hidden): show the software keyboard, then retry.</li>
 <li><code>TEXT_INPUT_COMMIT_NOT_OBSERVED</code> (iOS <code>fill</code>): the runner could not confirm the text landed before its deadline, or the text equals the field&#x27;s placeholder. The field may hold none, part, or all of it. Run <code>snapshot -i</code>; if it doesn&#x27;t match, retry with the full text quoted and <code>fill --delay-ms 80</code>.</li>
 <li><code>TEXT_INPUT_CLEAR_NOT_OBSERVED</code> (iOS <code>fill</code>): the old text was not seen cleared, so nothing was typed. Inspect with <code>snapshot -i</code>, then retry <code>fill</code>.</li>
