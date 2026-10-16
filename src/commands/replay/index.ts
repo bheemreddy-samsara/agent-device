@@ -42,7 +42,7 @@ const REPLAY_SHELL_ENV_PREFIX = 'AD_VAR_';
 
 const replayCommandDescription =
   'Run a recorded automation script, including compatible Maestro YAML flows. A script without a terminal close leaves its session active for later automation.';
-const testCommandDescription = 'Run one or more replay scripts as a serial test suite';
+const testCommandDescription = 'Run one or more replay scripts as a serial test suite.';
 
 export const replayCommandMetadata = defineFieldCommandMetadata(
   REPLAY_COMMAND_NAME,

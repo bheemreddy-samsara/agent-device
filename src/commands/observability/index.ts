@@ -32,11 +32,11 @@ const AUDIO_ACTION_VALUES = ['probe'] as const;
 const AUDIO_PROBE_ACTION_VALUES = ['start', 'status', 'stop'] as const;
 
 const logsCommandDescription =
-  'Get session app log information, start or stop the log stream, run log diagnostics, and add markers';
+  'Get session app log information, start or stop the log stream, run log diagnostics, and add markers.';
 const eventsCommandDescription =
-  'Read the daemon-owned session event timeline as paged JSON-friendly entries';
+  'Read the daemon-owned session event timeline as paged JSON-friendly entries.';
 const networkCommandDescription =
-  'Dump recent HTTP(S) traffic that the command parses from the session app log';
+  'Dump recent HTTP(S) traffic that the command parses from the session app log.';
 const audioCommandDescription =
   'Measure browser audio, or host-rendered simulator or emulator audio, as compact dBFS buckets. Start a probe before you request its status or stop it.';
 

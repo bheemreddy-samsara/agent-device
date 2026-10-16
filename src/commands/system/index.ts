@@ -257,12 +257,12 @@ export const SYSTEM_COMMAND_OUTPUT_SCHEMAS = {
 >;
 
 const appStateCommandDescription =
-  'Report the foreground app and activity on Android and HarmonyOS. iOS and macOS answer for each session';
+  'Report the foreground app and activity on Android and HarmonyOS. iOS and macOS answer for each session.';
 const backCommandDescription =
   'Navigate back in the app or through system navigation. For the app navigation stack, use in-app. When the platform back behavior is required, use system.';
 const homeCommandDescription =
   'Send the selected device to its home screen. The app session stays open, but the foreground moves away from the app.';
-const orientationCommandDescription = 'Set the device orientation on iOS and Android';
+const orientationCommandDescription = 'Set the device orientation on iOS and Android.';
 const foldGuidance = {
   hingeEvent: 'simulator HID hinge event',
   permissions: 'Device Hub and host Accessibility permission are not required.',
