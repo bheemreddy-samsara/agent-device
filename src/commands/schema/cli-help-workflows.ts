@@ -66,77 +66,77 @@ export const debuggingHelpTopics = {
     summary: 'Targeted failure evidence without dumping stale context',
     body: `agent-device help debugging
 
-Use this when behavior fails, hangs, times out, throws alerts, or needs runtime evidence.
+Use this topic when behavior fails, hangs, times out, or throws alerts, or when you need runtime evidence.
 
 Logs:
-  Keep log windows small. Prefer clear, mark, reproduce, then path.
+  Keep log windows small. Prefer this sequence: clear, mark, reproduce, then path.
     agent-device logs clear --restart
     agent-device logs mark "before diagnostics retry"
     agent-device press 'id="load-diagnostics"'
     agent-device logs path
-  Do not cat a full stale log into agent context. Open or grep only the relevant window when needed.
-  logs clear --restart is the compact command to clear old logs and start a fresh capture; do not split it into logs stop, logs clear, logs start.
-  On iOS simulators, logs scope by bundle id and resolved app executable, so use this instead of raw simctl log stream predicates.
-  On iOS physical devices, logs clear --restart relaunches the session app through devicectl process launch --console so stdout/stderr can be captured.
-  For iOS simulator launch-time stdout/stderr, use --launch-console on the direct app launch:
+  Do not cat a full stale log into the agent context. When necessary, open or grep only the relevant window.
+  logs clear --restart is the compact command that clears old logs and starts a fresh capture. Do not split it into logs stop, logs clear, logs start.
+  On iOS simulators, logs scope by bundle id and resolved app executable. Use logs instead of raw simctl log stream predicates.
+  On iOS physical devices, logs clear --restart relaunches the session app through devicectl process launch --console, so that it can capture stdout/stderr.
+  To capture launch-time stdout/stderr on an iOS simulator, use --launch-console on the direct app launch:
     agent-device open MyApp --platform ios --relaunch --launch-console ./artifacts/app.console.log
   --launch-console is only for direct iOS simulator app launches, not URL opens.
 
 Events:
-  Use events for a compact session timeline without dumping full app logs.
+  Use events for a compact session timeline. events does not dump the full app logs.
     agent-device events
     agent-device events 50 100
-  Events preserve command names, status, durations, bounded device/app inventory previews, lifecycle outcomes, artifact basenames, and structural action details such as scroll distance/direction, safe refs, and coordinates. User-entered text, clipboard contents, push/event payloads, selector values, free-form flags/messages/paths, and raw unknown command arguments are omitted or replaced with content-free placeholders. --no-record suppresses action.recorded entries, but request start/finish entries still record command, status, and timing.
+  Events keep command names, status, durations, bounded device/app inventory previews, lifecycle outcomes, artifact basenames, and structural action details. Structural action details include scroll distance/direction, safe refs, and coordinates. Events omit the following values, or replace them with content-free placeholders: user-entered text, clipboard contents, push/event payloads, selector values, free-form flags/messages/paths, and raw unknown command arguments. --no-record suppresses action.recorded entries. Request start/finish entries still record the command, status, and timing.
 
 Network:
-  Use network dump for recent session HTTP traffic parsed from app logs.
+  Use network dump to get recent session HTTP traffic, parsed from app logs.
     agent-device network dump --include headers
     agent-device network dump 20 --include all
-  Use this instead of logs path when the question is request/response metadata.
-  network log is a supported alias, but network dump --include headers is the clearest plan form. Do not write network log headers.
+  If the question is about request/response metadata, use network dump instead of logs path.
+  network log is a supported alias. network dump --include headers is the clearest plan form. Do not write network log headers.
 
 Audio:
-  Use audio probe when the question is whether a browser page, macOS session, iOS simulator, or Android emulator produced audible output during a short observation window.
+  Use audio probe to find whether a browser page, macOS session, iOS simulator, or Android emulator produced audible output during a short observation window.
     agent-device audio probe start 10 1000 --platform web
     agent-device audio probe status --platform web
     agent-device audio probe stop --platform web
     agent-device audio probe start 10 1000 --platform macos
     agent-device audio probe start 10 1000 --platform ios
     agent-device audio probe start 10 1000 --platform android
-  audio probe start uses duration seconds first, then bucket milliseconds. Results are compact rmsDbfs and peakDbfs arrays so agents can correlate audible moments with screenshots, actions, network entries, or frame samples.
-  On web, audio probe samples HTML media elements and URL-backed media may be routed through the probe AudioContext while observed.
-  On macOS hosts, audio probe samples host system audio through ScreenCaptureKit for macOS sessions, iOS simulators, and Android emulators. It requires Screen Recording permission and is system-audio evidence, not app-instrumented audio. Physical iOS and Android devices are not supported.
+  audio probe start uses duration seconds first, then bucket milliseconds. The results are compact rmsDbfs and peakDbfs arrays. Use them to correlate audible moments with screenshots, actions, network entries, or frame samples.
+  On web, audio probe samples HTML media elements. While the probe observes, it may route URL-backed media through the probe AudioContext.
+  On macOS hosts, audio probe samples host system audio through ScreenCaptureKit for macOS sessions, iOS simulators, and Android emulators. It requires Screen Recording permission. It is system-audio evidence, not app-instrumented audio. Physical iOS and Android devices are not supported.
 
 Crash symbolication:
   Crash routing:
     Use logs when you need the lead-up timeline before a failure.
-    Use debug symbols when you have crash.ips/crash.log plus a matching dSYM/build directory and need the failing frame.
+    Use debug symbols when you have crash.ips/crash.log plus a matching dSYM/build directory, and you need the failing frame.
     Use Xcode/LLDB when you need live state, breakpoints, variables, memory, or stepping.
-  Use debug symbols when you already have an Apple crash artifact and local dSYMs and need the failing code path, not a full log dump:
+  If you already have an Apple crash artifact and local dSYMs, and you need the failing code path instead of a full log dump, use debug symbols:
     agent-device debug symbols --artifact crash.log --dsym MyApp.dSYM --out crash-symbolicated.log
     agent-device debug symbols --artifact crash.ips --search-path ./build --out crash-symbolicated.ips
   debug is intentionally narrow. Do not use it for logs, network/audio evidence, performance samples, recordings, traces, or React Native internals.
-  Apple support matches crash Binary Images / IPS usedImages UUIDs against dwarfdump --uuid output from .dSYM bundles, then writes a symbolicated artifact path and compact crash report: app/thread, exception or termination, top symbolicated frames, and first-frame finding. This is better than pasting crash logs because it keeps agent context small while preserving the artifact on disk for inspection.
-  Android Java/R8 mapping.txt and native ndk-stack/addr2line symbolication are not in this first debug symbols workflow; capture crash evidence with logs and use the Android toolchain externally for now.
+  On Apple, debug symbols matches the UUIDs in crash Binary Images / IPS usedImages against dwarfdump --uuid output from .dSYM bundles. Then it writes a symbolicated artifact path and a compact crash report: app/thread, exception or termination, top symbolicated frames, and first-frame finding. This is better than a pasted crash log: it keeps the agent context small, and the artifact stays on disk for examination.
+  Android Java/R8 mapping.txt and native ndk-stack/addr2line symbolication are not in this first debug symbols workflow. For now, capture crash evidence with logs and use the Android toolchain outside agent-device.
 
 Alerts:
   Native and platform dialogs:
     agent-device alert wait 3000
     agent-device alert accept
     agent-device alert dismiss
-  Android support is snapshot-derived for runtime permission prompts and native app dialogs. iOS support is runner-derived for XCTest alerts, app-owned modal popups with native blocking markers, and blocking system dialogs. Use cheap alert get for an immediate check; use alert wait <short-ms> only when a prompt may appear after async work.
-  If alert says no alert but a sheet is visibly on screen, treat it as app-owned UI:
+  Android support is snapshot-derived for runtime permission prompts and native app dialogs. iOS support is runner-derived for XCTest alerts, app-owned modal popups with native blocking markers, and blocking system dialogs. For an immediate check, use alert get, which is cheap. Use alert wait <short-ms> only if a prompt may appear after async work.
+  If alert reports no alert but a sheet is visible on screen, treat the sheet as app-owned UI:
     agent-device snapshot -i
     agent-device press 'label="Allow"'
-  Do not use settings permission to answer a dialog already on screen. Reserve settings permission for setup/resetting permission state before a flow.
+  Do not use settings permission to answer a dialog already on screen. Use settings permission only to set up or reset the permission state before a flow.
 
 Diagnostics and traces:
   Use --debug for CLI/daemon diagnostic ids and log paths.
-  Use AGENT_DEVICE_EXEC_TRACE=1 when you need host-tool spawn timing without full debug streaming; it flushes the full request diagnostics file on successful requests that spawn host tools.
-  Open output includes Session state; JSON also includes runnerLogPath and requestLogPath.
-  For open timing under --debug, run open --debug --json and inspect requestLogPath for the open_timing event.
-  Session requests/<request-id>.ndjson holds daemon request diagnostics; session runner.log holds Apple runner/xcodebuild output.
-  Against a remote daemon the Diagnostics Log path is always local: the failing request's record is fetched to <state-dir>/remote-diagnostics/, and if it cannot be fetched the line reads "unavailable" with the reason instead of a daemon-host path.
+  Use AGENT_DEVICE_EXEC_TRACE=1 when you need host-tool spawn timing without full debug streaming. On a successful request that spawns host tools, it flushes the full request diagnostics file.
+  The open output includes Session state. The JSON output also includes runnerLogPath and requestLogPath.
+  To get the open timing under --debug, run open --debug --json and find the open_timing event in requestLogPath.
+  The session file requests/<request-id>.ndjson holds daemon request diagnostics. The session file runner.log holds Apple runner/xcodebuild output.
+  With a remote daemon, the Diagnostics Log path is always local. The CLI fetches the record of the failing request to <state-dir>/remote-diagnostics/. If the fetch fails, the line reads "unavailable" with the reason, not a daemon-host path.
   daemon.log is global daemon lifecycle evidence, not the primary per-run log.
   Use trace for low-level session diagnostics around one repro:
     agent-device trace start ./traces/diagnostics.trace
@@ -149,7 +149,7 @@ Diagnostics and traces:
     agent-device perf cpu profile report --kind xctrace --out ./artifacts/app-profile.json
     agent-device perf trace start --kind xctrace --template "Animation Hitches" --out ./artifacts/hitches.trace
     agent-device perf trace stop --kind xctrace --out ./artifacts/hitches.trace
-  perf xctrace keeps the .trace artifact on disk; CPU report returns a bounded weighted top-function summary. Do not dump .trace contents into context.
+  perf xctrace keeps the .trace artifact on disk. The CPU report returns a bounded, weighted top-function summary. Do not dump .trace contents into the context.
   For Android native CPU/trace evidence, use perf artifacts instead of raw adb/simpleperf/perfetto output:
     agent-device perf cpu profile start --kind simpleperf --out /tmp/cpu.perf.data
     agent-device perf cpu profile stop --kind simpleperf
@@ -157,12 +157,12 @@ Diagnostics and traces:
     agent-device perf trace start --kind perfetto --out /tmp/app.perfetto-trace
     agent-device perf trace stop --kind perfetto
   Treat native perf output as the agent evidence: for example, state=stopped, outPath=/tmp/app.perfetto-trace, sizeBytes=5392410, method=adb-shell-perfetto. The 5.3 MB raw trace stays in the artifact.
-  CPU reports return at most ten top functions in structured data and print five in default CLI output.
-  Use explicit perf frames, perf memory, perf cpu, or perf trace forms. Aggregate perf was removed in 0.21: bare perf, perf sample, perf metrics, and metrics fail with exact replacements.
-  Startup duration belongs to the open command's startup result; read it there.
+  CPU reports return at most ten top functions in structured data, and print five in default CLI output.
+  Use the explicit perf frames, perf memory, perf cpu, or perf trace forms. Aggregate perf was removed in 0.21: bare perf, perf sample, perf metrics, and metrics fail with exact replacements.
+  The startup duration is part of the startup result of the open command. Read it there.
 
 Memory diagnostics:
-  Use perf memory when the symptom is leak/growth/OOM suspicion and you need agent-readable evidence.
+  If you suspect a leak, growth, or OOM, and you need agent-readable evidence, use perf memory.
     agent-device perf memory sample --json
     agent-device perf memory snapshot --kind android-hprof --out ./artifacts/app.hprof
     agent-device perf memory snapshot --kind memgraph --out ./artifacts/app.memgraph
@@ -170,24 +170,33 @@ Memory diagnostics:
     {"metrics":{"memory":{"available":true,"totalPssKb":562958,"totalRssKb":570304,"topConsumers":[{"name":"Dalvik Heap","pssKb":213456}]}}}
   Example default snapshot output:
     Memory artifact (android-hprof): /tmp/app.hprof (42MB)
-  Prefer perf memory sample over raw dumpsys/leaks output for first-pass agent diagnosis: it keeps arrays bounded and returns only relevant memory evidence.
-  Prefer perf memory snapshot over printing heap/memgraph data: snapshots return path, size, kind, method, and support metadata while the large artifact stays on disk for external inspection.
-  Unsupported platforms return artifact.available=false with reason/hint; do not pretend a heap or memgraph was captured.
+  Prefer perf memory sample over raw dumpsys/leaks output for first-pass agent diagnosis. It keeps arrays bounded and returns only relevant memory evidence.
+  Prefer perf memory snapshot over printed heap/memgraph data. A snapshot returns the path, size, kind, method, and support metadata. The large artifact stays on disk for external examination.
+  Unsupported platforms return artifact.available=false with reason/hint. Do not claim that a heap or memgraph was captured.
 
 Stabilizers:
   Android animation-sensitive flows:
     agent-device settings animations off
     agent-device snapshot
     agent-device settings animations on
-  Re-enable settings you changed before finishing.
+  Before you finish, re-enable the settings that you changed.
 
 Text-entry quirks:
-  iOS Allow Paste cannot be exercised under XCUITest; prefill with clipboard write "some text" instead and test the system prompt manually.
-  Android Gboard handwriting/stylus UI can capture text in an IME-owned input instead of the app field. If fill reports that input was captured by the keyboard/IME, use the diagnostic targetInput/actualInput details, inspect keyboard status/get if needed, and switch or disable handwriting outside the command plan before retrying. Do not keep retrying fill/type against the same field while the IME owns focus. If the exact target changes but app-owned formatting prevents raw equality, fill succeeds with verification: "unconfirmed" plus target-bound requested/before/after evidence; inspect that evidence instead of retrying the same mutation.
-  iOS accessibility-driven fill types the replacement once and never clears and retypes a read-back mismatch. Exact settled text confirms the entry. A value containing only characters in order from the post-clear value plus the request fails with TEXT_ENTRY_MISMATCH, including plain dropped characters and unchanged values; legitimate trimming or masks can also hit this limit ("5" into "$0.00" displaying "$0.05"). Other settled values return verification: "unconfirmed" with requested/before/after/target evidence, including grouping ("00 062 91 77" for "000629177"), currency ("$10.00" for "1000"), and OTP summaries. Missing, reordered, duplicated or stale text can also be unconfirmed, so assert the expected value with a value selector, get/is, or the resulting screen before continuing. For single-line fills ending in a submit key, any non-matching value observed on the same target succeeds unverified, including partial or cleared text; this exception skips dropped-character checks because the submit may change the field. Assert the resulting screen. Multiline fields compare newlines as content. Unreadable or removed fields remain unverified. The coordinate-driven fill route still requires an exact match. Only retry fill with --delay-ms 80 after TEXT_ENTRY_MISMATCH and inspection shows the field needs correction.
+  iOS Allow Paste cannot be exercised under XCUITest. Instead, prefill with clipboard write "some text" and test the system prompt manually.
+  Android Gboard handwriting/stylus UI can capture text in an IME-owned input instead of the app field. If fill reports that the keyboard/IME captured the input, do these steps before you retry:
+    1. Read the diagnostic targetInput/actualInput details.
+    2. If necessary, examine keyboard status or get.
+    3. Switch or disable handwriting outside the command plan.
+  Do not keep retrying fill/type against the same field while the IME owns focus. If the exact target changes but app-owned formatting prevents raw equality, fill succeeds with verification: "unconfirmed" plus target-bound requested/before/after evidence. Examine that evidence. Do not retry the same mutation.
+  iOS accessibility-driven fill types the replacement once. It never clears and retypes a read-back mismatch. Exact settled text confirms the entry.
+    A value that contains only characters, in order, from the post-clear value plus the request fails with TEXT_ENTRY_MISMATCH. This includes plain dropped characters and unchanged values. Legitimate trimming or masks can also hit this limit ("5" into "$0.00" displaying "$0.05").
+    Other settled values return verification: "unconfirmed" with requested/before/after/target evidence. Examples are grouping ("00 062 91 77" for "000629177"), currency ("$10.00" for "1000"), and OTP summaries. Missing, reordered, duplicated, or stale text can also be unconfirmed. Before you continue, assert the expected value with a value selector, get/is, or the resulting screen.
+    Exception: for single-line fills that end in a submit key, any non-matching value observed on the same target succeeds unverified, including partial or cleared text. This exception skips dropped-character checks because the submit may change the field. Assert the resulting screen.
+    Multiline fields compare newlines as content. Unreadable or removed fields remain unverified. The coordinate-driven fill route still requires an exact match.
+    Retry fill with --delay-ms 80 only after TEXT_ENTRY_MISMATCH, and only if examination shows that the field needs correction.
 
 React Native internals:
-  If the question is about React component props, state, hooks, the component tree, performance, render causes, slow components, or rerenders, use help react-devtools instead of inferring from screenshots or logs.`,
+  If the question is about React component props, state, hooks, the component tree, performance, render causes, slow components, or rerenders, use help react-devtools. Do not infer the answer from screenshots or logs.`,
   },
 } as const;
 
