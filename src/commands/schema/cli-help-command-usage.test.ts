@@ -35,7 +35,10 @@ test('usageForCommand documents screenshot web aliases and stabilization flags',
 test('usageForCommand documents screenshot diff normalization', async () => {
   const help = await usageForCommand('diff');
   if (help === null) throw new Error('Expected diff help text');
-  assert.match(help, /Live iOS simulator screenshot diffs normalize the status-bar chrome by default/);
+  assert.match(
+    help,
+    /Live iOS simulator screenshot diffs normalize the status-bar chrome by default/,
+  );
   assert.match(help, /screenshot --normalize-status-bar/);
 });
 
@@ -79,7 +82,10 @@ test('usageForCommand documents keyboard dismissal flow', async () => {
   const help = await usageForCommand('keyboard');
   assert.equal(help === null, false);
   assert.match(help ?? '', /To hide the keyboard, use keyboard dismiss/);
-  assert.match(help ?? '', /When the keyboard exposes a dismiss or hide key, keyboard dismiss taps it/);
+  assert.match(
+    help ?? '',
+    /When the keyboard exposes a dismiss or hide key, keyboard dismiss taps it/,
+  );
   assert.match(help ?? '', /UNSUPPORTED_OPERATION/);
 });
 
@@ -358,7 +364,7 @@ test('command usage shows record touch-overlay opt-out flag', async () => {
 test('command usage keeps detailed descriptions', async () => {
   const help = await usageForCommand('metro');
   if (help === null) throw new Error('Expected command help text');
-  assert.match(help, /Prepare a React Native development server or ask connected apps to reload/);
+  assert.match(help, /Prepare a React Native development server, or ask connected apps to reload/);
   assert.match(help, /metro reload/);
   assert.match(help, /--metro-host <host>/);
   assert.match(help, /AGENT_DEVICE_METRO_BEARER_TOKEN/);
@@ -368,7 +374,7 @@ test('metro command usage documents session-hint reload priority, expo bundle ki
   const help = await usageForCommand('metro');
   if (help === null) throw new Error('Expected metro help text');
   assert.match(help, /resolves against the dev server/);
-  assert.match(help, /never silently reload[s]? a different project/);
+  assert.match(help, /never silently reloads the server of a different project/);
   assert.match(help, /cleared when the session closes/);
   assert.match(help, /\.expo\/\.virtual-metro-entry\.bundle/);
   assert.match(help, /yarn\.lock\/pnpm-lock\.yaml\/bun\.lock\/bun\.lockb\/package-lock\.json/);
