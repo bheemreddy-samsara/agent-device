@@ -6,7 +6,7 @@ test('help appstate prints command help and skips daemon dispatch', async () => 
   const result = await runCliCapture(['help', 'appstate']);
   assert.equal(result.code, 0);
   assert.equal(result.calls.length, 0);
-  assert.match(result.stdout, /Show foreground app\/activity/);
+  assert.match(result.stdout, /Report the foreground app and activity/);
   assert.doesNotMatch(result.stdout, /Command flags:/);
   assert.doesNotMatch(result.stdout, /Global flags:/);
   assert.doesNotMatch(result.stdout, /Global Flags:/);

@@ -257,19 +257,19 @@ export const SYSTEM_COMMAND_OUTPUT_SCHEMAS = {
 >;
 
 const appStateCommandDescription =
-  'Show foreground app/activity (Android and HarmonyOS; iOS and macOS answer per session)';
+  'Report the foreground app and activity on Android and HarmonyOS. iOS and macOS answer for each session';
 const backCommandDescription =
-  'Navigate back in the app or through system navigation. Use in-app for the app navigation stack and system when the platform back behavior is required.';
+  'Navigate back in the app or through system navigation. For the app navigation stack, use in-app. When the platform back behavior is required, use system.';
 const homeCommandDescription =
-  'Send the selected device to its home screen. This leaves the app session open but moves the foreground away from the app.';
-const orientationCommandDescription = 'Set device orientation on iOS and Android';
+  'Send the selected device to its home screen. The app session stays open, but the foreground moves away from the app.';
+const orientationCommandDescription = 'Set the device orientation on iOS and Android';
 const foldGuidance = {
   hingeEvent: 'simulator HID hinge event',
   permissions: 'Device Hub and host Accessibility permission are not required.',
   unsupportedScope: 'UNSUPPORTED_OPERATION and reason unsupported-device-scope',
 } as const;
 
-const foldCommandDescription = `Fold or unfold a foldable iPhone simulator (iPhone Duo) or a foldable Android emulator into the closed, half-open, or open pose. iOS sends a ${foldGuidance.hingeEvent}, then reads the hinge angle back from CoreDevice to confirm it, and can follow timestamped angle keyframes; Android sets the emulator console posture, then confirms the device state the guest commits and reports the hinge angle the AVD profile defines for that posture, and dismisses the lock screen a fold to the cover display can raise. On iOS a pose change moves the app to a different panel with a different point size; on Android a fold to or from closed moves the app between the cover and inner displays, and any pose change can reshape the app window, whose size the next snapshot reports. Either way every ref and coordinate from before it is stale: re-snapshot after this command. Taps, long presses, and scrolling target the app window on its current panel in closed, half-open, and open poses. Simulator and emulator only; iOS requires the iOS simulator SDK; ${foldGuidance.permissions} A simulator scoped to a non-default simulator set is refused with ${foldGuidance.unsupportedScope}; run fold against a simulator in the default set.`;
+const foldCommandDescription = `Fold or unfold a foldable iPhone simulator (iPhone Duo) or a foldable Android emulator into the closed, half-open, or open pose. iOS sends a ${foldGuidance.hingeEvent}, and then reads the hinge angle back from CoreDevice to confirm it. iOS can also follow timestamped angle keyframes. Android sets the emulator console posture, and then confirms the device state that the guest commits. Android also reports the hinge angle that the AVD profile defines for that posture, and dismisses the lock screen that a fold to the cover display can show. On iOS, a pose change moves the app to a different panel with a different point size. On Android, a fold to or from closed moves the app between the cover and inner displays. On Android, any pose change can change the shape of the app window, and the next snapshot reports its size. On both platforms, every ref and coordinate from before the pose change is stale. After this command, take a new snapshot. Taps, long presses, and scrolls target the app window on its current panel in closed, half-open, and open poses. Simulator and emulator only. iOS requires the iOS simulator SDK. ${foldGuidance.permissions} A simulator scoped to a non-default simulator set is refused with ${foldGuidance.unsupportedScope}. Run fold against a simulator in the default set.`;
 
 export const foldableHelpTopic = {
   summary: 'Foldable devices: panels, pose, and which screen you are on',
@@ -301,15 +301,15 @@ Change the pose:
 } as const;
 
 const appSwitcherCommandDescription =
-  'Open the device app switcher to inspect or change foreground apps. This changes the visible system UI and may move focus away from the current app.';
+  'Open the device app switcher to examine or change foreground apps. This changes the visible system UI, and may move the focus away from the current app.';
 const keyboardCommandDescription =
-  'Inspect Android keyboard visibility/type or press/dismiss the device keyboard. To hide the keyboard, use keyboard dismiss. It taps the keyboard dismiss/hide key when one is exposed, verifies the keyboard closed, and reports UNSUPPORTED_OPERATION when no dismiss key exists \u2014 background taps are never attempted.';
+  'Examine the Android keyboard visibility and type, or press or dismiss the device keyboard. To hide the keyboard, use keyboard dismiss. When the keyboard exposes a dismiss or hide key, keyboard dismiss taps it and confirms that the keyboard closed. If no dismiss key exists, it reports UNSUPPORTED_OPERATION. It never tries background taps.';
 const clipboardCommandDescription =
-  'Read the current device clipboard text, or replace its contents with the given text. Android runs both through the clipboard service shell command, and a build that implements none (Android 16 does not) refuses with UNSUPPORTED_OPERATION rather than reporting an empty clipboard.';
+  'Read the current device clipboard text, or replace its contents with the given text. Android runs both actions through the clipboard service shell command. A build that implements neither action (Android 16 does not) refuses with UNSUPPORTED_OPERATION. It does not report an empty clipboard.';
 const actionButtonCommandDescription =
-  'Press the iPhone or iPad Action Button once. The press is dispatched without activating the session app and nothing is re-observed afterwards, so the app keeps the state the press found. What the system does with the press is not observed by this command: Simulators run no Shortcuts or App Intents, so delivery to an assigned Shortcut is verifiable only on a physical iPhone.';
+  'Press the iPhone or iPad Action Button once. The command dispatches the press without activation of the session app, and observes nothing again afterwards. Thus, the app keeps the state that the press found. This command does not observe what the system does with the press. Simulators run no Shortcuts or App Intents, so you can verify delivery to an assigned Shortcut only on a physical iPhone.';
 const tvRemoteCommandDescription =
-  'Press or long-press a TV remote or D-pad button on Android TV, tvOS, or Vega OS. Choose the button and optional hold duration through the input fields. The aliases ok, center, and enter all map to select.';
+  'Press or long-press a TV remote or D-pad button on Android TV, tvOS, or Vega OS. Choose the button and the optional hold duration through the input fields. The aliases ok, center, and enter all map to select.';
 
 const telephonyCommandDescription =
   'Simulate an incoming phone call or SMS on an Android emulator through its console over adb: call rings from the number, accept answers, cancel ends the call, and sms delivers a text message. The call screen or notification can cover the app, so re-snapshot afterwards.';
@@ -328,13 +328,13 @@ const orientationCommandMetadata = defineFieldCommandMetadata(
 );
 
 const foldFields = {
-  pose: enumField(FOLD_POSES, 'Instant preset; mutually exclusive with keyframes.'),
+  pose: enumField(FOLD_POSES, 'Instant preset. Mutually exclusive with keyframes.'),
   keyframes: jsonSchemaField<readonly FoldKeyframe[]>({
     type: 'array',
     minItems: 2,
     maxItems: MAX_FOLD_KEYFRAMES,
     description:
-      'Piecewise-linear hinge motion. Start at 0ms; strictly increasing timestamps, up to 60000ms. Repeated angles create holds. Mutually exclusive with pose.',
+      'Piecewise-linear hinge motion. Start at 0ms, and use strictly increasing timestamps, up to 60000ms. Repeated angles create holds. Mutually exclusive with pose.',
     items: {
       type: 'object',
       required: ['atMs', 'angle'],
@@ -395,7 +395,7 @@ const tvRemoteCommandMetadata = defineFieldCommandMetadata(
   {
     button: requiredField(enumField(TV_REMOTE_BUTTONS)),
     durationMs: integerField(
-      `Press duration in milliseconds. tvOS and Vega OS use the exact hold duration; Android TV maps any positive value to an ADB longpress (${tvRemoteDurationMode('android')}).`,
+      `Press duration in milliseconds. tvOS and Vega OS use the exact hold duration. Android TV maps any positive value to an ADB longpress (${tvRemoteDurationMode('android')}).`,
       {
         min: 0,
       },
@@ -560,7 +560,7 @@ const appStateCommandFacet = defineParameterlessCommandFacet({
   name: APPSTATE_COMMAND_NAME,
   description: appStateCommandDescription,
   text: {
-    summary: 'Show the foreground app and activity',
+    summary: 'Report the foreground app and activity',
   },
   run: (client, input) => client.command.appState(input),
   cliOutputFormatter: systemCliOutputFormatters.appstate,
@@ -606,7 +606,7 @@ const foldCommandFacet = defineCommandFacet({
   name: FOLD_COMMAND_NAME,
   text: {
     summary: 'Fold or unfold a foldable iPhone simulator or Android emulator',
-    cliDetail: `iPhone Duo simulators and foldable Android emulators. iOS sends a ${foldGuidance.hingeEvent} and confirms the hinge angle through CoreDevice; Android sets the emulator console posture and confirms the device state. Refs and coordinates do not survive a pose change.`,
+    cliDetail: `iPhone Duo simulators and foldable Android emulators. iOS sends a ${foldGuidance.hingeEvent} and confirms the hinge angle through CoreDevice. Android sets the emulator console posture and confirms the device state. Refs and coordinates are not valid after a pose change.`,
   },
   metadata: foldCommandMetadata,
   run: (client, input) => client.command.fold(input),
@@ -629,7 +629,7 @@ const appSwitcherCommandFacet = defineParameterlessCommandFacet({
 const keyboardCommandFacet = defineCommandFacet({
   name: KEYBOARD_COMMAND_NAME,
   text: {
-    summary: 'Inspect, press, or dismiss the device keyboard',
+    summary: 'Examine, press, or dismiss the device keyboard',
   },
   metadata: keyboardCommandMetadata,
   run: (client, input) => client.command.keyboard(input),
@@ -667,8 +667,8 @@ const actionButtonCommandFacet = defineParameterlessCommandFacet({
 const tvRemoteCommandFacet = defineCommandFacet({
   name: TV_REMOTE_COMMAND_NAME,
   text: {
-    summary: 'Press a TV remote/D-pad button',
-    cliDetail: 'longpress holds for 500ms by default; --duration-ms overrides the preset.',
+    summary: 'Press a TV remote or D-pad button',
+    cliDetail: 'longpress holds for 500ms by default. --duration-ms overrides the preset.',
   },
   metadata: tvRemoteCommandMetadata,
   run: (client, input) => client.command.tvRemote(input),

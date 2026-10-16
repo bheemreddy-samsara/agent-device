@@ -79,7 +79,7 @@ test('usageForCommand documents keyboard dismissal flow', async () => {
   const help = await usageForCommand('keyboard');
   assert.equal(help === null, false);
   assert.match(help ?? '', /To hide the keyboard, use keyboard dismiss/);
-  assert.match(help ?? '', /taps the keyboard dismiss\/hide key when one is exposed/);
+  assert.match(help ?? '', /When the keyboard exposes a dismiss or hide key, keyboard dismiss taps it/);
   assert.match(help ?? '', /UNSUPPORTED_OPERATION/);
 });
 
@@ -387,7 +387,7 @@ test('open command usage documents metro session-hint setter flags', async () =>
 test('command usage shows no command flags when unsupported', async () => {
   const help = await usageForCommand('appstate');
   if (help === null) throw new Error('Expected command help text');
-  assert.match(help, /Show foreground app\/activity/);
+  assert.match(help, /Report the foreground app and activity/);
   assert.doesNotMatch(help, /Command flags:/);
   assert.doesNotMatch(help, /Global flags:/);
   assert.doesNotMatch(help, /Global Flags:/);
@@ -406,7 +406,7 @@ test('keyboard command usage is documented', async () => {
   assert.match(help, /keyboard \[status\|get\|dismiss\|enter\|return\]/);
   assert.match(
     help,
-    /Inspect Android keyboard visibility\/type or press\/dismiss the device keyboard/,
+    /Examine the Android keyboard visibility and type, or press or dismiss the device keyboard/,
   );
 });
 
@@ -417,7 +417,7 @@ test('orientation command usage is documented', async () => {
     help,
     /orientation <portrait\|portrait-upside-down\|landscape-left\|landscape-right>/,
   );
-  assert.match(help, /Set device orientation on iOS and Android/);
+  assert.match(help, /Set the device orientation on iOS and Android/);
 });
 
 test('removed rotate alias fails with a migration error', async () => {
