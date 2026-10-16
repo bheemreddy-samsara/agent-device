@@ -246,8 +246,8 @@ test('command family facets keep daemon writers as an explicit projection subset
 // fails instead of shipping a cross-surface mismatch.
 test('every emitted input schema carries the aligned device-selector descriptions', () => {
   const expected: Record<string, string> = {
-    device: 'Device name selector (a UDID belongs in udid, a serial in serial).',
-    udid: 'Apple device or simulator UDID; the selector that pins one device when several share a name.',
+    device: 'Device name selector (put a UDID in udid and a serial in serial).',
+    udid: 'Apple device or simulator UDID. It is the selector that pins one device when several devices share a name.',
     serial: 'Android, HarmonyOS, or Vega VVD serial selector.',
   };
   let pinned = 0;

@@ -377,15 +377,15 @@ export function pointField(description: string): CommandField<PointInput> {
 export function selectorSnapshotFields() {
   return {
     depth: integerField('Snapshot traversal depth.', { min: 0 }),
-    scope: stringField('Snapshot scope selector used before resolution.'),
+    scope: stringField('Snapshot scope selector to apply before resolution.'),
     raw: booleanField('Use raw snapshot data during selector resolution.'),
   };
 }
 
 export function repeatedFields() {
   return {
-    count: integerField('Number of press/click repetitions.', { min: 1 }),
-    intervalMs: integerField('Delay between repeated press/click actions.', { min: 0 }),
+    count: integerField('Number of press or click repetitions.', { min: 1 }),
+    intervalMs: integerField('Delay between repeated press or click actions.', { min: 0 }),
     holdMs: integerField('Hold duration for each action.', { min: 0 }),
     jitterPx: integerField('Randomization radius in pixels.', { min: 0 }),
     doubleTap: booleanField('Request a double-tap action.'),
@@ -568,7 +568,7 @@ function elementTargetSchemaVariants(): JsonSchema[] {
       type: 'object',
       properties: {
         kind: { type: 'string', const: 'ref' },
-        ref: { type: 'string', description: 'Snapshot element ref such as @e12.' },
+        ref: { type: 'string', description: 'Snapshot element ref, for example @e12.' },
         label: { type: 'string', description: 'Optional human label for the ref.' },
       },
       required: ['kind', 'ref'],

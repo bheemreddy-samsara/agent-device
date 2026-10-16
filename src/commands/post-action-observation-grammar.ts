@@ -26,18 +26,18 @@ import { booleanField, integerField } from './command-input.ts';
 
 const verifyField = () =>
   booleanField(
-    'Capture cheap post-action evidence (AX digest, node counts, changedFromBefore) instead of a follow-up snapshot.',
+    'Capture low-cost post-action evidence (AX digest, node counts, changedFromBefore) instead of a follow-up snapshot.',
   );
 
 const settleFields = () => ({
   settle: booleanField(
-    'After the action, wait for the UI to go quiet and return the settled diff vs the pre-action tree in the same response. Best-effort; never fails the action.',
+    'After the action, wait until the UI is quiet. Then return the settled diff against the pre-action tree in the same response. This is best-effort and never fails the action.',
   ),
   settleQuietMs: integerField(
-    'Settle: quiet window in milliseconds (default 500; 300 when the settled tree comes from the iOS simulator snapshot bridge). On iOS, a broad screen replacement such as a modal dismissal is confirmed for at least 1500ms whatever window is asked for, within the timeoutMs settle deadline; a replacement from a screen the pre-action capture read as presenting nothing, such as a tab switch, gets no 1500ms confirmation and keeps the asked window.',
+    'settle: quiet window in milliseconds (default: 500, or 300 when the settled tree comes from the iOS simulator snapshot bridge). On iOS, a broad screen replacement, such as a modal dismissal, gets a confirmation of at least 1500ms for any requested window, within the timeoutMs settle deadline. A replacement from a screen that the pre-action capture read as presenting nothing, such as a tab switch, gets no 1500ms confirmation and keeps the requested window.',
     { min: 0 },
   ),
-  timeoutMs: integerField('Settle: wait deadline in milliseconds (default 10000).', { min: 1 }),
+  timeoutMs: integerField('settle: wait deadline in milliseconds (default: 10000).', { min: 1 }),
 });
 
 type VerifyFieldMap = { verify: ReturnType<typeof verifyField> };
