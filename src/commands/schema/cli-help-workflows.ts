@@ -77,7 +77,7 @@ Logs:
   Do not cat a full stale log into the agent context. When necessary, open or grep only the relevant window.
   logs clear --restart is the compact command that clears old logs and starts a fresh capture. Do not split it into logs stop, logs clear, logs start.
   On iOS simulators, logs scope by bundle id and resolved app executable. Use logs instead of raw simctl log stream predicates.
-  On iOS physical devices, logs clear --restart relaunches the session app through devicectl process launch --console, so that it can capture stdout/stderr.
+  On iOS physical devices, logs clear --restart relaunches the session app through devicectl process launch --console, so that stdout/stderr can be captured.
   To capture launch-time stdout/stderr on an iOS simulator, use --launch-console on the direct app launch:
     agent-device open MyApp --platform ios --relaunch --launch-console ./artifacts/app.console.log
   --launch-console is only for direct iOS simulator app launches, not URL opens.
@@ -103,7 +103,7 @@ Audio:
     agent-device audio probe start 10 1000 --platform macos
     agent-device audio probe start 10 1000 --platform ios
     agent-device audio probe start 10 1000 --platform android
-  audio probe start uses duration seconds first, then bucket milliseconds. The results are compact rmsDbfs and peakDbfs arrays. Use them to correlate audible moments with screenshots, actions, network entries, or frame samples.
+  audio probe start uses duration seconds first, then bucket milliseconds. The results are compact rmsDbfs and peakDbfs arrays. You can use them to correlate audible moments with screenshots, actions, network entries, or frame samples.
   On web, audio probe samples HTML media elements. While the probe observes, it may route URL-backed media through the probe AudioContext.
   On macOS hosts, audio probe samples host system audio through ScreenCaptureKit for macOS sessions, iOS simulators, and Android emulators. It requires Screen Recording permission. It is system-audio evidence, not app-instrumented audio. Physical iOS and Android devices are not supported.
 
@@ -136,7 +136,7 @@ Diagnostics and traces:
   The open output includes Session state. The JSON output also includes runnerLogPath and requestLogPath.
   To get the open timing under --debug, run open --debug --json and find the open_timing event in requestLogPath.
   The session file requests/<request-id>.ndjson holds daemon request diagnostics. The session file runner.log holds Apple runner/xcodebuild output.
-  With a remote daemon, the Diagnostics Log path is always local. The CLI fetches the record of the failing request to <state-dir>/remote-diagnostics/. If the fetch fails, the line reads "unavailable" with the reason, not a daemon-host path.
+  With a remote daemon, the Diagnostics Log path is always local. The record of the failing request is fetched to <state-dir>/remote-diagnostics/. If the fetch fails, the line reads "unavailable" with the reason, not a daemon-host path.
   daemon.log is global daemon lifecycle evidence, not the primary per-run log.
   Use trace for low-level session diagnostics around one repro:
     agent-device trace start ./traces/diagnostics.trace
