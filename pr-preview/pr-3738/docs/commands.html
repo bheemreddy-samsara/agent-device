@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3738/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3738/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3738/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3738/static/js/index.6d2f7e253c.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3738/static/js/index.dcba0b0dfd.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -182,11 +182,17 @@ that device:</p>
 <ul>
 <li>While <code>exec</code> runs, another workspace&#x27;s <code>open</code>, <code>boot</code>, or <code>install</code> on that device fails with
 <code>DEVICE_IN_USE</code> and names the holder (<code>session exec:&lt;command&gt;</code>); it works again once <code>exec</code> exits.
-<code>exec</code> itself refuses to start with the same error while another session or <code>exec</code> holds the device.</li>
+<code>exec</code> itself refuses to start with the same error while another session or <code>exec</code> holds the device.
+One exception, shared with every other claim: if the device reboots while <code>exec</code> holds the claim,
+the reboot already ended the build, so <code>open</code> settles the holder&#x27;s durable resources, takes the
+claim, and reports the release in <code>warnings</code>.</li>
 <li>The command&#x27;s exit code is <code>exec</code>&#x27;s exit code. Ctrl+C (or <code>SIGTERM</code>) is forwarded to the command
-before <code>exec</code> exits, and the claim is released on every exit path. A killed <code>exec</code> leaves a claim
-that <code>device status</code> reports as stale and the next <code>open</code> or <code>exec</code> reconciles.</li>
-<li>Claims exist only for local devices: <code>exec</code> refuses targets on a cloud provider lease.</li>
+and its whole process group before <code>exec</code> exits, and <code>exec</code> attempts to release the claim on every
+exit path; a release that fails or can&#x27;t attribute the record prints to stderr and leaves a claim
+that <code>device release --stale</code> reports. A killed <code>exec</code> leaves a claim that the next <code>open</code> or <code>exec</code>
+reconciles once its owner process is proven dead.</li>
+<li>Claims exist only for local devices: <code>exec</code> refuses targets on a cloud provider lease. <code>exec</code> runs
+on macOS and Linux hosts only; it refuses to start on Windows.</li>
 <li><code>exec</code> doesn&#x27;t boot the device or launch your app; it only selects the device, holds the claim, and
 runs the command. Boot the device first, or let the build boot it while no session holds the claim.</li>
 </ul>

@@ -1732,10 +1732,16 @@ agent-device exec --platform android --serial emulator-5554 -- adb install app-d
 - While `exec` runs, another workspace's `open`, `boot`, or `install` on that device fails with
   `DEVICE_IN_USE` and names the holder (`session exec:<command>`); it works again once `exec` exits.
   `exec` itself refuses to start with the same error while another session or `exec` holds the device.
+  One exception, shared with every other claim: if the device reboots while `exec` holds the claim,
+  the reboot already ended the build, so `open` settles the holder's durable resources, takes the
+  claim, and reports the release in `warnings`.
 - The command's exit code is `exec`'s exit code. Ctrl+C (or `SIGTERM`) is forwarded to the command
-  before `exec` exits, and the claim is released on every exit path. A killed `exec` leaves a claim
-  that `device status` reports as stale and the next `open` or `exec` reconciles.
-- Claims exist only for local devices: `exec` refuses targets on a cloud provider lease.
+  and its whole process group before `exec` exits, and `exec` attempts to release the claim on every
+  exit path; a release that fails or can't attribute the record prints to stderr and leaves a claim
+  that `device release --stale` reports. A killed `exec` leaves a claim that the next `open` or `exec`
+  reconciles once its owner process is proven dead.
+- Claims exist only for local devices: `exec` refuses targets on a cloud provider lease. `exec` runs
+  on macOS and Linux hosts only; it refuses to start on Windows.
 - `exec` doesn't boot the device or launch your app; it only selects the device, holds the claim, and
   runs the command. Boot the device first, or let the build boot it while no session holds the claim.
 
@@ -5120,13 +5126,20 @@ while the build runs. Wrap the command in `exec` to hold the claim for its whole
 agent-device exec --platform ios --udid <udid> -- expo run:ios --device <udid>
 ```
 
+Pass selectors before `--` that name the same device the wrapped command targets, or the claim
+guards a different device and the build stays unprotected. `exec` holds claims for local devices
+only; provider-leased cloud targets are rejected.
+
 The claim is held by the `exec` process itself, not by a daemon, so it lasts exactly as long as your
 command: while `exec` runs, another workspace's `open`, `boot`, or `install` on that device fails with
 `DEVICE_IN_USE` naming the holder, and succeeds again once `exec` exits. `exec` refuses to start the
 same way while another session holds the device. `exec` exits with your command's exit code,
-forwards Ctrl+C to it, and releases the claim on every exit path. If `exec` is killed outright, its
-claim shows up in `agent-device device status --stale` as a claim whose owner exited, and the next
-`open` or `exec` on that device clears it. See
+forwards Ctrl+C to it, and attempts to release the claim on every exit path; a release that fails
+leaves a claim `device release --stale` reports. If `exec` is killed outright, its claim appears in
+`agent-device device status --stale`. The next `open` or `exec` reconciles it automatically only
+when the recorded owner process is proven dead; a claim whose owner is uncertain — its PID now
+belongs to another process, or its state directory was deleted — stays blocked until you inspect it,
+as with any other claim. See
 [Commands](/agent-device/pr-preview/pr-3738/docs/commands.md#run-a-build-or-external-command-under-a-device-claim) for the flags.
 
 ## Notes
