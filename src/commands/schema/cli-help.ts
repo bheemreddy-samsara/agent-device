@@ -758,10 +758,10 @@ Rules:
     summary: 'Minimal browser workflow with the managed web backend',
     body: `agent-device help web
 
-Use --platform web only for the minimal browser command loop exposed through agent-device.
+Use --platform web only for the minimal browser command loop that agent-device exposes.
 
 Dependency:
-  Browser mechanics come from a managed, pinned agent-browser backend. agent-device owns command/session/replay integration, selectors/refs at the command surface, and artifact routing; agent-browser owns browser launch, page control, screenshots, and browser-specific behavior.
+  Browser mechanics come from a managed, pinned agent-browser backend. agent-device owns command/session/replay integration, selectors/refs at the command surface, and artifact routing. agent-browser owns browser launch, page control, screenshots, and browser-specific behavior.
   Use --platform web when a browser step belongs inside an agent-device session, replay, batch, MCP, or typed-client flow. Use agent-browser directly for standalone web automation.
   Before first use, set up and verify the managed backend:
     agent-device web setup
@@ -769,7 +769,7 @@ Dependency:
   Web automation requires Node 24+.
 
 Planning rule:
-  For web command plans, output only agent-device command lines. Do not add prose, numbering, Markdown fences, shell pipes, or agent-browser commands unless the task is explicitly standalone browser automation outside agent-device.
+  For web command plans, write only agent-device command lines. Do not add prose, numbering, Markdown fences, shell pipes, or agent-browser commands, unless the task is explicitly standalone browser automation outside agent-device.
 
 First-slice loop:
   Audio probe start uses duration seconds first, then bucket milliseconds.
@@ -795,7 +795,7 @@ First-slice loop:
 
 Supported in agent-device web sessions:
   open <url>, snapshot -i, get text/attrs, is visible/hidden/exists/absent/focused/text, find text/selector, click/press @ref or selector, hover @ref or selector, fill/type @ref or selector, wait text/selector/absent, network dump, audio probe, screenshot, record start/stop with WebM output, close, and replay scripts made from those commands.
-  hover moves the pointer without pressing so hover-gated UI (row toolbars, menus) appears; use --settle to read what it revealed, then act on the fresh refs. hover @ref hovers the browser element handle directly; pair --settle with a selector or coordinates (web refs carry no geometry, as with click @ref --settle). Web only: touch platforms have no hover state, so hover-gated flows there need a different entry point.
+  hover moves the pointer without a press, so that hover-gated UI (row toolbars, menus) appears. Use --settle to read what hover showed, then act on the fresh refs. hover @ref hovers the browser element handle directly. Pair --settle with a selector or coordinates (web refs carry no geometry, as with click @ref --settle). Web only: touch platforms have no hover state. Thus hover-gated flows on those platforms need a different entry point.
 
 Out of scope for agent-device web support:
   Browser runtime debugging, tabs/windows/devtools control, network routing/interception/HAR, storage/cookie management, arbitrary page scripting, downloads/uploads, multi-page orchestration, and agent-browser-specific diagnostics. Use agent-browser directly for those browser-specific workflows.
@@ -803,7 +803,13 @@ Out of scope for agent-device web support:
 Rules:
   Do not claim web e2e CI exists unless a project workflow explicitly provides it.
   Do not use native mobile or desktop setup commands such as boot, apps, install, settings, alert, keyboard, perf, logs, or react-devtools for --platform web.
-  Keep browser plans session-scoped: open a URL, inspect refs, act on refs/selectors, verify with wait/get/is/snapshot, capture screenshot only when visual evidence is needed, then close.`,
+  Keep browser plans session-scoped:
+    1. Open a URL.
+    2. Examine refs.
+    3. Act on refs/selectors.
+    4. Verify with wait/get/is/snapshot.
+    5. Capture a screenshot only when visual evidence is necessary.
+    6. Close the session.`,
   },
   ...qaReportHelpTopics,
 } as const satisfies Record<string, { summary: string; body: string }>;
