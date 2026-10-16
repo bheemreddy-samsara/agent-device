@@ -241,7 +241,7 @@ macOS:
     summary: 'Android TV, tvOS, and Vega VVD focus-first remote navigation',
     body: `agent-device help tv
 
-Use this when the target is Android TV, Apple TV/tvOS, or an Amazon Vega OS TV app running in the Vega Virtual Device (VVD). TV surfaces are focus-first: move focus with remote/D-pad buttons, then activate the focused control.
+Use this topic when the target is Android TV, Apple TV/tvOS, or an Amazon Vega OS TV app that runs in the Vega Virtual Device (VVD). TV surfaces are focus-first. Move focus with remote/D-pad buttons, then activate the focused control.
 
 Core loop:
   agent-device open Settings --platform android --target tv --session tv
@@ -252,7 +252,7 @@ Core loop:
   agent-device screenshot ./tv-focus.png --overlay-refs --platform android --target tv --session tv
 
 Vega OS:
-  Vega OS is driven through the SDK-matched Vega CLI and VDA, not ADB.
+  Vega OS automation uses the SDK-matched Vega CLI and VDA, not ADB.
   Initial support is VVD-only. Physical Fire TV devices remain unsupported until their discovery, lifecycle, and remote controls have durable hardware evidence.
   Use --platform vega --target tv for the running Vega Virtual Device.
   vega virtual-device start
@@ -262,34 +262,34 @@ Vega OS:
   agent-device tv-remote press select --platform vega --target tv --session vega-tv
   agent-device close <component-id> --session vega-tv
   vega virtual-device stop
-  Use a component ID from the app package or Vega SDK tooling; agent-device app inventory is not yet supported.
-  Use --serial VirtualDevice for explicit VVD selection.
-  The VVD is never booted implicitly; start it with vega virtual-device start.
+  Use a component ID from the app package or Vega SDK tooling. App inventory in agent-device is not yet supported.
+  To select the VVD explicitly, use --serial VirtualDevice.
+  The VVD never boots implicitly. Start it with vega virtual-device start.
   Snapshot, screenshot, selectors, install, touch/text/gesture, logs, and performance commands remain unsupported until their Vega backends are implemented.
 
 Buttons:
   tv-remote press up|down|left|right|select|menu|home|back
   tv-remote longpress select
   tv-remote press select --duration-ms 500
-  ok, center, and enter are input aliases for select; command output still reports button: "select".
-  longpress is CLI sugar for --duration-ms 500. --duration-ms overrides that preset.
-  --duration-ms holds a tvOS or Vega OS remote button for that exact duration. On Android TV, any positive duration maps to the ADB longpress form because Android input keyevent has no exact hold duration.
+  ok, center, and enter are input aliases for select. Command output still reports button: "select".
+  longpress is CLI shorthand for --duration-ms 500. --duration-ms overrides that preset.
+  --duration-ms holds a tvOS or Vega OS remote button for that exact duration. On Android TV, any positive duration maps to the ADB longpress form, because Android input keyevent has no exact hold duration.
   Vega OS uses the exact hold duration through inputd-cli in the VVD.
 
 Android TV:
-  Android TV uses ADB keyevents behind agent-device tv-remote. Keep command plans on agent-device; do not switch to raw adb keyevent.
-  Use --target tv when a host has both phone/tablet and TV emulators/devices.
+  On Android TV, agent-device tv-remote uses ADB keyevents. Keep command plans on agent-device. Do not switch to raw adb keyevent.
+  If a host has both phone/tablet and TV emulators/devices, use --target tv.
 
 tvOS:
-  tvOS is driven by the Siri Remote focus engine, not coordinate taps.
-  back maps to the Menu remote button; home maps to the Home remote button.
+  tvOS navigation uses the Siri Remote focus engine, not coordinate taps.
+  back maps to the Menu remote button. home maps to the Home remote button.
   Use --platform ios --target tv for Apple TV simulators and devices.
 
 Focus and visual truth:
   On Android TV and tvOS, if snapshot -i exposes a focused node, verify it with is focused <selector>.
   Use wait focused=true only when repeated snapshots preserve focus metadata for the app.
-  If the app exposes only a surface view, or focus metadata is transient, use screenshot --overlay-refs, screenshot, or diff snapshot as visual truth and keep moving focus with tv-remote. On Vega OS, use the VVD display as visual truth until capture support lands.
-  Do not assume press/click @ref works on Android TV, tvOS, or Vega OS until the desired element is focused.`,
+  If the app exposes only a surface view, or focus metadata is transient, use screenshot --overlay-refs, screenshot, or diff snapshot as visual truth. Continue to move focus with tv-remote. On Vega OS, use the VVD display as visual truth until capture support is available.
+  On Android TV, tvOS, or Vega OS, do not assume that press/click @ref works until the desired element has focus.`,
   },
   ...debuggingHelpTopics,
   'react-devtools': {
