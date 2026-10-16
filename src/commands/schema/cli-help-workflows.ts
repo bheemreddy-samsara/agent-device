@@ -16,20 +16,20 @@ export const manualQaHelpTopics = {
     summary: 'Follow manual test scripts with exact interactions and verification',
     body: `agent-device help manual-qa
 
-Use this when asked to follow a manual QA script, test case, checklist, acceptance flow, or user-provided instructions.
+Use this topic when the task asks you to follow a manual QA script, test case, checklist, acceptance flow, or user-provided instructions.
 
 Contract:
   Execute the script. Do not explore unrelated screens, read app source, invent missing requirements, or broaden scope.
-  Stop and report ambiguity when a required target or expected result is not visible after the documented recovery steps.
+  If a required target or expected result is not visible after the documented recovery steps, stop and report the ambiguity.
 
 Loop:
-  1. Open the requested app; use --relaunch only when the script needs fresh state.
+  1. Open the requested app. Use --relaunch only when the script needs fresh state.
   2. Run snapshot -i to get current refs for the next step.
-  3. Run press/fill/click/longpress <ref-or-selector> --settle for each mutating step.
-  4. Treat a settled:true diff as the next observation. Do not add wait stable or another snapshot when the diff already shows the next target or expected result.
+  3. For each mutating step, run press/fill/click/longpress <ref-or-selector> --settle.
+  4. Treat a settled:true diff as the next observation. If the diff already shows the next target or expected result, do not add wait stable or another snapshot.
   5. If --settle prints not settled, follow its hint before the next ref-based action.
   6. Verify named expectations with wait text/selector/absent, get, is, find, or the settled diff. A bare screenshot/snapshot is not verification for a named expectation.
-  7. Close the session when the script ends.
+  7. When the script ends, close the session.
 
 Command shapes:
   agent-device open com.example.app --relaunch
@@ -41,21 +41,21 @@ Command shapes:
   agent-device wait text "Order placed" 3000
   agent-device wait absent 'label="Loading..."' 3000
   agent-device close
-  --relaunch forces fresh app state; a deep link/URL open does not need it. Labels with an apostrophe or quote (label="Don't leave") are shell-quoting hazards: prefer the @ref from the latest snapshot/settle output over quoting the literal label.
+  --relaunch forces fresh app state. A deep link or URL open does not need it. A label with an apostrophe or a quote (label="Don't leave") is a shell-quoting hazard. For such a label, prefer the @ref from the latest snapshot or settle output to a quoted literal label.
 
 Targets:
-  Prefer refs from the latest snapshot -i or settled diff. Use durable selectors when the label/id is known: label="Search", id="submit", role=button label="Follow". If label text matches both a field and its caption, target the field with label="Email" editable=true.
-  For text fields, use fill <target> <text> --settle to replace the field value; use type only to append to an already-focused field.
+  Prefer refs from the latest snapshot -i or settled diff. If you know the label or id, use durable selectors: label="Search", id="submit", role=button label="Follow". If the label text matches both a field and its caption, target the field with label="Email" editable=true.
+  For a text field, use fill <target> <text> --settle to replace the field value. Use type only to append to an already-focused field.
   Do not use placeholders such as @ref, @eN, <button>, or <selector> in a final command plan. If the ref is unknown, first run snapshot -i.
-  Coordinates are fallback-only after refs/selectors fail or accessibility omits the target; use screenshot or snapshot -i --json to choose a visible center point.
+  Use coordinates only as a fallback, after refs and selectors fail or accessibility omits the target. To choose a visible center point, use screenshot or snapshot -i --json.
 
 Recovery:
-  Network/typeahead result missing: wait text "Expected result" or wait <selector>.
-  A target that should be gone/disappear: use wait absent <selector>; wait exists ... is rejected in favor of the plain selector wait.
-  Keyboard visible over the next target: when a measured or derived keyboard frame covers an app target's dispatched tap point, the element is refused with tap_keyboard_occludes_target, because the touch would activate a key instead of the target. End editing first -- the app's own Done/Cancel control, or keyboard enter when submission is wanted -- then retry. Missing keyboard nodes never prove absence; a visibility-only probe cannot establish the covered area. An app target whose dispatched tap point stays above the keys passes this keyboard check; a raw coordinate behind the keyboard taps anyway and reports the reason in warning.
-  Target covered by other visible UI: refused with target_covered. When the occlusion scan identified the covering element, error.details.coveredBy and the hint name it (role, label, rect) so you know what to dismiss; the cover is diagnosis only -- never target its ref. Dismiss/close it or scroll the target clear, then retry.
-  Sparse or recovered accessibility snapshot: use screenshot as visual truth, leave the bad screen if needed, then retry snapshot -i.
-  Non-hittable success hint: verify with the settled diff or snapshot; retarget by a better ref/selector if the UI did not change.
+  Network or typeahead result missing: use wait text "Expected result" or wait <selector>.
+  Target that should disappear: use wait absent <selector>. wait exists ... is rejected; use the plain selector wait instead.
+  Keyboard visible over the next target: if a measured or derived keyboard frame covers the dispatched tap point of an app target, the command refuses the element with tap_keyboard_occludes_target. The reason is that the touch would activate a key instead of the target. First, end the edit: use the app's own Done/Cancel control, or keyboard enter if you want to submit. Then retry. Missing keyboard nodes never prove that the keyboard is absent. A visibility-only probe cannot establish the covered area. If the dispatched tap point of an app target stays above the keys, the target passes this keyboard check. A raw coordinate behind the keyboard taps anyway and reports the reason in warning.
+  Target covered by other visible UI: the command refuses the target with target_covered. If the occlusion scan identified the covering element, error.details.coveredBy and the hint name it (role, label, rect), so you know what to dismiss. The covering element is for diagnosis only. Never target its ref. Dismiss or close it, or scroll the target clear, then retry.
+  Sparse or recovered accessibility snapshot: use screenshot as visual truth. If necessary, leave the bad screen. Then retry snapshot -i.
+  Non-hittable success hint: verify with the settled diff or a snapshot. If the UI did not change, retarget with a better ref or selector.
 
 ${WAIT_FAILURE_CONTRACT}`,
   },
