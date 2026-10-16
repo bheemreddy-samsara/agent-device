@@ -14,7 +14,7 @@ test('every MCP tool description declares its timeout envelope', () => {
     if (policy.envelopeMs === 'unbounded') {
       assert.match(
         tool.description,
-        / Streams progress; no fixed client timeout\.$/,
+        / It streams progress and has no fixed client timeout\.$/,
         `${tool.name} must declare its unbounded envelope`,
       );
       continue;
@@ -22,8 +22,8 @@ test('every MCP tool description declares its timeout envelope', () => {
     const seconds = Math.round(policy.envelopeMs / 1000);
     const suffix =
       policy.budget.source === 'none'
-        ? ` Times out after ${seconds}s.`
-        : ` Times out after ${seconds}s; a caller-supplied budget extends it.`;
+        ? ` It times out after ${seconds}s.`
+        : ` It times out after ${seconds}s. A caller-supplied budget extends this timeout.`;
     assert.ok(
       tool.description.endsWith(suffix),
       `${tool.name} must end with "${suffix.trim()}" (got: …${tool.description.slice(-60)})`,
@@ -36,6 +36,6 @@ test('every MCP tool description declares its timeout envelope', () => {
 // registry-vs-registry agreement.
 test('the declared envelopes carry the known tier values', () => {
   const descriptions = new Map(listCommandTools().map((tool) => [tool.name, tool.description]));
-  assert.match(descriptions.get('devices') ?? '', / Times out after 90s\.$/);
-  assert.match(descriptions.get('install') ?? '', / Times out after 180s\.$/);
+  assert.match(descriptions.get('devices') ?? '', / It times out after 90s\.$/);
+  assert.match(descriptions.get('install') ?? '', / It times out after 180s\.$/);
 });
