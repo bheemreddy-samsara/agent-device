@@ -41,7 +41,7 @@ const TEST_COMMAND_NAME = 'test';
 const REPLAY_SHELL_ENV_PREFIX = 'AD_VAR_';
 
 const replayCommandDescription =
-  'Run a recorded automation script, including compatible Maestro YAML flows. A script without a terminal close leaves its session active for subsequent automation.';
+  'Run a recorded automation script, including compatible Maestro YAML flows. A script without a terminal close leaves its session active for later automation.';
 const testCommandDescription = 'Run one or more replay scripts as a serial test suite';
 
 export const replayCommandMetadata = defineFieldCommandMetadata(
@@ -53,9 +53,9 @@ export const replayCommandMetadata = defineFieldCommandMetadata(
     backend: stringField(),
     maestro: booleanField(),
     env: stringArrayField(),
-    metroHost: stringField('Metro/debug host hint inherited by replay-opened sessions.'),
-    metroPort: integerField('Metro/debug port hint inherited by replay-opened sessions.'),
-    bundleUrl: stringField('Bundle URL hint inherited by replay-opened sessions.'),
+    metroHost: stringField('Metro or debug host hint that replay-opened sessions inherit.'),
+    metroPort: integerField('Metro or debug port hint that replay-opened sessions inherit.'),
+    bundleUrl: stringField('Bundle URL hint that replay-opened sessions inherit.'),
     // ADR 0012 decision 4 / migration step 5: replay-only resume. Named
     // `resumeFrom`/`resumePlanDigest` (not `from`/`planDigest`) because
     // `from` already means a gesture's `PointInput` on `CommandInput`
@@ -64,7 +64,7 @@ export const replayCommandMetadata = defineFieldCommandMetadata(
     resumeFrom: integerField(),
     resumePlanDigest: stringField(),
     keepSession: booleanField(
-      'Leave the session active by suppressing exactly an authored terminal close in native .ad.',
+      'Keep the session active. This suppresses exactly an authored terminal close in native .ad.',
     ),
     timeoutMs: integerField('Maximum wall-clock duration for the replay request.'),
     // ADR 0012 decision 6, R1/R6: arms agent-supervised re-record repair
@@ -77,7 +77,7 @@ export const replayCommandMetadata = defineFieldCommandMetadata(
     // publish) instead of refusing. Alias: --overwrite.
     force: booleanField(),
     testIme: booleanField(
-      'Activate the headless Android test IME for the sessions this replay opens (default on for emulators; opt-in on real devices).',
+      'Activate the headless Android test IME for the sessions that this replay opens (default: on for emulators, opt-in on real devices).',
     ),
   },
 );
@@ -91,9 +91,9 @@ export const testCommandMetadata = defineFieldCommandMetadata(
     backend: stringField(),
     maestro: booleanField(),
     env: stringArrayField(),
-    metroHost: stringField('Metro/debug host hint inherited by each test session.'),
-    metroPort: integerField('Metro/debug port hint inherited by each test session.'),
-    bundleUrl: stringField('Bundle URL hint inherited by each test session.'),
+    metroHost: stringField('Metro or debug host hint that each test session inherits.'),
+    metroPort: integerField('Metro or debug port hint that each test session inherits.'),
+    bundleUrl: stringField('Bundle URL hint that each test session inherits.'),
     failFast: booleanField(),
     timeoutMs: integerField(),
     retries: integerField(),
@@ -102,7 +102,7 @@ export const testCommandMetadata = defineFieldCommandMetadata(
     shardAll: integerField(),
     shardSplit: integerField(),
     testIme: booleanField(
-      'Activate the headless Android test IME for the sessions each suite attempt opens (default on for emulators; opt-in on real devices).',
+      'Activate the headless Android test IME for the sessions that each suite attempt opens (default: on for emulators, opt-in on real devices).',
     ),
   },
 );
@@ -178,7 +178,7 @@ const replayCliSchema = {
   // commits on that transaction's own teardown, not on a plain close.
   flagDescriptionOverrides: {
     saveScript:
-      'Arm a repair transaction from this replay (ADR 0012): recording starts at step 1, and the healed script commits when the repair-armed session tears down (close, close --save-script, or idle-reap). Independent of the open/close authoring arm-on-open. Optional custom output path.',
+      'Arm a repair transaction from this replay (ADR 0012). The recording starts at step 1. The healed script commits when the repair-armed session tears down (close, close --save-script, or idle-reap). This is independent of the arm-on-open of open/close authoring. The optional value is a custom output path.',
   },
 } as const satisfies CommandSchemaOverride;
 
@@ -297,7 +297,7 @@ export const replayCommandFacet = defineCommandFacet({
   text: {
     summary: 'Replay a recorded session or Maestro flow',
     cliDetail:
-      'For Maestro YAML compatibility flows, use replay <flow.yaml> --maestro and keep the target binding such as --platform ios on the replay command. A script with no terminal close leaves its session (and daemon) running until you close it or it idle-reaps — no different from a session opened interactively. For native .ad scripts, --keep-session suppresses exactly an authored terminal close so you can continue interactively. replay export <file.ad> converts compatible actions to Maestro YAML locally, including app switches with explicit launchApp.appId targets, deep links (including tel: and mailto:) as openLink, and home as pressKey: Home.',
+      'For Maestro YAML compatibility flows, use replay <flow.yaml> --maestro, and keep the target binding, such as --platform ios, on the replay command. A script with no terminal close leaves its session (and daemon) running until you close it or it idle-reaps. This is the same as for a session that you opened interactively. For native .ad scripts, --keep-session suppresses exactly an authored terminal close, so that you can continue interactively. replay export <file.ad> converts compatible actions to Maestro YAML locally. This includes app switches with explicit launchApp.appId targets, deep links (including tel: and mailto:) as openLink, and home as pressKey: Home.',
   },
   metadata: replayCommandMetadata,
   run: (client, input) => client.replay.run(withCommandRuntimeHints(input)),
@@ -315,7 +315,7 @@ export const testCommandFacet = defineCommandFacet({
   text: {
     summary: 'Run replay test suites',
     cliDetail:
-      "Relative globs are expanded on the caller from its working directory, whose name is treated literally. Quote glob inputs to defer expansion to test. Copied diagnostic artifacts receive numbered filenames when needed to preserve other artifacts, replay sources, timing traces, and attempt manifests. JUnit reports (--reporter junit:<path>) replace characters forbidden by XML 1.0 with U+FFFD and preserve legal Unicode and whitespace. JSON and other reporters retain the original suite values. Custom reporter getExitCode hooks must return an integer from 0 to 255 or undefined; the highest valid code wins and cannot lower a failing suite's exit code.",
+      'The caller expands relative globs from its working directory, and treats the directory name literally. To let test expand a glob, quote the glob input. When necessary, copied diagnostic artifacts receive numbered filenames, so that other artifacts, replay sources, timing traces, and attempt manifests are kept. JUnit reports (--reporter junit:<path>) replace characters that XML 1.0 forbids with U+FFFD, and keep legal Unicode and whitespace. JSON and other reporters keep the original suite values. Custom reporter getExitCode hooks must return an integer from 0 to 255, or undefined. The highest valid code wins, and it cannot lower the exit code of a failed suite.',
   },
   metadata: testCommandMetadata,
   run: (client, input) => client.replay.test(withCommandRuntimeHints(input)),
