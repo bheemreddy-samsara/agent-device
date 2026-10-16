@@ -121,7 +121,7 @@ const prepareDaemonWriter: DaemonWriter = direct(PUBLIC_COMMANDS.prepare, (input
 export const prepareCommandFacet = defineCommandFacet({
   name: 'prepare',
   text: {
-    summary: 'Pre-warm platform helpers before automation',
+    summary: 'Prepare platform helpers before automation',
   },
   metadata: prepareCommandMetadata,
   run: (client, input) => client.command.prepare(input),

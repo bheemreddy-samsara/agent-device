@@ -38,7 +38,7 @@ const sessionCliReader: CliReader = (positionals, flags) => ({
 export const sessionCommandFacet = defineCommandFacet({
   name: 'session',
   text: {
-    summary: 'List sessions, show the state dir, or publish a script',
+    summary: 'List sessions, print the state dir, or publish a script',
   },
   metadata: sessionCommandMetadata,
   run: async (client, { action, path, force, ...input }) => {

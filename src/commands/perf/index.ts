@@ -74,7 +74,7 @@ export const perfDaemonWriter: DaemonWriter = direct(PERF_COMMAND_NAME, (input) 
 export const perfCommandFacet = defineCommandFacet({
   name: PERF_COMMAND_NAME,
   text: {
-    summary: 'Check frames, memory, or native profiles',
+    summary: 'Examine frames, memory, or native profiles',
     cliDetail:
       'For bounded frame-health evidence, use perf frames. For a compact process-memory reading, use perf memory sample. On iOS simulators and macOS, process samples and captures target the resolved app executable, and exclude other copies with the same name. Apple xctrace and Android Simpleperf/Perfetto captures keep raw artifacts on disk. report produces bounded agent-readable evidence. For React render performance, run agent-device react-devtools profile start before the interaction and react-devtools profile stop after it.',
     mcpDetail:

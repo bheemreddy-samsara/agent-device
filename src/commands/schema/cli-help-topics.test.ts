@@ -6,7 +6,7 @@ test('commands topic includes concise command catalog entries', async () => {
   const usageText = await usageForCommand('commands');
   if (usageText === null) throw new Error('Expected commands help text');
   assert.match(usageText, /install-from-source\s{2,}Install app builds from URLs or CI artifacts/);
-  assert.match(usageText, /prepare\s{2,}Pre-warm platform helpers before automation/);
+  assert.match(usageText, /prepare\s{2,}Prepare platform helpers before automation/);
   assert.match(usageText, /metro\s{2,}Prepare the dev server or reload apps/);
   assert.match(usageText, /batch --steps <json> \| --steps-file <path>/);
   assert.match(usageText, /network\s{2,}Inspect HTTP\(S\) traffic from session logs/);
@@ -633,18 +633,21 @@ test('commands topic includes swipe and press series options', async () => {
 test('commands topic renders concise commands inline with descriptions', async () => {
   const help = await usageForCommand('commands');
   if (help === null) throw new Error('Expected commands help text');
-  assert.match(help, /Commands:[\s\S]*\n {2}boot\s{2,}Boot target device\/simulator/);
-  assert.match(help, /Commands:[\s\S]*\n {2}shutdown\s{2,}Shutdown target simulator\/emulator/);
-  assert.match(help, / {2}prepare\s{2,}Pre-warm platform helpers/);
+  assert.match(help, /Commands:[\s\S]*\n {2}boot\s{2,}Boot the target device or simulator/);
+  assert.match(
+    help,
+    /Commands:[\s\S]*\n {2}shutdown\s{2,}Shut down the target simulator or emulator/,
+  );
+  assert.match(help, / {2}prepare\s{2,}Prepare platform helpers/);
   assert.match(help, / {2}metro\s{2,}Prepare the dev server or reload apps/);
-  assert.match(help, / {2}perf\s{2,}Check frames, memory, or native profiles/);
-  assert.match(help, / {2}cdp\s{2,}Inspect CDP targets, JS heap, and leaks/);
+  assert.match(help, / {2}perf\s{2,}Examine frames, memory, or native profiles/);
+  assert.match(help, / {2}cdp\s{2,}Examine CDP targets, JS heap, and leaks/);
   assert.match(help, / {2}react-devtools\s{2,}React Native components, props\/state\/hooks/);
   assert.match(help, / {2}proxy\s{2,}Expose a local daemon through an HTTP tunnel/);
   assert.match(help, / {2}batch --steps <json> \| --steps-file <path>\s{2,}Run multiple commands/);
   assert.match(help, / {2}test <path-or-glob>\.\.\.\s{2,}Run replay test suites/);
   assert.match(help, / {2}screenshot \[path\]\s{2,}Capture a screenshot/);
-  assert.match(help, / {2}session\s{2,}List sessions, show the state dir, or publish a script/);
+  assert.match(help, / {2}session\s{2,}List sessions, print the state dir, or publish a script/);
   assert.doesNotMatch(help, / {2}metro prepare[^\n]*--project-root/);
   assert.doesNotMatch(help, /\n {2}batch\s{2,}Run multiple commands/);
   assert.doesNotMatch(help, /agent-device-proxy/);

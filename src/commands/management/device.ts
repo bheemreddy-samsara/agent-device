@@ -144,7 +144,7 @@ const capabilitiesCommandFacet = defineCommandFacet({
 const bootCommandFacet = defineCommandFacet({
   name: 'boot',
   text: {
-    summary: 'Boot target device/simulator',
+    summary: 'Boot the target device or simulator',
   },
   metadata: bootCommandMetadata,
   run: (client, input) => client.devices.boot(input),
@@ -157,7 +157,7 @@ const bootCommandFacet = defineCommandFacet({
 const shutdownCommandFacet = defineCommandFacet({
   name: 'shutdown',
   text: {
-    summary: 'Shutdown target simulator/emulator',
+    summary: 'Shut down the target simulator or emulator',
   },
   metadata: shutdownCommandMetadata,
   run: (client, input) => client.devices.shutdown(input),

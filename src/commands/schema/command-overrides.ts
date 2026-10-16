@@ -25,7 +25,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   },
   cdp: {
     text: {
-      summary: 'Inspect CDP targets, JS heap, and leaks',
+      summary: 'Examine CDP targets, JS heap, and leaks',
       description:
         'Run CDP commands for React Native diagnostics, JS heap usage, heap snapshots, and leak analysis.',
     },
