@@ -142,6 +142,21 @@ export const MACOS_HELPER_REFUSAL_REASONS = [
   'no-settable-text-input',
   'no-scroll-bar',
 ] as const;
+/**
+ * Why the helper refused an app-surface screenshot. It captures the app's front window or
+ * nothing, so each refusal names what kept that window out of reach.
+ */
+export const MACOS_SCREENSHOT_REFUSAL_REASONS = [
+  'window-not-found',
+  'front-window-not-shareable',
+] as const;
+type MacOsScreenshotRefusalReason = (typeof MACOS_SCREENSHOT_REFUSAL_REASONS)[number];
+const MACOS_SCREENSHOT_REFUSAL_HINTS: Record<MacOsScreenshotRefusalReason, string> = {
+  'window-not-found':
+    'Open or unminimize a window of the app on the current Space, then retry the screenshot.',
+  'front-window-not-shareable':
+    'The front window may still be opening or closing, or the app excludes it from screen capture. Retry after the window settles.',
+};
 export const MACOS_DELIVERY_MECHANISMS = [
   'ax-press',
   'ax-focus',
@@ -581,5 +596,25 @@ export async function runMacOsScreenshotAction(
 }> {
   const args = ['screenshot', '--out', outPath];
   appendMacOsHelperContextArgs(args, options);
-  return await runMacOsHelper(args, { signal: options.signal });
+  try {
+    return await runMacOsHelper(args, { signal: options.signal });
+  } catch (error) {
+    throw withScreenshotRefusalHint(error);
+  }
+}
+
+function withScreenshotRefusalHint(error: unknown): unknown {
+  if (!(error instanceof AppError)) return error;
+  const reason = error.details?.reason;
+  if (!isMacOsScreenshotRefusalReason(reason)) return error;
+  return new AppError(
+    error.code,
+    error.message,
+    { ...error.details, hint: MACOS_SCREENSHOT_REFUSAL_HINTS[reason] },
+    error,
+  );
+}
+
+function isMacOsScreenshotRefusalReason(value: unknown): value is MacOsScreenshotRefusalReason {
+  return (MACOS_SCREENSHOT_REFUSAL_REASONS as readonly unknown[]).includes(value);
 }

@@ -26,6 +26,7 @@ private struct ScrollGestureFixture: Decodable {
 private struct HelperOutcomesFixture: Decodable {
   let refusalReasons: [String]
   let deliveryMechanisms: [String]
+  let screenshotRefusalReasons: [String]
 }
 
 /// `#filePath` is `<repo>/apple/macos-helper/Tests/AgentDeviceMacOSHelperTests/<file>`.
@@ -43,6 +44,8 @@ final class BackgroundInteractionTests: XCTestCase {
     )
     XCTAssertEqual(BackgroundRefusal.allCases.map(\.rawValue), fixture.refusalReasons)
     XCTAssertEqual(BackgroundDeliveryMechanism.allCases.map(\.rawValue), fixture.deliveryMechanisms)
+    XCTAssertEqual(
+      AppWindowScreenshotRefusal.allCases.map(\.rawValue), fixture.screenshotRefusalReasons)
   }
 
   /// The native backend scrolls as far as the runner does: its travel agrees with every case of

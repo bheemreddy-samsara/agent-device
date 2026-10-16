@@ -16,14 +16,14 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
     $0.owningApplication?.processID == pid && $0.windowLayer == 0 && $0.frame.width > 0
       && $0.frame.height > 0
   }
-  guard
-    let window = candidates.first(where: { Int($0.windowID) == frontWindowID })
-      ?? candidates.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })
-  else {
-    throw HelperError.commandFailed(
-      "screenshot could not find a window for the app",
-      details: ["reason": "window-not-found", "bundleId": app.bundleIdentifier ?? ""]
-    )
+  let window: SCWindow
+  let selection = frontCaptureWindow(
+    candidates, frontWindowID: frontWindowID, windowID: { Int($0.windowID) })
+  switch selection {
+  case .success(let front):
+    window = front
+  case .failure(let refusal):
+    throw screenshotRefusal(refusal, app: app, frontWindowID: frontWindowID)
   }
 
   let filter = SCContentFilter(desktopIndependentWindow: window)
@@ -50,6 +50,45 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
     throw HelperError.commandFailed("screenshot failed")
   }
   try writePNG(capturedImage, to: outPath)
+}
+
+/// Why an app screenshot refuses. The capture is the app's front window or nothing: another
+/// window of the app would show state the user is not looking at. Pinned with the host by
+/// `contracts/fixtures/macos-native-helper-outcomes.json`.
+enum AppWindowScreenshotRefusal: String, CaseIterable, Error {
+  case windowNotFound = "window-not-found"
+  case frontWindowNotShareable = "front-window-not-shareable"
+}
+
+/// The shareable candidate whose WindowServer ID is the app's front window.
+func frontCaptureWindow<Window>(
+  _ candidates: [Window],
+  frontWindowID: Int?,
+  windowID: (Window) -> Int
+) -> Result<Window, AppWindowScreenshotRefusal> {
+  guard let frontWindowID else { return .failure(.windowNotFound) }
+  guard let front = candidates.first(where: { windowID($0) == frontWindowID }) else {
+    return .failure(.frontWindowNotShareable)
+  }
+  return .success(front)
+}
+
+private func screenshotRefusal(
+  _ refusal: AppWindowScreenshotRefusal,
+  app: NSRunningApplication,
+  frontWindowID: Int?
+) -> HelperError {
+  var details = ["reason": refusal.rawValue, "bundleId": app.bundleIdentifier ?? ""]
+  switch refusal {
+  case .windowNotFound:
+    return .commandFailed("screenshot could not find an on-screen window for the app", details: details)
+  case .frontWindowNotShareable:
+    details["frontWindowId"] = frontWindowID.map(String.init) ?? ""
+    return .commandFailed(
+      "screenshot could not capture the app's front window: ScreenCaptureKit does not offer it",
+      details: details
+    )
+  }
 }
 
 @available(macOS 14.0, *)
