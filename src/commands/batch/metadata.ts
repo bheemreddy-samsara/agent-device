@@ -46,7 +46,7 @@ export function createBatchCommandMetadata(
   const fields = batchFields(nestedCommands);
   return defineFieldCommandMetadata(
     'batch',
-    'Execute multiple commands in one daemon request.',
+    'Run multiple commands in one daemon request.',
     fields,
     { readInput: (input) => readBatchInput(input, fields) },
   );
@@ -66,7 +66,7 @@ function batchFields(nestedCommands: readonly string[]) {
       ),
     ),
     onError: enumField(['stop'] as const, 'Batch failure policy.'),
-    maxSteps: integerField('Maximum number of steps accepted for this batch.', {
+    maxSteps: integerField('Maximum number of steps that this batch accepts.', {
       min: 1,
       max: 1000,
     }),
@@ -98,7 +98,7 @@ function batchStepSchema(nestedCommands: readonly string[]): JsonSchema {
       runtime: {
         type: 'object',
         additionalProperties: true,
-        description: 'Optional per-step runtime payload.',
+        description: 'Optional runtime payload for the step.',
       },
     },
     required: ['command', 'input'],
