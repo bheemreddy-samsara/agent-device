@@ -4,7 +4,9 @@ Keep reviewed source read-only. Run checks in an isolated checkout if they can m
 
 ## Reviewing
 
-- Read linked dependencies and relevant ADRs. Resolve prerequisite conflicts first. Update or supersede conflicting decisions explicitly.
+- Read linked dependencies. For each relevant ADR, read its Status and "Rules at a glance" first.
+  Read other sections only for the rules that the change touches. Resolve prerequisite conflicts first.
+  Update or supersede conflicting decisions explicitly.
 - Trace routing and surface changes through daemon and backend. Helper tests bypassing the router do not prove dispatch.
   Check affected CLI, Node, daemon, MCP, help, and docs surfaces.
 - Trace typed errors from producers through normalization, transport, and sibling consumers. Do not replace lost reason codes with text matching.
