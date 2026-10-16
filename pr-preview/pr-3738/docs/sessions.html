@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3738/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3738/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3738/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3738/static/js/index.b92bb1441c.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3738/static/js/index.b8569773dd.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -162,7 +162,8 @@ only; provider-leased cloud targets are rejected.</p>
 command: while <code>exec</code> runs, another workspace&#x27;s <code>open</code>, <code>boot</code>, or <code>install</code> on that device fails with
 <code>DEVICE_IN_USE</code> naming the holder, and succeeds again once <code>exec</code> exits. <code>exec</code> refuses to start the
 same way while another session holds the device. <code>exec</code> exits with your command&#x27;s exit code,
-forwards Ctrl+C to it, and attempts to release the claim on every exit path; a release that fails
+forwards Ctrl+C, terminal hangup, and Ctrl-\ (<code>SIGINT</code>, <code>SIGHUP</code>, <code>SIGQUIT</code>, <code>SIGTERM</code>) to it,
+and attempts to release the claim only after the command exits; a release that fails
 leaves a claim <code>device release --stale</code> reports. If <code>exec</code> is killed outright, its claim appears in
 <code>agent-device device status --stale</code>. The next <code>open</code> or <code>exec</code> reconciles it automatically only
 when the recorded owner process is proven dead; a claim whose owner is uncertain — its PID now
