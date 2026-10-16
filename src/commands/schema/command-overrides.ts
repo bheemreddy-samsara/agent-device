@@ -25,7 +25,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'Inspect CDP targets, JS heap, and leaks',
       description:
-        'Run CDP commands for React Native diagnostics, JS heap usage, heap snapshots, and leak analysis',
+        'Run CDP commands for React Native diagnostics, JS heap usage, heap snapshots, and leak analysis.',
     },
     usageOverride: 'cdp [...args]',
     listUsageOverride: 'cdp',
@@ -122,7 +122,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   connection: {
     text: {
       summary: 'Examine the saved remote connection',
-      description: 'Examine the active remote connection state',
+      description: 'Examine the active remote connection state.',
     },
     usageOverride: 'connection status',
     listUsageOverride: 'connection',
@@ -133,7 +133,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'Clear remote connection state and release leases',
       description:
-        'Disconnect the remote daemon state, stop the owned Metro companion, and release the lease',
+        'Disconnect the remote daemon state, stop the owned Metro companion, and release the lease.',
     },
     listUsageOverride: 'disconnect',
     allowedFlags: ['shutdown'],
@@ -182,7 +182,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'React Native components, props/state/hooks, and render profiling',
       description:
-        'Examine React Native components and profile their renders through the Metro dev server',
+        'Examine React Native components and profile their renders through the Metro dev server.',
     },
     usageOverride:
       'react-devtools tree [@ref|Name]|find <Name>|inspect <@ref|Name>|errors|profile start|stop|report [Component]|commit [N]',

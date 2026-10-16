@@ -9,7 +9,7 @@ import { managementCliOutputFormatters } from './output.ts';
 
 const sessionCommandMetadata = defineFieldCommandMetadata(
   'session',
-  'List active sessions, print the effective daemon state directory, or publish an armed open-to-destination script without closing its session',
+  'List active sessions, print the effective daemon state directory, or publish an armed open-to-destination script without closing its session.',
   {
     action: enumField(
       ['list', 'state-dir', 'save-script'],
