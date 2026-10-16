@@ -218,7 +218,7 @@ test('usageForCommand resolves workflow help topic', async () => {
     help,
     /A known selector\/label after a mutation is often enough, since interaction commands refresh state internally/,
   );
-  assert.match(help, /TV\/D-pad focus: help tv/);
+  assert.match(help, /TV\/D-pad focus: help tv \(Android TV, tvOS, Vega VVD remote\)/);
   assert.match(help, /not bare role keys \(button="Search"\)/);
   assert.match(help, /Matches in distinct subtrees fail with AMBIGUOUS_MATCH/);
   assert.match(help, /geometry never chooses a winner/);
@@ -265,7 +265,6 @@ test('usageForCommand resolves workflow help topic', async () => {
   assert.match(help, /already owned by another agent-device daemon/);
   assert.match(help, /Env vars: help physical-device/);
   assert.match(help, /Escalate:/);
-  assert.match(help, /help scripting recording, save-script, batch, replay repair/);
   assert.match(help, /help gestures multi-touch gesture shapes\/quirks/);
   assert.match(help, /help react-devtools/);
   assert.match(help, /help react-native/);

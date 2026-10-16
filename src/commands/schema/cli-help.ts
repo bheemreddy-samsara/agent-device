@@ -88,7 +88,7 @@ Snapshots and refs:
   Legend: @e12 [button] label="Add to cart" enabled hittable -> press @e12. [off-screen below] -> scroll down --until (a hint, not a ref).
   Refs stay valid until you press/click/fill/type/scroll/back/wait-for-async-UI, or otherwise change app state. open/--relaunch clears the stored snapshot outright.
   Prefer --settle and its diff when the diff shows the next target. Refresh with snapshot -i only if you did not settle, the output said not settled, or the output lacks what you need. A known selector/label after a mutation is often enough, since interaction commands refresh state internally.
-  Truncated preview: snapshot -s @e12 (the current concrete ref), not get text. Missing target: scroll <dir> --until <selector>. TV/D-pad focus: help tv.
+  Truncated preview: snapshot -s @e12 (the current concrete ref), not get text. Missing target: scroll <dir> --until <selector>. TV/D-pad focus: help tv (Android TV, tvOS, Vega VVD remote).
 
 Selectors:
   Use id="field-email", label="Allow", role=button label="Search" -- not bare role keys (button="Search"). When refs/selectors exist, use no CSS selectors/--selector/--text/raw x-y.
@@ -128,7 +128,6 @@ Escalate:
   help manual-qa scripted manual QA
   help dogfood exploratory QA report
   help validate engineering self-validation
-  help scripting recording, save-script, batch, replay repair
   help gestures multi-touch gesture shapes/quirks
   help react-devtools RN components, props/state/hooks, render profiling
   help macos desktop, frontmost-app, menu bar
