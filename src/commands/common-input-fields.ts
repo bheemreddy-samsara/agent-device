@@ -105,7 +105,7 @@ const COMMON_INPUT_FIELDS = {
     schema: {
       type: 'string',
       enum: PLATFORM_SELECTORS,
-      description: 'Platform selector used to resolve a device.',
+      description: 'Platform selector for device resolution.',
     },
     read: (record) => optionalEnum(record, 'platform', PLATFORM_SELECTORS),
     flagKey: 'platform',
@@ -134,7 +134,7 @@ const COMMON_INPUT_FIELDS = {
   device: {
     schema: {
       type: 'string',
-      description: 'Device name selector (a UDID belongs in udid, a serial in serial).',
+      description: 'Device name selector (put a UDID in udid and a serial in serial).',
     },
     read: (record) => optionalString(record, 'device'),
     flagKey: 'device',
@@ -144,7 +144,7 @@ const COMMON_INPUT_FIELDS = {
     schema: {
       type: 'string',
       description:
-        'Apple device or simulator UDID; the selector that pins one device when several share a name.',
+        'Apple device or simulator UDID. It is the selector that pins one device when several devices share a name.',
     },
     read: (record) => optionalString(record, 'udid'),
     flagKey: 'udid',
@@ -162,7 +162,7 @@ const COMMON_INPUT_FIELDS = {
   iosSimulatorDeviceSet: {
     schema: {
       type: 'string',
-      description: 'iOS simulator device-set path used for device resolution.',
+      description: 'iOS simulator device-set path for device resolution.',
     },
     read: (record) => optionalString(record, 'iosSimulatorDeviceSet'),
     audience: operatorAudience({ envFlagKeys: [], operatorConfig: true }),
@@ -183,7 +183,7 @@ const COMMON_INPUT_FIELDS = {
   iosXctestDerivedDataPath: {
     schema: {
       type: 'string',
-      description: 'Derived data path for external iOS XCTest runner execution.',
+      description: 'Derived data path for the execution of an external iOS XCTest runner.',
     },
     read: (record) => optionalString(record, 'iosXctestDerivedDataPath'),
     audience: ENV_OR_OPERATOR_CONFIG,
@@ -203,7 +203,7 @@ const COMMON_INPUT_FIELDS = {
   androidDeviceAllowlist: {
     schema: {
       type: 'string',
-      description: 'Android serial allowlist used for device resolution.',
+      description: 'Android serial allowlist for device resolution.',
     },
     read: (record) => optionalString(record, 'androidDeviceAllowlist'),
     flagKey: 'androidDeviceAllowlist',

@@ -33,14 +33,14 @@ const MCP_TOOL_CONFIG_FIELDS = {
       type: 'string',
       enum: ['optimized', 'json'],
       description:
-        'MCP text content format. Defaults to optimized agent-friendly text; use json for JSON text. Structured content is always returned separately.',
+        'MCP text content format. The default is optimized, which is text for agents. Use json for JSON text. The tool always returns structured content separately.',
     },
   },
   includeCost: {
     schema: {
       type: 'boolean',
       description:
-        'Include per-command agent-cost (cost.wallClockMs, …) in structuredContent. Defaults to off; the default response shape is unchanged.',
+        'Include the agent cost of the command (cost.wallClockMs, …) in structuredContent. The default is off. The default response shape does not change.',
     },
   },
   responseLevel: {
@@ -48,7 +48,7 @@ const MCP_TOOL_CONFIG_FIELDS = {
       type: 'string',
       enum: ['digest', 'default', 'full'],
       description:
-        'Response verbosity: token-cheap digest / default (today) / full. Defaults to default; the default response shape is unchanged.',
+        'Response verbosity: digest (low token cost), default (current behavior), or full. The default is default, which keeps the response shape unchanged.',
     },
   },
 } as const satisfies Record<string, McpToolConfigFieldSpec>;
