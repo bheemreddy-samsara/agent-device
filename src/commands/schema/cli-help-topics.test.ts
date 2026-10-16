@@ -545,12 +545,12 @@ test('usageForCommand resolves react-devtools help topic', async () => {
   assert.match(help, /through agent-device proxy, and on remote bridge sessions/);
   assert.match(help, /Add --app <bundle-id> when several apps share the dev server/);
   assert.match(help, /--metro-device <name> when one app runs on several devices/);
-  assert.match(help, /ranked findings, each naming a component, its evidence, and a fix/);
+  assert.match(help, /ranked findings\. Each finding names a component, its evidence, and a fix/);
   assert.match(
     help,
     /memo-defeated: a memoized component often re-renders because props change identity/,
   );
-  assert.match(help, /compare runs instead of reading absolute numbers/);
+  assert.match(help, /Compare runs instead of reading absolute numbers/);
   assert.match(help, /logs clear --restart before the first logs mark/);
   assert.match(help, /Do not repeatedly raise table limits/);
   assert.match(help, /agent-device logs mark "before catalog search"/);
