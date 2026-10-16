@@ -732,7 +732,7 @@ Open and inspect:
   agent-device snapshot -i --platform macos
 
 Surfaces:
-  --surface is an open flag; the session keeps it, so later commands do not repeat it.
+  --surface is an open flag. The session keeps it, so later commands do not repeat it.
   --surface app            normal app session
   --surface frontmost-app  inspect whichever app is frontmost
   --surface desktop        desktop-wide surface
@@ -747,12 +747,12 @@ Context menu example:
   agent-device snapshot -i --platform macos
 
 Rules:
-  Use open and snapshot -i for menu bar inspection. Do not output inspect as a command.
-  Context menus are not ambient UI: secondary-click a visible target, then re-snapshot and use the new menu-item refs.
+  Use open and snapshot -i for menu bar inspection. Do not write inspect as a command.
+  Context menus are not ambient UI. Secondary-click a visible target. Then take a new snapshot and use the new menu-item refs.
   Do not let iOS simulator-set scoping hide macOS desktop targets.
   Prefer refs/selectors over raw coordinates.
-  macOS snapshot rects are window-space; use current refs or overlay refs instead of guessing coordinates.
-  On the default XCTest backend a read (snapshot, get, find) of a session app that sits behind other windows is answered from where it sits, without raising the app; interactions and a window-level screenshot of that app still bring it forward.`,
+  macOS snapshot rects are window-space. Use current refs or overlay refs. Do not guess coordinates.
+  On the default XCTest backend, a read (snapshot, get, find) of a session app behind other windows does not raise the app. The read gets its answer from the app where the app is. Interactions and a window-level screenshot of that app still bring it forward.`,
   },
   web: {
     summary: 'Minimal browser workflow with the managed web backend',
