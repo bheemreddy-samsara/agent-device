@@ -15,7 +15,7 @@ Run Maestro compatibility flows with replay <flow.yaml> --maestro or test <path>
 
 ${formatMaestroCompatibilityReference()}
 
-Unsupported syntax fails loudly rather than being skipped. Architecture, performance tradeoffs, and declared conformance divergences: ${MAESTRO_COMPATIBILITY_ADR_URL}
+Unsupported syntax fails with an explicit error. The command does not skip it. Architecture, performance tradeoffs, and declared conformance divergences: ${MAESTRO_COMPATIBILITY_ADR_URL}
 Focused compatibility request: ${MAESTRO_COMPATIBILITY_ISSUE_URL}`,
   },
 };
