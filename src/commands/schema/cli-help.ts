@@ -369,14 +369,15 @@ Use snapshot, screenshot, logs, network, perf frames, and perf memory for device
     summary: 'React Native CDP targets, JS heap snapshots, and leak triage',
     body: `agent-device help cdp
 
-Use this when a React Native or Expo app exposes a CDP target through Metro and
-the task needs JavaScript heap growth checks, heap snapshot diffs, allocation
-hotspots, retained-object leak evidence, or a small runtime eval to confirm JS
-state. Do not use this as the default React Native profiler.
+Use this topic when a React Native or Expo app exposes a CDP target through
+Metro, and the task needs one of these: JavaScript heap growth checks, heap
+snapshot diffs, allocation hotspots, retained-object leak evidence, or a small
+runtime eval to confirm JS state. Do not use it as the default React Native
+profiler.
 
 Setup:
-  Start Metro and open the app first. For Android devices/emulators, make sure Metro is reachable from the app, typically with adb reverse tcp:8081 tcp:8081.
-  In remote bridge sessions, omit --url for target list/select after connect; agent-device derives the Metro CDP URL from the prepared remote runtime.
+  Start Metro and open the app first. For Android devices/emulators, make sure that the app can reach Metro, typically with adb reverse tcp:8081 tcp:8081.
+  In remote bridge sessions, after connect, omit --url for target list/select. agent-device derives the Metro CDP URL from the prepared remote runtime.
   agent-device cdp target list --url http://127.0.0.1:8081
   agent-device cdp target select <target-id>
 
@@ -398,7 +399,7 @@ Retained-object proof:
   agent-device cdp memory snapshot retainers --snapshot ms_3 --id <node-id> --depth 8 --limit 10
 
 Allocation pressure:
-  Use allocation sampling to find where allocations were created, not to prove a leak:
+  Use allocation sampling to find where allocations were created. Do not use it to prove a leak:
     agent-device cdp memory allocation start --name suspected-flow --interval 32768 --stack-depth 32
     # perform the flow once
     agent-device cdp memory allocation stop
@@ -406,16 +407,16 @@ Allocation pressure:
     agent-device cdp memory allocation source-maps
 
 Recommended subset:
-  cdp dynamically runs a pinned CDP helper through npm; the first run may download the pinned package, and later runs can reuse the npm cache.
-  Every argument after cdp is passed to the CDP helper. Put agent-device global flags before cdp when you need the outer CLI to consume them.
+  cdp dynamically runs a pinned CDP helper through npm. The first run may download the pinned package. Later runs can use the npm cache again.
+  cdp passes every argument after cdp to the CDP helper. If the outer CLI must consume agent-device global flags, put them before cdp.
   Use cdp memory usage, memory snapshot, memory allocation, and targeted runtime eval.
-  Avoid cdp profile cpu, trace, network, and console by default because agent-device already has perf cpu, trace, network, logs, and react-devtools guidance for those areas.
+  By default, avoid cdp profile cpu, trace, network, and console, because agent-device already has perf cpu, trace, network, logs, and react-devtools guidance for those areas.
 
 Output contract:
-  Until cdp has a compact leak report command, synthesize one from memory usage diff, snapshot diff, leak-triplet, and retainers. Report heap deltas, top retained classes/shapes, leak-triplet rows that stayed high after cleanup, and the shortest useful retaining paths. Do not paste raw heap snapshots or large allocation profiles into the response; use exported artifacts only when the user asks for raw data.
+  Until cdp has a compact leak report command, synthesize one from memory usage diff, snapshot diff, leak-triplet, and retainers. Report heap deltas, top retained classes/shapes, leak-triplet rows that stayed high after cleanup, and the shortest useful retaining paths. Do not paste raw heap snapshots or large allocation profiles into the response. Use exported artifacts only when the user asks for raw data.
 
 Target caveats:
-  React Native/Hermes implements a subset of browser CDP. If a command reports an unsupported method, keep the target selected and switch to heap usage samples plus heap snapshots. Prefer react-devtools profile for render causes; prefer perf memory sample or perf memory snapshot for native/process memory.`,
+  React Native/Hermes implements a subset of browser CDP. If a command reports an unsupported method, keep the target selected and change to heap usage samples plus heap snapshots. For render causes, prefer react-devtools profile. For native/process memory, prefer perf memory sample or perf memory snapshot.`,
   },
   'react-native': {
     summary: 'React Native app automation hazards and routing',

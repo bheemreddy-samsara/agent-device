@@ -570,7 +570,7 @@ test('usageForCommand resolves cdp help topic', async () => {
   assert.match(help, /memory snapshot leak-triplet --baseline ms_1 --action ms_2 --cleanup ms_3/);
   assert.match(help, /memory snapshot retainers --snapshot ms_3 --id <node-id>/);
   assert.match(help, /Until cdp has a compact leak report command/);
-  assert.match(help, /Avoid cdp profile cpu, trace, network, and console by default/);
+  assert.match(help, /By default, avoid cdp profile cpu, trace, network, and console/);
   assert.match(help, /React Native\/Hermes implements a subset of browser CDP/);
 });
 
