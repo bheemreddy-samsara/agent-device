@@ -86,7 +86,7 @@ export const TARGET_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     type: 'string',
     usageLabel: '--app <id-or-name>',
     usageDescription:
-      'Target an app without opening it. On doctor, confirm an installed app by id or name. On settings, apply an app-scoped change (permission, iOS location) to a bundle id or package',
+      'Target an app without opening it. doctor confirms an installed app by id or name. settings applies an app-scoped change (permission, iOS location) to a bundle id or package',
     projectConfig: false,
     recorded: false,
   },
