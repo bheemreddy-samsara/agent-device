@@ -723,14 +723,14 @@ Rules:
 
 Use macOS only when the task targets desktop apps, desktop surfaces, or menu bar extras.
 
-Open and inspect:
+Open and examine:
   agent-device open TextEdit --platform macos
   agent-device snapshot -i --platform macos
 
 Surfaces:
   --surface is an open flag. The session keeps it, so later commands do not repeat it.
   --surface app            normal app session
-  --surface frontmost-app  inspect whichever app is frontmost
+  --surface frontmost-app  examine whichever app is frontmost
   --surface desktop        desktop-wide surface
   --surface menubar        menu bar extras and menu bar-only apps
 
@@ -743,7 +743,7 @@ Context menu example:
   agent-device snapshot -i --platform macos
 
 Rules:
-  Use open and snapshot -i for menu bar inspection. Do not write inspect as a command.
+  Use open and snapshot -i to examine the menu bar. Do not write inspect as a command.
   Context menus are not ambient UI. Secondary-click a visible target. Then take a new snapshot and use the new menu-item refs.
   Do not let iOS simulator-set scoping hide macOS desktop targets.
   Prefer refs/selectors over raw coordinates.

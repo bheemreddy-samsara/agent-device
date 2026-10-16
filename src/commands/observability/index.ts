@@ -184,7 +184,7 @@ export const eventsCommandFacet = defineCommandFacet({
 export const networkCommandFacet = defineCommandFacet({
   name: NETWORK_COMMAND_NAME,
   text: {
-    summary: 'Inspect HTTP(S) traffic from session logs',
+    summary: 'Examine HTTP(S) traffic from session logs',
   },
   metadata: networkCommandMetadata,
   run: (client, input) => client.observability.network(input),
