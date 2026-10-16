@@ -7,8 +7,8 @@ test('usageForCommand documents open --launch-args', async () => {
   const help = await usageForCommand('open');
   if (help === null) throw new Error('Expected open help text');
   assert.match(help, /--launch-args <arg>/);
-  assert.match(help, /forwarded verbatim/);
-  assert.match(help, /Linux and macOS reject the flag/);
+  assert.match(help, /forwards verbatim/);
+  assert.match(help, /Linux and macOS refuse the flag/);
   assert.match(help, /--launch-console artifacts\/launch-console\.log/);
 });
 
@@ -100,7 +100,7 @@ test('usageForCommand includes Maestro replay flag', async () => {
   assert.match(help, /--out <path>/);
   assert.match(help, /--maestro/);
   assert.match(help, /supported Maestro YAML subset/);
-  assert.match(help, /unsupported syntax fails loudly/);
+  assert.match(help, /Unsupported syntax fails with an explicit error/);
   assert.match(help, /agent-device help maestro/);
   assert.doesNotMatch(help, /issues\/558/);
 });
@@ -112,10 +112,10 @@ test('usageForCommand includes Maestro test suite flag', async () => {
   assert.match(help, /--maestro/);
   assert.match(help, /--record-video/);
   assert.match(help, /--shard-all <n>/);
-  assert.match(help, /combine with --device id1,id2/);
+  assert.match(help, /To use explicit connected devices, add --device id1,id2/);
   assert.match(help, /--shard-split <n>/);
   assert.match(help, /AD_SHARD_INDEX is zero-based/);
-  assert.match(help, /Replay\/Test: inject or override/);
+  assert.match(help, /replay, test: set or override/);
 });
 
 test('command help keeps scroll and gesture planning guidance', async () => {
@@ -181,8 +181,8 @@ test('proxy command help describes tunnel usage', async () => {
   if (help === null) throw new Error('Expected command help text');
   assert.match(help, /Usage:\s+agent-device proxy/);
   assert.match(help, /cloudflared tunnel --url http:\/\/127\.0\.0\.1:4310/);
-  assert.match(help, /--host <host>\s+Proxy: host interface to bind/);
-  assert.match(help, /--port <port>\s+Proxy: TCP port to bind/);
+  assert.match(help, /--host <host>\s+proxy: host interface to bind/);
+  assert.match(help, /--port <port>\s+proxy: TCP port to bind/);
   assert.match(help, /--daemon-auth-token <token>\s+Remote HTTP daemon or proxy auth token/);
   assert.match(help, /--state-dir <path>\s+Daemon state directory/);
   assert.match(help, /\/agent-device\/\*/);
@@ -289,7 +289,7 @@ test('snapshot documents the synopsis-hidden record flag', async () => {
   const help = await usageForCommand('snapshot');
   if (help === null) throw new Error('Expected command help text');
   assert.doesNotMatch(help, /agent-device snapshot \[[^\n]*--record/);
-  assert.match(help, /--record\s+Force-record this action/);
+  assert.match(help, /--record\s+Always record this action/);
 });
 
 test('network command usage documents include flag', async () => {
@@ -348,7 +348,7 @@ test('command usage shows record touch-overlay opt-out flag', async () => {
   assert.doesNotMatch(help, /--max-size/);
   assert.match(help, /--quality <medium\|high>/);
   assert.match(help, /--hide-touches/);
-  assert.match(help, /skip touch-overlay post-processing/);
+  assert.match(help, /skip the touch-overlay post-processing/);
   assert.match(help, /multiple MP4 chunks/);
 });
 
@@ -456,7 +456,7 @@ test('replay --save-script help describes arming a repair transaction, not open/
   if (help === null) throw new Error('Expected replay help text');
   assert.match(help, /Arm a repair transaction from this replay \(ADR 0012\)/);
   assert.match(help, /commits when the repair-armed session tears down/);
-  assert.doesNotMatch(help, /Arm evidence capture on open, publish the armed recording on close/);
+  assert.doesNotMatch(help, /open: arm evidence capture\. close: publish the armed recording/);
 });
 
 test(
@@ -466,7 +466,7 @@ test(
     if (help === null) throw new Error('Expected open help text');
     assert.match(
       help,
-      /Arm evidence capture on open, publish the armed recording on close; close --save-script alone \(without an armed open\) is rejected/,
+      /open: arm evidence capture\. close: publish the armed recording\. close --save-script without an armed open is refused/,
     );
     assert.doesNotMatch(help, /Arm a repair transaction from this replay/);
   },
@@ -479,7 +479,7 @@ test(
     if (help === null) throw new Error('Expected close help text');
     assert.match(
       help,
-      /Arm evidence capture on open, publish the armed recording on close; close --save-script alone \(without an armed open\) is rejected/,
+      /open: arm evidence capture\. close: publish the armed recording\. close --save-script without an armed open is refused/,
     );
     assert.doesNotMatch(help, /Arm a repair transaction from this replay/);
   },
