@@ -499,20 +499,20 @@ Slow-flow investigation:
     summary: 'Connected phone/tablet setup and iOS signing prerequisites',
     body: `agent-device help physical-device
 
-Use this when the target is connected hardware instead of a simulator/emulator.
+Use this topic when the target is connected hardware, not a simulator/emulator.
 For simulator/emulator flows, use help manual-qa for routine QA or help workflow for the full reference.
 
 Discovery:
   agent-device devices --platform ios
   agent-device devices --platform android
-  With multiple devices present, select one: --device <name>, or --udid <udid> (iOS) / --serial <serial> (Android) when names collide.
+  If multiple devices are present, select one with --device <name>. If names collide, use --udid <udid> (iOS) or --serial <serial> (Android).
 
 iOS physical-device prerequisites:
   Xcode, xcrun xcdevice, and xcrun xctrace must be available from the selected Xcode.
-  The device must be paired/trusted, connected, unlocked when needed, and have Developer Mode enabled.
+  The device must be paired/trusted, connected, unlocked when necessary, and have Developer Mode enabled.
   Modern devices visible to devicectl use CoreDevice. Older devices visible only to xctrace use the XCTest backend automatically.
-  XCTest-backed devices must already have the target app installed and should be opened by bundle ID; app inventory, install/reinstall, logs, performance sampling, recording, deep links, and launch arguments require CoreDevice.
-  XCTest-backed runner commands travel through macOS usbmuxd; keep the trusted device connected by cable.
+  XCTest-backed devices must already have the target app installed. You should open the app by bundle ID. These features require CoreDevice: app inventory, install/reinstall, logs, performance sampling, recording, deep links, and launch arguments.
+  XCTest-backed runner commands travel through macOS usbmuxd. Keep the trusted device connected by cable.
   The AgentDeviceRunner XCTest host must be signed before commands can run on a physical device.
   Start with Automatic Signing and only these env vars:
     AGENT_DEVICE_IOS_TEAM_ID=ABCDE12345
@@ -520,22 +520,33 @@ iOS physical-device prerequisites:
   Find team ids and Apple Development signing certificates with:
     security find-identity -v -p codesigning
   If Xcode cannot choose a profile, set AGENT_DEVICE_IOS_PROVISIONING_PROFILE to the profile name/specifier, not a file path.
-  AGENT_DEVICE_IOS_SIGNING_IDENTITY is optional; omit it unless xcodebuild asks for a specific identity.
+  AGENT_DEVICE_IOS_SIGNING_IDENTITY is optional. Omit it unless xcodebuild asks for a specific identity.
   The profile/team must allow AGENT_DEVICE_IOS_BUNDLE_ID and <id>.uitests.
-  A runner startup failure names its class in error details.reason rather than only in prose: signing_no_development_team, signing_provisioning_profile_missing, bundle_identifier_already_registered, signing_unspecified, devtools_security_developer_mode_disabled (the Mac's DevToolsSecurity setting, which says nothing about the device's Developer Mode toggle), device_developer_mode_disabled (read from an iPhone's own report before the runner builds, and the only device state that stops a run up front), device_developer_disk_image_unavailable (also read from the device, and published on a startup failure that named no cause of its own, since iOS 17+ mounts the developer disk image on demand during build and launch rather than gating the build), or build_failed_unclassified when nothing proved a cause. The two device reasons are never inferred from tool output or from each other. Branch on details.reason and follow hint; the message is for humans.
-  First-run XCTest setup/build can take longer than normal commands; keep the device connected and use --debug to inspect signing/build diagnostics if setup times out.
+  A runner startup failure names its class in error details.reason, not only in prose:
+    signing_no_development_team
+    signing_provisioning_profile_missing
+    bundle_identifier_already_registered
+    signing_unspecified
+    devtools_security_developer_mode_disabled: the DevToolsSecurity setting of the Mac. It says nothing about the Developer Mode toggle of the device.
+    device_developer_mode_disabled: read from the iPhone's own report before the runner builds. It is the only device state that stops a run before the run starts.
+    device_developer_disk_image_unavailable: also read from the device. It is published on a startup failure that named no cause of its own, because iOS 17+ mounts the developer disk image on demand during build and launch, and does not gate the build.
+    build_failed_unclassified: when nothing proved a cause.
+  The two device reasons are never inferred from tool output or from each other. Branch on details.reason and follow hint. The message is for humans.
+  The first-run XCTest setup/build can take longer than normal commands. Keep the device connected. If setup times out, use --debug to examine signing/build diagnostics.
 
 Android physical-device prerequisites:
-  Enable USB debugging and confirm the device appears in agent-device devices --platform android.
+  Enable USB debugging. Confirm that the device appears in agent-device devices --platform android.
   Android does not need the iOS runner signing setup. For React Native/Expo Metro reachability, read help react-native.
 
 Runner and daemon lifecycle (applies to simulators too):
-  open without --relaunch is idempotent-foreground for an already-running app (it brings the process forward; it does not restart it). open --relaunch restarts the app; on iOS simulators this collapses to one simctl launch --terminate-running-process call instead of a separate terminate-then-launch.
-  No runner read launches a session app that is not running: snapshot, wait, is, get, a reading find, and an interaction's leading reads (a gesture's viewport read, the capture that resolves a selector click/fill) answer the retriable APP_NOT_RUNNING instead of bare-launching over a launch SpringBoard still holds behind its deep-link confirmation. Only open, activate, and a command that mutates without a leading read bring a stopped app up.
-  close keeps a healthy iOS simulator XCTest runner warm by default so the next open on that simulator (same udid in the same simulator set) skips the runner build, unless --shutdown was requested, the session was recording, or the session held a device lease. A retained runner auto-stops after an idle window (default 5 minutes); set AGENT_DEVICE_IOS_RUNNER_IDLE_STOP_MS to override, or 0 to disable idle stop and retain until daemon exit. Only a ready runner with an observed listener is retained; close retires unfinished prewarm recovery. Losing the retained listener stops that generation, and daemon shutdown stops idle retained runners rather than handing them off without supervision.
-  Each AGENT_DEVICE_STATE_DIR runs its own daemon. It self-exits after an idle window (default 5 minutes, matching the runner idle-stop default) once it has no open sessions, no in-flight requests, and no active recording; set AGENT_DEVICE_DAEMON_IDLE_TIMEOUT_MS to override, or 0 to disable idle reap.
-  On a machine shared by several agents, set AGENT_DEVICE_SESSION_IDLE_TIMEOUT_MS to also expire an individual session that has taken a host-global device claim and then received no commands for that long; the claim is released and the next command on that session answers SESSION_NOT_FOUND with details.reason SESSION_IDLE_EXPIRED naming the window and the device. Off by default, because on a shared host "idle" and "thinking" are indistinguishable: only set it where an abandoned claim blocking every other agent is the worse failure. Sessions holding a remote lease or any active capture (recording, logs, audio, performance, or trace) are never expired this way.
-  A stale iOS runner lease — its owner process dead, or its AGENT_DEVICE_STATE_DIR deleted — is reclaimed automatically instead of failing with "is already owned by another agent-device daemon". A live owner's runner is also reclaimed when the requesting daemon holds the host-global device claim for that device: claims are exclusive, so holding one proves the runner's owner released the device and merely kept the runner warm. The error remains only for owners outside claim arbitration (a pre-claims build, or daemons pointed at different claim stores).
+  open without --relaunch is idempotent-foreground for an already-running app (it brings the process forward; it does not restart it). open --relaunch restarts the app. On iOS simulators, this is one simctl launch --terminate-running-process call instead of a separate terminate-then-launch.
+  No runner read launches a session app that is not running. These reads return the retriable APP_NOT_RUNNING: snapshot, wait, is, get, a reading find, and the leading reads of an interaction (the viewport read of a gesture, and the capture that resolves a selector click/fill). They do not do a bare launch over a launch that SpringBoard still holds behind its deep-link confirmation. Only open, activate, and a command that mutates without a leading read start a stopped app.
+  close keeps a healthy iOS simulator XCTest runner warm by default so the next open on that simulator (same udid in the same simulator set) skips the runner build. Exceptions: --shutdown was requested, the session was recording, or the session held a device lease.
+  A retained runner stops automatically after an idle window (default 5 minutes). To change the window, set AGENT_DEVICE_IOS_RUNNER_IDLE_STOP_MS. Set it to 0 to disable idle stop and keep the runner until the daemon exits.
+  Only a ready runner with an observed listener is retained. close retires unfinished prewarm recovery. If the retained listener is lost, that generation stops. Daemon shutdown stops idle retained runners. It does not hand them off without supervision.
+  Each AGENT_DEVICE_STATE_DIR runs its own daemon. It self-exits after an idle window (default 5 minutes, matching the runner idle-stop default) when it has no open sessions, no in-flight requests, and no active recording. To change the window, set AGENT_DEVICE_DAEMON_IDLE_TIMEOUT_MS. Set it to 0 to disable idle reap.
+  On a machine that several agents share, set AGENT_DEVICE_SESSION_IDLE_TIMEOUT_MS to also expire an individual session that took a host-global device claim and then received no commands for that long. The claim is released. The next command on that session returns SESSION_NOT_FOUND with details.reason SESSION_IDLE_EXPIRED, which names the window and the device. It is off by default, because on a shared host "idle" and "thinking" are indistinguishable. Set it only where an abandoned claim that blocks every other agent is the worse failure. Sessions that hold a remote lease or any active capture (recording, logs, audio, performance, or trace) never expire this way.
+  A stale iOS runner lease — its owner process dead, or its AGENT_DEVICE_STATE_DIR deleted — is reclaimed automatically. It does not fail with "is already owned by another agent-device daemon". A live owner's runner is also reclaimed when the requesting daemon holds the host-global device claim for that device. Claims are exclusive. Thus the claim proves that the runner's owner released the device and only kept the runner warm. The error remains only for owners outside claim arbitration (a pre-claims build, or daemons that point at different claim stores).
 
 For iOS SpringBoard, widget, or other system-UI surfaces, read agent-device help ios-system-ui.`,
   },
