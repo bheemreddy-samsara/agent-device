@@ -301,7 +301,7 @@ test('usageForCommand resolves scripting help topic', async () => {
   );
   assert.match(help, /on iOS, XCTest writes its own diagnostic logs and its \.xcresult bundle/);
   assert.match(help, /typed text can appear in both, on a simulator or a physical device/);
-  assert.match(help, /use test-only credentials when they may be kept or shared/);
+  assert.match(help, /Use test-only credentials when the artifacts may be kept or shared/);
   assert.match(help, /test --json marks a failed test with infrastructure: true/);
   assert.match(help, /It remains a failed test/);
   assert.match(help, /REPLAY_DIVERGENCE with a bounded report/);
