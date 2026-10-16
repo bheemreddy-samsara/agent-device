@@ -70,11 +70,12 @@ export type AppOpenOptions = AgentDeviceRequestOverrides &
     /** Startup budget in milliseconds: bounds the Simulator boot wait on a cold device. */
     timeoutMs?: number;
     /**
-     * Block this open for up to n milliseconds (100-120000) while another session holds the device,
-     * then fail with DEVICE_IN_USE naming that session. Only session contention is waited for: a
-     * device claim held by another workspace is refused at once with its recovery command. A device
-     * that never frees, or is taken again while this open waits, costs the full budget, which
-     * extends this command's timeout envelope rather than eating into it.
+     * While another session holds the device, block this open for up to n milliseconds
+     * (100-120000). Then fail with DEVICE_IN_USE, which names that session. The open waits only
+     * for session contention. If another workspace holds a device claim, the open is refused
+     * immediately with the recovery command of that claim. If the device never becomes free, or
+     * another session takes it again during the wait, the wait uses the full budget. The budget is
+     * added to the timeout envelope of this command, not taken from it.
      */
     waitMs?: number;
     // Editor documentation for a public type: a `.d.ts` is read where no
@@ -84,8 +85,8 @@ export type AppOpenOptions = AgentDeviceRequestOverrides &
     // `commands/command-input-option-field.test.ts`.
     /**
      * Include an initial interactive snapshot in a fresh open response. With no
-     * app argument, discover the sole running app on the sole booted iOS
-     * simulator; ambiguous environments fail closed.
+     * app argument, find the only running app on the only booted iOS simulator.
+     * If the environment is ambiguous, the open fails closed.
      */
     foreground?: boolean;
     saveScript?: boolean | string;
