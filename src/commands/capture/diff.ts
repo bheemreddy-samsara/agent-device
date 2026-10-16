@@ -63,7 +63,7 @@ export const DIFF_COMMAND_OUTPUT_SCHEMAS = {
 } satisfies Pick<Record<keyof CommandResultMap, JsonSchema>, 'diff'>;
 
 const diffCommandDescription =
-  'Compare accessibility snapshots or screenshots to identify UI changes. Use snapshot comparisons for semantic tree changes and screenshot comparisons for pixel differences.';
+  'Compare accessibility snapshots or screenshots to find UI changes. For semantic tree changes, compare snapshots. For pixel differences, compare screenshots.';
 
 const diffCommandMetadata = defineFieldCommandMetadata(DIFF_COMMAND_NAME, diffCommandDescription, {
   kind: requiredField(jsonSchemaField<'snapshot'>({ type: 'string', const: 'snapshot' })),
@@ -104,9 +104,9 @@ const diffDaemonWriter: DaemonWriter = direct(PUBLIC_COMMANDS.diff, (input) => [
 export const diffCommandFacet = defineCommandFacet({
   name: DIFF_COMMAND_NAME,
   text: {
-    summary: 'Diff snapshot or screenshot',
+    summary: 'Diff a snapshot or a screenshot',
     cliDetail:
-      'Screenshot --threshold is a per-pixel RGB tolerance: 0 requires exact colors and 1 ignores color differences; image dimensions must still match. Both screenshot inputs are decoded from their bytes, so a baseline or current image may be PNG or JPEG, and the diff image is always PNG. JPEG is lossy, so keep --threshold above 0 whenever either input is JPEG. Live iOS simulator screenshot diffs normalize status-bar chrome by default; use screenshot --normalize-status-bar when capturing reusable baselines.',
+      'For screenshots, --threshold is a per-pixel RGB tolerance: 0 requires exact colors, and 1 ignores color differences. The image dimensions must still match. The command decodes both screenshot inputs from their bytes, so a baseline or current image may be PNG or JPEG. The diff image is always PNG. JPEG is lossy, so if either input is JPEG, keep --threshold above 0. Live iOS simulator screenshot diffs normalize the status-bar chrome by default. To capture reusable baselines, use screenshot --normalize-status-bar.',
   },
   metadata: diffCommandMetadata,
   run: (client, input) => client.capture.diff(input),

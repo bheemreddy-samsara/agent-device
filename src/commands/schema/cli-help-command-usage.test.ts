@@ -35,7 +35,7 @@ test('usageForCommand documents screenshot web aliases and stabilization flags',
 test('usageForCommand documents screenshot diff normalization', async () => {
   const help = await usageForCommand('diff');
   if (help === null) throw new Error('Expected diff help text');
-  assert.match(help, /Live iOS simulator screenshot diffs normalize status-bar chrome by default/);
+  assert.match(help, /Live iOS simulator screenshot diffs normalize the status-bar chrome by default/);
   assert.match(help, /screenshot --normalize-status-bar/);
 });
 
@@ -43,8 +43,8 @@ test('usageForCommand documents the screenshot diff input containers', async () 
   const help = await usageForCommand('diff');
   if (help === null) throw new Error('Expected diff help text');
   assert.match(help, /a baseline or current image may be PNG or JPEG/);
-  assert.match(help, /the diff image is always PNG/);
-  assert.match(help, /keep --threshold above 0 whenever either input is JPEG/);
+  assert.match(help, /The diff image is always PNG/);
+  assert.match(help, /if either input is JPEG, keep --threshold above 0/);
 });
 
 test('usageForCommand resolves longpress help', async () => {
@@ -284,8 +284,8 @@ test('snapshot command usage documents diff alias', async () => {
     help,
     /Capture the accessibility tree or compare it with the previous session baseline/,
   );
-  assert.match(help, /inspect rects with snapshot -i --json/);
-  assert.match(help, /verify with diff snapshot -i or snapshot --diff/);
+  assert.match(help, /examine the rects with snapshot -i --json/);
+  assert.match(help, /Then confirm with diff snapshot -i or snapshot --diff/);
 });
 
 test('snapshot documents the synopsis-hidden record flag', async () => {

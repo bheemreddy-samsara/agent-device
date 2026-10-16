@@ -26,7 +26,7 @@ import { messageOutput } from '../output-common.ts';
 
 const SETTINGS_COMMAND_NAME = 'settings';
 const settingsCommandDescription =
-  'Read or change supported operating-system settings, animation scales, appearance, or app permissions on the selected target. Platform support varies by setting and action.';
+  'Read or change supported operating-system settings, animation scales, appearance, or app permissions on the selected target. Platform support depends on the setting and the action.';
 
 const settingsCommandMetadata = defineFieldCommandMetadata(
   SETTINGS_COMMAND_NAME,
@@ -36,7 +36,7 @@ const settingsCommandMetadata = defineFieldCommandMetadata(
     // A readable setting answers with no state; the parse decides per setting.
     state: stringField(),
     app: stringField(
-      'App the change targets, by bundle id, package name, or app name: the app `clear-app-state` clears, or the app a `permission` change (or an iOS-simulator `location on|off` privacy change) lands on. A name resolves to the installed app as `open` resolves it: an iOS simulator matches display names and accepts only an installed bundle id, Android accepts only an installed package and refuses a name that resolves to an intent with `setting_app_not_package`, and a Limrun iOS session resolves only the `settings` alias. One that resolves to nothing is refused with `app_not_installed` before anything changes. The app need not be running. Without it the session app is used; a device-wide change (`location set` on any target, the Android `location on|off` toggle, `mobile-data`, macOS permissions) refuses one with `setting_app_not_consumed`. The CLI reads it only from this invocation, never from `AGENT_DEVICE_TARGET_APP` or config `targetApp`.',
+      'The app that the change targets, by bundle id, package name, or app name. It is the app that `clear-app-state` clears, or the app that a `permission` change (or an iOS-simulator `location on|off` privacy change) applies to. A name resolves to the installed app in the same way as `open` resolves it. An iOS simulator matches display names and accepts only an installed bundle id. Android accepts only an installed package, and refuses a name that resolves to an intent with `setting_app_not_package`. A Limrun iOS session resolves only the `settings` alias. If the app resolves to nothing, the command refuses it with `app_not_installed` before anything changes. The app does not have to be running. Without it, the command uses the session app. A device-wide change (`location set` on any target, the Android `location on|off` toggle, `mobile-data`, macOS permissions) refuses an app with `setting_app_not_consumed`. The CLI reads it only from this invocation, never from `AGENT_DEVICE_TARGET_APP` or config `targetApp`.',
     ),
     latitude: numberField(),
     longitude: numberField(),
@@ -102,7 +102,7 @@ export const settingsCommandFacet = defineCommandFacet({
   text: {
     summary: 'Change OS settings and app permissions',
     cliDetail: [
-      'A bare readable setting reads the value the target holds. A target that does not serve a setting refuses it with UNSUPPORTED_OPERATION before anything changes.',
+      'A readable setting without a state reads the value that the target holds. If a target does not serve a setting, it refuses the setting with UNSUPPORTED_OPERATION before anything changes.',
       '',
       'Settings:',
       ...settingsHelpLines().map((line) => `  ${line}`),
