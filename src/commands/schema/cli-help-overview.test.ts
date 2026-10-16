@@ -11,12 +11,12 @@ test('root help is a bounded first-success decision card', async () => {
     `root help must stay within the 3000-byte decision-card budget, was ${Buffer.byteLength(help, 'utf8')} bytes`,
   );
   assert.match(help, /All \d+ commands: agent-device help commands/);
-  assert.match(help, /starting a task with a known app/);
+  assert.match(help, /start a task with a known app/);
   assert.match(help, /agent-device open <app> --foreground/);
   assert.match(help, /scroll <direction\|top\|bottom> \[amount\] --settle; back --settle/);
   assert.match(help, /Do not probe first with devices, apps, appstate, snapshot, or screenshot/);
   assert.match(help, /Copy refs exactly: @e12, @e12~s4/);
-  assert.match(help, /Coordinates are last resort/);
+  assert.match(help, /Coordinates are the last resort/);
   assert.doesNotMatch(help, /^Commands:/m);
   assert.doesNotMatch(help, /^Global Flags:/m);
 });
