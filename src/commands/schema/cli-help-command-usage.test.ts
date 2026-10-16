@@ -180,7 +180,7 @@ test('debug command help stays scoped to symbolication', async () => {
   if (help === null) throw new Error('Expected debug help text');
   assert.match(help, /debug symbols --artifact/);
   assert.match(help, /intentionally narrow/);
-  assert.match(help, /use logs for app logs, network for HTTP evidence, perf for performance/);
+  assert.match(help, /For app logs, use logs\. For HTTP evidence, use network\. For performance samples, use perf/);
   assert.doesNotMatch(help, /agent-device debug perf/);
   assert.doesNotMatch(help, /agent-device debug logs/);
 });
