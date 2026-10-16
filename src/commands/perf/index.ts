@@ -43,7 +43,9 @@ export const perfCommandMetadata = defineFieldCommandMetadata(
     kind: enumField(PERF_KIND_VALUES),
     template: stringField('xctrace template name, for example Time Profiler.'),
     out: stringField('Output artifact path.'),
-    tracePath: stringField('Existing .trace path to report, defaults to the latest session trace.'),
+    tracePath: stringField(
+      'Existing .trace path to report. The default is the latest session trace.',
+    ),
   },
 );
 
@@ -74,9 +76,9 @@ export const perfCommandFacet = defineCommandFacet({
   text: {
     summary: 'Check frames, memory, or native profiles',
     cliDetail:
-      'Use perf frames for bounded frame-health evidence and perf memory sample for a compact process-memory reading. On iOS simulators and macOS, process sampling and captures target the resolved app executable and exclude other copies with the same name. Apple xctrace and Android Simpleperf/Perfetto captures keep raw artifacts on disk; report produces bounded agent-readable evidence. For React render performance, run agent-device react-devtools profile start before the interaction and react-devtools profile stop after it.',
+      'For bounded frame-health evidence, use perf frames. For a compact process-memory reading, use perf memory sample. On iOS simulators and macOS, process samples and captures target the resolved app executable, and exclude other copies with the same name. Apple xctrace and Android Simpleperf/Perfetto captures keep raw artifacts on disk. report produces bounded agent-readable evidence. For React render performance, run agent-device react-devtools profile start before the interaction and react-devtools profile stop after it.',
     mcpDetail:
-      'For CPU profiles, start and stop write the raw artifact while report writes a compact summary; request the report when the task needs readable native CPU evidence. Profiling output is evidence only: compact state, artifact path, and size.',
+      'For CPU profiles, start and stop write the raw artifact, and report writes a compact summary. When the task needs readable native CPU evidence, request the report. Profile output is evidence only: compact state, artifact path, and size.',
   },
   metadata: perfCommandMetadata,
   run: (client, input) => client.observability.perf(input),
