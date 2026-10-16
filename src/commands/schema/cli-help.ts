@@ -286,11 +286,7 @@ Focus and visual truth:
     summary: 'React Native components, props/state/hooks, and render profiling',
     body: `agent-device help react-devtools
 
-Use this topic for React Native internals the accessibility tree cannot show:
-  - the component tree
-  - the props, state, hooks, and owners of a component
-  - errors and warnings that components logged during render
-  - render performance: slow renders, rerenders and their causes, and commits over a 16 ms frame
+Use this topic for React Native internals the accessibility tree cannot show: the component tree; the props, state, hooks, and owners of a component; errors and warnings that components logged during render; and render performance (slow renders, rerenders and their causes, and commits over a 16 ms frame).
 
 Components:
   agent-device react-devtools tree [@ref|Name] [--depth 8] [--limit 60]
