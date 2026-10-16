@@ -99,17 +99,17 @@ export type SettingDefinition = Readonly<{
 export const SETTINGS = {
   wifi: {
     forms: [{ kind: 'on-off' }],
-    help: 'Android switches Wi-Fi with svc wifi; an Apple simulator overrides only its status bar.',
+    help: 'Android switches Wi-Fi with svc wifi. An Apple simulator overrides only its status bar.',
   },
   airplane: {
     forms: [{ kind: 'on-off' }],
-    help: 'Android applies it through the connectivity service (Android 11+) and reports the airplaneMode that service holds; older builds fail without changing anything. An Apple simulator overrides only its status bar.',
+    help: 'Android applies it through the connectivity service (Android 11+) and reports the airplaneMode that the service holds. Older builds fail and change nothing. An Apple simulator overrides only its status bar.',
   },
   'mobile-data': {
     forms: [{ kind: 'on-off' }],
     app: 'input',
     appScope: { mobile: 'device-level' },
-    help: 'Android only. Runs svc data and reports the stored mobileData state, or fails with mobile-data-not-applied or mobile-data-unreadable. Multi-SIM read-back is not covered yet, and --app is refused.',
+    help: 'Android only. It runs svc data and reports the stored mobileData state, or fails with mobile-data-not-applied or mobile-data-unreadable. Multi-SIM read-back is not covered at this time, and --app is refused.',
   },
   location: {
     forms: [
@@ -117,7 +117,7 @@ export const SETTINGS = {
       { kind: 'coordinates', appScope: { apple: 'device-level', mobile: 'device-level' } },
     ],
     app: 'input',
-    help: "on|off writes Android's device-wide location_mode, and on an Apple simulator grants or revokes the app's location permission. set <lat> <lon> moves the device's own coordinates on Apple simulators and Android emulators.",
+    help: 'On Android, on|off writes the device-wide location_mode. On an Apple simulator, on|off grants or revokes the location permission of the app. set <lat> <lon> moves the coordinates of the device itself on Apple simulators and Android emulators.',
   },
   animations: {
     forms: [{ kind: 'on-off' }],
@@ -130,7 +130,7 @@ export const SETTINGS = {
   'text-size': {
     forms: [{ kind: 'choice', states: TEXT_SIZE_CATEGORIES }],
     readable: true,
-    help: 'Reads the preferred text size without a category and applies one with it, on iPhone and iPad simulators (simctl content size) and Android (system font_scale). Android has no ladder of its own: a read names the nearest rung and reports the multiplier as platformValue. A running app adopts a new size at its next configuration change, so relaunch it.',
+    help: 'Without a category, it reads the preferred text size. With a category, it applies that size. This works on iPhone and iPad simulators (simctl content size) and Android (system font_scale). Android has no ladder of its own, so a read names the nearest rung and reports the multiplier as platformValue. A running app uses a new size at its next configuration change, so relaunch the app.',
   },
   faceid: {
     forms: [{ kind: 'choice', states: ['match', 'nonmatch', 'enroll', 'unenroll'] }],
@@ -149,11 +149,11 @@ export const SETTINGS = {
     app: 'positional',
     appRequired: true,
     appScope: { apple: 'app-scoped', mobile: 'app-scoped' },
-    help: 'Clears the data of the positional app, the --app app, or the session app, and refuses two different apps. It leaves the keychain alone. An app with no data container, such as a simulator system app, refuses with app-no-data-container.',
+    help: 'Clears the data of the positional app, the --app app, or the session app, and refuses two different apps. It does not change the keychain. An app with no data container, such as a simulator system app, refuses with app-no-data-container.',
   },
   'reset-keychain': {
     forms: [{ kind: 'choice', states: ['clear'] }],
-    help: 'Resets the whole iOS simulator keychain, for every app on it: simctl has no per-app reset. A fresh-install reset needs this and clear-app-state; relaunch the app afterwards to see it signed out.',
+    help: 'Resets the whole iOS simulator keychain for all apps on it, because simctl has no per-app reset. A fresh-install reset needs this setting and clear-app-state. To see the app signed out, relaunch it after the reset.',
   },
   permission: {
     forms: [
@@ -167,7 +167,7 @@ export const SETTINGS = {
     ],
     app: 'input',
     appScope: { apple: 'app-scoped', mobile: 'app-scoped', 'macos-host': 'device-level' },
-    help: 'Changes a permission of the --app app or the session app. An iOS simulator resolves --app to an installed bundle id or display name, Android to an installed package, and a Limrun iOS session only through the settings alias. On Android, deny|reset of a held permission kills a running app; the response reports priorGrantState and warns, and open <app> --relaunch restores it. Android needs a resolvable foreground user and changes nothing without one. On the macOS host, grant|reset change the host TCC grants for the three desktop targets and take no --app.',
+    help: 'Changes a permission of the --app app or the session app. An iOS simulator resolves --app to an installed bundle id or display name. Android resolves it to an installed package. A Limrun iOS session resolves it only through the settings alias. On Android, deny|reset of a held permission kills a running app. The response reports priorGrantState and a warning, and open <app> --relaunch restores it. Android needs a resolvable foreground user, and without one it changes nothing. On the macOS host, grant|reset change the host TCC grants for the three desktop targets and take no --app.',
   },
 } as const satisfies Record<string, SettingDefinition>;
 

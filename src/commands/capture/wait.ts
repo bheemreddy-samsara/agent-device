@@ -60,7 +60,7 @@ export const WAIT_COMMAND_OUTPUT_SCHEMAS = {
 } satisfies Pick<Record<keyof CommandResultMap, JsonSchema>, 'wait'>;
 
 const waitCommandDescription =
-  'Wait for a duration, text, snapshot ref, selector to appear, selector to be strictly absent, or stable UI. Use the strict absence target when zero selector matches are required; stable waits until the UI stays quiet for the requested window.';
+  'Wait for a duration, text, a snapshot ref, a selector to appear, a selector to be strictly absent, or a stable UI. If zero selector matches are required, use the strict absence target. stable waits until the UI stays quiet for the requested window.';
 
 const waitCommandMetadata = defineFieldCommandMetadata(WAIT_COMMAND_NAME, waitCommandDescription, {
   kind: enumField(WAIT_KIND_VALUES),

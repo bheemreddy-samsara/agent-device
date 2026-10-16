@@ -18,7 +18,7 @@ import { AppError } from '@agent-device/kernel/errors';
 const ALERT_COMMAND_NAME = 'alert';
 
 const alertCommandDescription =
-  'Inspect, wait for, accept, or dismiss a platform alert. Use get before acting when the alert content matters; accept and dismiss change the active alert state. Each iOS XCTest execution activates once, then only observes. On the Apple XCUITest runner, dismiss taps only a recognized decline label (Cancel, Don\'t Allow, Ask App Not to Track, and similar) or the close element of a popover whose accessibility marker reads exactly "dismiss popup"; when no button fits the action, accept and dismiss answer ALERT_BUTTON_NOT_FOUND having tapped nothing — read labels with alert get, then press the button by label. Inspect again after an unconfirmed action; never assume a timeout means nothing happened.';
+  'Examine, wait for, accept, or dismiss a platform alert. If the alert content is important, use get before you act. accept and dismiss change the active alert state. Each iOS XCTest execution activates once, and then only observes. On the Apple XCUITest runner, dismiss taps only a recognized decline label (Cancel, Don\'t Allow, Ask App Not to Track, and similar) or the close element of a popover whose accessibility marker reads exactly "dismiss popup"; when no button fits the action, accept and dismiss answer ALERT_BUTTON_NOT_FOUND having tapped nothing — read labels with alert get, then press the button by label. After an unconfirmed action, examine the alert again. Never assume that a timeout means that nothing occurred.';
 
 const alertCommandMetadata = defineFieldCommandMetadata(
   ALERT_COMMAND_NAME,
@@ -46,7 +46,7 @@ export const alertDaemonWriter: DaemonWriter = direct(PUBLIC_COMMANDS.alert, (in
 export const alertCommandFacet = defineCommandFacet({
   name: ALERT_COMMAND_NAME,
   text: {
-    summary: 'Inspect, accept, or dismiss a platform alert',
+    summary: 'Examine, accept, or dismiss a platform alert',
   },
   metadata: alertCommandMetadata,
   run: (client, input) => client.command.alert(input),
