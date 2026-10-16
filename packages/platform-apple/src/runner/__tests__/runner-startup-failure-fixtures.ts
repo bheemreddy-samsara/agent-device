@@ -14,18 +14,18 @@ import { IOS_SIMULATOR } from './device-fixtures.ts';
  * Provenance is the point of this file, so it is stated per entry and never as a blanket claim:
  *
  * - `captured` — `output` was pasted from a run, and `command` plus `xcodeVersion` (from
- *   `xcodebuild -version`) were recorded with it by `.device-evidence/CHECKLIST-runner-failures.md`.
+ *   `xcodebuild -version`) were recorded with it in the same run.
  * - `shipped-sniff-trigger` — the substrings a rule matches are the ones shipped in
  *   `resolveSigningFailureHint` before #2680, which is evidence xcodebuild can emit them. The
  *   sentence around them is ours, so `command` and `xcodeVersion` stay unrecorded.
  * - `invented-shape` — no shipped trigger and no capture. The entry exists to exercise a rule and
  *   makes no claim about wording xcodebuild prints.
  *
- * Until Phase B captures the real runs, every entry is `unobserved` for `xcodeVersion` and carries
- * no `command`: an invocation we did not run is not provenance. Nothing in the classifier reads
+ * An entry that is not `captured` is `unobserved` for `xcodeVersion` and carries no `command`: an
+ * invocation we did not run is not provenance. Nothing in the classifier reads
  * these fields; they exist so a reason can be traced to an observation instead of to a guess.
  *
- * Blocked on the host, not unexamined. One Phase B run on `thymikee-iphone` / Xcode 26.2 settled the
+ * Blocked on the host, not unexamined. One run on a physical iPhone with Xcode 26.2 settled the
  * shape question these rows were held on — `No profiles for '<id>' were found` arrives as one long
  * `error:` line, not a wrapped one — and `no-profiles-for-bundle-id` below is now `captured`. The
  * rest are gated on an Apple account this machine does not have, and they need it for the same
