@@ -219,12 +219,7 @@ Platform quirks:
     agent-device wait text "pan changed yes" 3000 --platform android
   tvOS coordinate pan and fling preserve only the dominant direction as a remote swipe. They do not preserve the authored endpoints and duration.
   Gesture planning prefers the active-app frame. If a backend has no gesture viewport resolver, it falls back to the visible snapshot union. That union can be less accurate near edges.
-  Rare iOS accessibility gap: a row shows disabled/hittable:false, and press reports success but the UI does not change. Or a collapsed composite control has no child refs. In these cases, do these steps:
-    1. Run snapshot -i --json.
-    2. Compute the target center from rects.
-    3. Run press x y.
-    4. Run diff snapshot -i.
-  Coordinates are fallback-only. Document why you used them.
+  Rare iOS accessibility gap: a row shows disabled/hittable:false, and press reports success but the UI does not change. Or a collapsed composite control has no child refs. In these cases, run snapshot -i --json, compute the target center from rects, run press x y, then run diff snapshot -i. Coordinates are fallback-only. Document why you used them.
 
 macOS:
   Context menus are secondary clicks, not long presses: agent-device click @e66 --button secondary --platform macos, then snapshot -i.
