@@ -128,14 +128,9 @@ Escalate:
   help manual-qa scripted manual QA
   help dogfood exploratory QA report
   help validate engineering self-validation
-  help debugging logs, network, alerts, traces, text-entry
   help scripting recording, save-script, batch, replay repair
   help gestures multi-touch gesture shapes/quirks
-  help tv Android TV, tvOS, Vega VVD remote
   help react-devtools RN components, props/state/hooks, render profiling
-  help react-native RN hazards, Metro/Re.Pack, routing
-  help remote remote/cloud config, lease, tunnels
-  help macos desktop, frontmost-app, menu bar
   help web minimal browser loop
   help ios-system-ui SpringBoard, widget, system-UI`,
   },
