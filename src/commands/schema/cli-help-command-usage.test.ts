@@ -122,12 +122,15 @@ test('command help keeps scroll and gesture planning guidance', async () => {
   const scrollHelp = await usageForCommand('scroll');
   if (scrollHelp === null) throw new Error('Expected scroll help text');
   assert.match(scrollHelp, /Scroll in a direction/);
-  assert.match(scrollHelp, /top\/bottom edge/);
+  assert.match(scrollHelp, /top or bottom edge/);
   assert.match(scrollHelp, /finger-path fraction of the viewport axis/);
 
   const gestureHelp = await usageForCommand('gesture');
   if (gestureHelp === null) throw new Error('Expected gesture help text');
-  assert.match(gestureHelp, /Android transform verification should use all app-observable effects/);
+  assert.match(
+    gestureHelp,
+    /To verify an Android transform, you should use all app-observable effects/,
+  );
   assert.match(gestureHelp, /wait text "pan changed yes"/);
 });
 
@@ -301,7 +304,7 @@ test('network command usage documents include flag', async () => {
 test('command usage shows command flags without global flags', async () => {
   const help = await usageForCommand('swipe');
   if (help === null) throw new Error('Expected command help text');
-  assert.match(help, /Quick coordinate fling with optional repeat pattern/);
+  assert.match(help, /Do a quick fling between coordinates, with an optional repeat pattern/);
   assert.doesNotMatch(help, /duration positional is accepted as a deprecated alias to pan/);
   assert.match(help, /Command flags:/);
   assert.match(help, /--pattern one-way\|ping-pong/);
