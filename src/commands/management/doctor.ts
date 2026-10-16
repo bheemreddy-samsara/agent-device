@@ -83,9 +83,9 @@ export const doctorCommandFacet = defineCommandFacet({
   text: {
     summary: 'Diagnose device, app, dev-server, and RN/Expo readiness',
     cliDetail:
-      'The command infers Metro reachability from cwd and runtime. On iOS simulators, if the XCTest runner build cache is missing, the command also prepares it in the background. To confirm a target app on the one matching booted device without opening a session, pass --app. To examine the remote connection setup without a probe of local devices, use --remote. The default output is compact. For full checks and evidence, use --json.',
+      'The command infers Metro reachability from cwd and runtime. On iOS simulators, if the XCTest runner build cache is missing, the command also builds it in the background. To confirm a target app on the one matching booted device without opening a session, pass --app. To examine the remote connection setup without a probe of local devices, use --remote. The default output is compact. For full checks and evidence, use --json.',
     mcpDetail:
-      'On iOS simulators, if the XCTest runner build cache is missing, this command also prepares it in the background. Thus, run it before the first Apple snapshot or interaction of a session.',
+      'On iOS simulators, if the XCTest runner build cache is missing, this command also builds it in the background. Thus, run it before the first Apple snapshot or interaction of a session.',
   },
   metadata: doctorCommandMetadata,
   run: (client, input) => client.command.doctor(input),
