@@ -1254,7 +1254,7 @@ A client talks to one local daemon per state directory. `daemonLifecycle` says w
 ```ts
 import { createAgentDeviceClient, ensureDaemon } from 'agent-device';
 
-const stateDir = '/var/run/my-app/agent-device';
+const stateDir = './.my-app/agent-device-state';
 
 await ensureDaemon({
   stateDir,
@@ -1263,7 +1263,7 @@ await ensureDaemon({
 const client = createAgentDeviceClient({ stateDir, daemonLifecycle: 'attach' });
 ```
 
-`ensureDaemon()` starts a daemon when none runs. It replaces a daemon that does not match the client only if that daemon holds no work: no request in flight, no session, no repair session and no live lease. Otherwise it fails and leaves the daemon alone. It returns `{ stateDir, daemon, started }`; `daemon` holds the pid, version and code identity, and no credentials. `onStart` runs when the call started a daemon: `'missing'` when none was usable, `'incompatible'` when it replaced one, with that daemon as `previous`.
+`ensureDaemon()` starts a daemon when none runs. It replaces a daemon that does not match the client only if that daemon holds no work: no request in flight, no session, no repair session and no live lease. Otherwise it fails and leaves the daemon alone. Two cases retire a daemon without that proof, because it cannot be asked: a registered daemon that answers nothing on any transport, and one that times out on the quiesce request and then fails repeated liveness probes. It returns `{ stateDir, daemon, started }`; `daemon` holds the pid, version and code identity, and no credentials. `onStart` runs when the call started a daemon: `'missing'` when none was usable, `'incompatible'` when it replaced one, with that daemon as `previous`.
 
 These failures carry a typed `error.details.reason`:
 
