@@ -457,12 +457,12 @@ function firstRejection<TItem>(
 function withTimeoutNote(name: CommandName, description: string): string {
   const policy = resolveCommandTimeoutPolicy(name);
   if (policy.envelopeMs === 'unbounded') {
-    return `${description} Streams progress; no fixed client timeout.`;
+    return `${description} It streams progress and has no fixed client timeout.`;
   }
   const seconds = Math.round(policy.envelopeMs / 1000);
   return policy.budget.source === 'none'
-    ? `${description} Times out after ${seconds}s.`
-    : `${description} Times out after ${seconds}s; a caller-supplied budget extends it.`;
+    ? `${description} It times out after ${seconds}s.`
+    : `${description} It times out after ${seconds}s. A caller-supplied budget extends this timeout.`;
 }
 
 function withMcpConfigSchema(
