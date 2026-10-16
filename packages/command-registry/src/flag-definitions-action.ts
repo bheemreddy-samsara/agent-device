@@ -53,7 +53,7 @@ export const ACTION_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     type: 'string',
     usageLabel: '--quality <medium|high>',
     usageDescription:
-      'record: output quality preset. Android maps it to the screenrecord bitrate. Limrun sessions map medium to recorder quality 5 and high to 8. Apple export always keeps the captured resolution, so the preset has no effect on Apple. Legacy numeric values 5-7 map to medium, and 8-10 map to high',
+      'record: output quality preset. Android maps it to the screenrecord bitrate. Limrun sessions map medium to recorder quality 5 and high to 8. Apple export always keeps the captured resolution, so the preset has no effect on Apple export. Legacy numeric values 5-7 map to medium, and 8-10 map to high',
     projectConfig: true,
     recorded: true,
   },
@@ -346,7 +346,7 @@ export const ACTION_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     type: 'booleanOrString',
     usageLabel: '--save-script [path]',
     usageDescription:
-      'open: arm evidence capture. close: publish the armed recording. close --save-script without an armed open is refused. To arm it, start with open --save-script, or use session save-script during the session. The optional value is a custom output path',
+      'open: arm evidence capture. close: publish the armed recording. close --save-script without an armed open is refused. To arm evidence capture, start with open --save-script. To publish the armed recording during the session, use session save-script. The optional value is a custom output path',
     projectConfig: false,
     recorded: true,
   },
