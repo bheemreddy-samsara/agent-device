@@ -195,7 +195,7 @@ test('MCP gesture tool exposes and forwards two-finger pan topology', async () =
   assert.ok(gesture);
   assert.deepEqual(gesture.inputSchema.properties?.pointerCount, {
     type: 'integer',
-    description: 'Pan touch pointer count (1 or 2).',
+    description: 'Number of touch pointers for pan (1 or 2).',
     minimum: 1,
     maximum: 2,
   });
@@ -234,7 +234,7 @@ test('MCP gesture metadata exposes pan/transform duration', () => {
   assert.equal(gesture.inputSchema.properties?.velocity, undefined);
   assert.deepEqual(gesture.inputSchema.properties?.durationMs, {
     type: 'integer',
-    description: 'Pan/transform duration.',
+    description: 'Pan or transform duration.',
     minimum: 16,
     maximum: 10_000,
   });
@@ -258,7 +258,7 @@ test('MCP gesture tool exposes generic drag endpoints and bounded timing phases'
   });
   assert.deepEqual(gesture.inputSchema.properties?.sourceHoldMs, {
     type: 'integer',
-    description: 'Drag activation hold duration.',
+    description: 'Hold duration for drag activation.',
     minimum: 1,
     maximum: 10_000,
   });
@@ -270,7 +270,7 @@ test('MCP gesture tool exposes generic drag endpoints and bounded timing phases'
   });
   assert.deepEqual(gesture.inputSchema.properties?.destinationHoldMs, {
     type: 'integer',
-    description: 'Hold before releasing at the destination.',
+    description: 'Hold duration before the release at the destination.',
     minimum: 0,
     maximum: 10_000,
   });

@@ -466,7 +466,8 @@ const pressCommandFacet = defineCommandFacet({
   name: 'press',
   text: {
     summary: 'Short-press a UI target',
-    cliDetail: 'The hold duration is positional on longpress, not press --hold-ms.',
+    cliDetail:
+      'On longpress, the hold duration is a positional argument. It is not press --hold-ms.',
   },
   metadata: metadata('press'),
   run: (client, input) => client.interactions.press(toPressOptions(input)),
@@ -481,7 +482,7 @@ const fillCommandFacet = defineCommandFacet({
   text: {
     summary: 'Replace text in a UI input',
     cliDetail:
-      'Every positional after an @ref is the replacement text, so fill @e57 good morning enters "good morning"; quote the text when the shell must preserve exact whitespace. Clear a field with an empty text argument: fill @e57 "" (the argument must be present — fill @e57 alone is a missing argument, not a clear). When visible label text also matches a non-input element, constrain the target with editable=true, for example fill \'label="Email" editable=true\' "qa@example.com". To keep a secret out of argv, omit the text and pipe it in: printf %s "$PASSWORD" | fill @e57 --text-stdin (max 64 KiB, one trailing newline removed).',
+      'Every positional after an @ref is the replacement text, so fill @e57 good morning enters "good morning". If the shell must keep exact whitespace, quote the text. To clear a field, give an empty text argument: fill @e57 "". The argument must be present: fill @e57 alone is a missing argument, not a clear. If visible label text also matches a non-input element, add editable=true to the target, for example fill \'label="Email" editable=true\' "qa@example.com". To keep a secret out of argv, omit the text and pipe it in: printf %s "$PASSWORD" | fill @e57 --text-stdin (maximum 64 KiB; the command removes one trailing newline).',
   },
   metadata: metadata('fill'),
   run: (client, input) => client.interactions.fill(toFillOptions(input)),
@@ -495,7 +496,8 @@ const longPressCommandFacet = defineCommandFacet({
   name: 'longpress',
   text: {
     summary: 'Hold a UI target to open a context menu',
-    cliDetail: 'Duration is positional, for example longpress @e12 800 or longpress 300 500 800.',
+    cliDetail:
+      'The duration is a positional argument, for example longpress @e12 800 or longpress 300 500 800.',
   },
   metadata: metadata('longpress'),
   run: (client, input) => client.interactions.longPress(toLongPressOptions(input)),
@@ -510,7 +512,7 @@ const hoverCommandFacet = defineCommandFacet({
   text: {
     summary: 'Hover the pointer over a UI target (web only)',
     cliDetail:
-      'The pointer stays where hover left it: read the revealed UI (--settle or snapshot -i) and act on it before another click or hover moves the pointer away.',
+      'The pointer stays at the position where hover left it. Read the UI that the hover showed (--settle or snapshot -i), and act on it before another click or hover moves the pointer away.',
   },
   metadata: metadata('hover'),
   run: (client, input) => client.interactions.hover(toHoverOptions(input)),
@@ -535,7 +537,7 @@ const swipeCommandFacet = defineCommandFacet({
 const focusCommandFacet = defineCommandFacet({
   name: 'focus',
   text: {
-    summary: 'Focus input at screen coordinates',
+    summary: 'Focus the input at screen coordinates',
   },
   metadata: metadata('focus'),
   run: (client, input) => client.interactions.focus(input as FocusOptions),
@@ -585,7 +587,7 @@ const getCommandFacet = defineCommandFacet({
 const isCommandFacet = defineCommandFacet({
   name: 'is',
   text: {
-    summary: 'Check a UI predicate on a selector',
+    summary: 'Examine a UI predicate on a selector',
   },
   metadata: metadata('is'),
   run: (client, input) => client.interactions.is(input as IsOptions),
@@ -598,7 +600,7 @@ const isCommandFacet = defineCommandFacet({
 const findCommandFacet = defineCommandFacet({
   name: 'find',
   text: {
-    summary: 'Find an element and act',
+    summary: 'Find an element and run an action',
   },
   metadata: metadata('find'),
   run: (client, input) => client.interactions.find(input as FindOptions),
@@ -613,7 +615,7 @@ const gestureCommandFacet = defineCommandFacet({
   text: {
     summary: 'Run pan, fling, swipe, pinch, rotate, transform, or drag gestures',
     cliDetail:
-      'Argument shapes: pan <x> <y> <dx> <dy> [durationMs], fling <up|down|left|right> <x> <y> [distance], swipe <left|right|left-edge|right-edge>, pinch <scale> [x] [y], rotate <degrees> [x] [y], transform <x> <y> <dx> <dy> <scale> <degrees> [durationMs], or drag <source-selector|pinned-ref> <destination-selector|pinned-ref> [sourceHoldMs] [moveMs] [destinationHoldMs]. For command plans, output only command lines. Android transform verification should use all app-observable effects, for example wait text "pan changed yes", wait text "pinch changed yes", and wait text "rotate changed yes", not exact transform values.',
+      'Argument shapes: pan <x> <y> <dx> <dy> [durationMs], fling <up|down|left|right> <x> <y> [distance], swipe <left|right|left-edge|right-edge>, pinch <scale> [x] [y], rotate <degrees> [x] [y], transform <x> <y> <dx> <dy> <scale> <degrees> [durationMs], or drag <source-selector|pinned-ref> <destination-selector|pinned-ref> [sourceHoldMs] [moveMs] [destinationHoldMs]. For command plans, write only command lines. To verify an Android transform, you should use all app-observable effects, not exact transform values. For example, use wait text "pan changed yes", wait text "pinch changed yes", and wait text "rotate changed yes".',
   },
   metadata: metadata('gesture'),
   run: async (client, input) => {

@@ -56,25 +56,25 @@ const FIND_ACTION_VALUES = [
 
 const interactionCommandDescriptions = {
   click:
-    "Activate a UI target by snapshot ref, selector, or coordinates. Prefer a ref or selector after a snapshot; use coordinates only when semantic targeting is unavailable. This can change app state. Success means the click was dispatched, not that it landed: use settle or verify to confirm the result without a follow-up snapshot, or wait for the expected screen. A ref or selector target is re-checked for motion before dispatch when the session's previous action just animated the screen, and is dispatched at its resting position; one that has not stopped refuses with target_still_moving rather than acting where it was.",
+    'Activate a UI target by snapshot ref, selector, or coordinates. After a snapshot, prefer a ref or selector. Use coordinates only when semantic targeting is unavailable. This command can change the app state. Success means that the command dispatched the click, not that the click reached the intended target. To confirm the result without a follow-up snapshot, use settle or verify, or wait for the expected screen. If the previous action of the session animated the screen, the command examines a ref or selector target for motion before dispatch. It then dispatches at the resting position of the target. If the target has not stopped, the command refuses with target_still_moving and does not act at the earlier position.',
   press:
-    "Short-press a UI target by snapshot ref, selector, or coordinates. Use longpress instead when the target requires a context-menu or hold gesture. Success means the press was dispatched, not that it landed: use settle or verify to confirm the result, or wait for the expected screen. A ref or selector target is re-checked for motion before dispatch when the session's previous action just animated the screen, and is dispatched at its resting position; one that has not stopped refuses with target_still_moving rather than acting where it was.",
-  fill: 'Replace text in a UI input selected by snapshot ref, selector, or coordinates. Pass an empty text to clear the field. Inspect unconfirmed evidence and assert the expected value or resulting screen before continuing. Prefer refs or selectors after snapshot; use recordAs to keep sensitive text out of a recorded replay while sending it to the live app.',
+    'Short-press a UI target by snapshot ref, selector, or coordinates. If the target requires a context-menu or hold gesture, use longpress instead. Success means that the command dispatched the press, not that the press reached the intended target. To confirm the result, use settle or verify, or wait for the expected screen. If the previous action of the session animated the screen, the command examines a ref or selector target for motion before dispatch. It then dispatches at the resting position of the target. If the target has not stopped, the command refuses with target_still_moving and does not act at the earlier position.',
+  fill: 'Replace the text in a UI input that a snapshot ref, selector, or coordinates select. To clear the field, pass an empty text. Before you continue, examine unconfirmed evidence, and assert the expected value or the resulting screen. After a snapshot, prefer refs or selectors. To send sensitive text to the live app but keep it out of a recorded replay, use recordAs.',
   longpress:
-    'Hold a UI target by snapshot ref, selector, or coordinates to open a context menu or perform another hold gesture. Set durationMs when the default hold duration is unsuitable.',
+    'Hold a UI target by snapshot ref, selector, or coordinates to open a context menu or to do a different hold gesture. If the default hold duration is unsuitable, set durationMs.',
   hover:
-    'Move the pointer over a UI target by snapshot ref, selector, or coordinates without pressing, to reveal hover-gated UI such as row toolbars or menus. Web only; touch platforms have no hover state. Use settle to observe what the hover revealed without a follow-up snapshot.',
-  swipe: 'Quick coordinate fling with optional repeat pattern.',
+    'Move the pointer over a UI target by snapshot ref, selector, or coordinates, without a press. Use it to show hover-gated UI, such as row toolbars or menus. Web only. Touch platforms have no hover state. To observe what the hover showed without a follow-up snapshot, use settle.',
+  swipe: 'Do a quick fling between coordinates, with an optional repeat pattern.',
   focus:
-    'Move input focus to explicit screen coordinates without entering text. Prefer semantic interactions when a snapshot ref or selector is available; use type or fill after focus.',
-  type: 'Append text to the currently focused input. Use fill when the existing field value should be replaced, and focus first when no input is active.',
+    'Move the input focus to explicit screen coordinates without text entry. If a snapshot ref or selector is available, prefer semantic interactions. After focus, use type or fill.',
+  type: 'Append text to the input that has focus. To replace the existing field value, use fill. If no input is active, use focus first.',
   scroll:
-    'Scroll in a direction, or toward the top/bottom edge of scrollable content. Set until to a selector to reach an off-screen target in one command rather than a scroll-and-check loop. The optional amount is the finger-path fraction of the viewport axis, honored up to 0.8 of it; directional scrolls reduce release momentum, while app scroll physics determine the final content offset. A visible keyboard shortens the swiped band instead of being dismissed; when too little is left, the command refuses with scroll_keyboard_occludes_surface. A directional scroll also reports the movement it observed as movement: moved, at-edge, unchanged, or unobserved when the two reads could not back a claim either way; an unchanged surface inside a container that still hides content in that direction refuses with scroll_no_progress rather than repeating the requested distance. The movement field is absent where a tier verifies per pass (top/bottom, until), where the runtime cannot read a screen, or where a settle observation or a replay already owns that observation.',
-  get: 'Read text or accessibility attributes from a snapshot ref or selector without changing the app. Use format text for visible content or attrs for the element attribute map.',
-  is: 'Check whether a selector satisfies a UI predicate such as visible, hidden, exists, absent, editable, selected, focused, or text. `absent` passes only when one readable, complete, settled, unscoped, full-depth accessibility capture has zero matches. Use wait when the condition may appear asynchronously.',
-  find: 'Find by text/label/value/role/id and run action. The role locator matches snapshot kind vocabulary (button, text, text-field, switch, ...); pre-reconciliation leaf spellings (statictext, edittext, textview) stay accepted on the nodes that carried them during a deprecation window.',
+    'Scroll in a direction, or toward the top or bottom edge of scrollable content. To reach an off-screen target in one command instead of a scroll-and-check loop, set until to a selector. The optional amount is the finger-path fraction of the viewport axis. The command honors an amount up to 0.8 of the axis. Directional scrolls reduce release momentum, but app scroll physics set the final content offset. A visible keyboard makes the swiped band shorter, and the command does not dismiss the keyboard. If too little of the band is left, the command refuses with scroll_keyboard_occludes_surface. A directional scroll also reports the movement that it observed as movement: moved, at-edge, unchanged, or unobserved. unobserved means that the two reads could not support a claim either way. If the surface is unchanged inside a container that still hides content in that direction, the command refuses with scroll_no_progress. It does not repeat the requested distance. The movement field is absent when a tier confirms each pass (top/bottom, until), when the runtime cannot read a screen, or when a settle observation or a replay already owns that observation.',
+  get: 'Read the text or the accessibility attributes of a snapshot ref or selector. The command does not change the app. For visible content, use format text. For the element attribute map, use format attrs.',
+  is: 'Examine whether a selector satisfies a UI predicate, such as visible, hidden, exists, absent, editable, selected, focused, or text. `absent` passes only when one readable, complete, settled, unscoped, full-depth accessibility capture has zero matches. If the condition may appear asynchronously, use wait.',
+  find: 'Find an element by text, label, value, role, or id, and run an action. The role locator matches the snapshot kind vocabulary (button, text, text-field, switch, ...). During a deprecation window, the command still accepts pre-reconciliation leaf spellings (statictext, edittext, textview) on the nodes that carried them.',
   gesture:
-    'Perform a structured pan, fling, swipe, pinch, rotate, transform, or drag gesture. Select the gesture kind, then provide only the inputs that apply to that kind.',
+    'Do a structured pan, fling, swipe, pinch, rotate, transform, or drag gesture. Select the gesture kind. Then give only the inputs that apply to that kind.',
 } as const;
 
 type InteractionCommandName = keyof typeof interactionCommandDescriptions;
@@ -99,15 +99,17 @@ const fillFields = {
   // "" is accepted and means "replace with nothing", i.e. clear the field (#2063). The key
   // must still be present: omitting it is a missing argument, not a clear.
   text: requiredField(
-    stringField('Text to enter into the target. Pass "" to clear it.', { allowEmpty: true }),
+    stringField('Text to enter into the target. To clear the target, pass "".', {
+      allowEmpty: true,
+    }),
   ),
   delayMs: integerField('Delay between typed characters.', { min: 0 }),
   recordAs: stringField(
-    'When script recording is armed, send text to the live app but publish it as ${VAR}. Use an uppercase replay variable name such as PASSWORD.',
+    'When script recording is armed, send the text to the live app, but publish it as ${VAR}. Use an uppercase replay variable name, for example PASSWORD.',
   ),
   textStdin: operatorField(
     booleanField(
-      "Operator-only: text was read from the CLI's stdin, so it is kept out of diagnostics and recorded actions.",
+      'Operator-only: the CLI read the text from its stdin, so the text is kept out of diagnostics and recorded actions.',
     ),
     {
       operatorPath:
@@ -154,7 +156,7 @@ const scrollFields = {
   amount: numberField('Platform scroll amount.'),
   pixels: integerField('Pixel scroll amount.', { min: 0 }),
   until: stringField(
-    'Repeat scroll passes until this selector is visible on screen, then stop. Not valid with the top/bottom edge directions, which carry their own stop condition.',
+    'Repeat scroll passes until this selector is visible on the screen, then stop. Not valid with the top and bottom edge directions, because they have their own stop condition.',
   ),
   durationMs: integerField('Scroll duration in milliseconds when the backend supports pacing.', {
     min: 0,
@@ -173,7 +175,7 @@ const scrollFields = {
 const recordControlFields = () => ({
   noRecord: booleanField('Do not record this action.'),
   record: booleanField(
-    'Force-record this out-of-band observation into a repair-armed heal (mutually exclusive with noRecord). Authored replay steps are recorded automatically and never need this. On find, valid only for a read-only action.',
+    'Always record this out-of-band observation into a repair-armed heal (mutually exclusive with noRecord). Authored replay steps are recorded automatically and never need this field. On find, it is valid only for a read-only action.',
   ),
 });
 
@@ -216,13 +218,13 @@ const gestureFields = {
   distance: integerField('Fling distance.', { min: 0 }),
   scale: numberField('Pinch or transform scale.'),
   degrees: numberField('Rotation in degrees.'),
-  durationMs: integerField('Pan/transform duration.', { min: 16, max: 10_000 }),
-  pointerCount: integerField('Pan touch pointer count (1 or 2).', { min: 1, max: 2 }),
+  durationMs: integerField('Pan or transform duration.', { min: 16, max: 10_000 }),
+  pointerCount: integerField('Number of touch pointers for pan (1 or 2).', { min: 1, max: 2 }),
   source: stringField('Drag source @ref or selector.'),
   destination: stringField('Drag destination @ref or selector.'),
-  sourceHoldMs: integerField('Drag activation hold duration.', { min: 1, max: 10_000 }),
+  sourceHoldMs: integerField('Hold duration for drag activation.', { min: 1, max: 10_000 }),
   moveMs: integerField('Drag movement duration.', { min: 16, max: 10_000 }),
-  destinationHoldMs: integerField('Hold before releasing at the destination.', {
+  destinationHoldMs: integerField('Hold duration before the release at the destination.', {
     min: 0,
     max: 10_000,
   }),
