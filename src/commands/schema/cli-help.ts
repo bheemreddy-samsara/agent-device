@@ -508,23 +508,25 @@ iOS physical-device prerequisites:
   If Xcode cannot choose a profile, set AGENT_DEVICE_IOS_PROVISIONING_PROFILE to the profile name/specifier, not a file path.
   AGENT_DEVICE_IOS_SIGNING_IDENTITY is optional. Omit it unless xcodebuild asks for a specific identity.
   The profile/team must allow AGENT_DEVICE_IOS_BUNDLE_ID and <id>.uitests.
-  A runner startup failure names its class in error details.reason, not only in prose:
-    signing_no_development_team
-    signing_provisioning_profile_missing
-    bundle_identifier_already_registered
-    signing_unspecified
-    devtools_security_developer_mode_disabled: the DevToolsSecurity setting of the Mac. It says nothing about the Developer Mode toggle of the device.
-    simulator_service_hub_unavailable: the Xcode is too old for the host macOS. macOS refuses to load its DTServiceHub, so every runner launch fails. The command stops as soon as the refusal reaches runner.log. On the daemon host, select an Xcode that supports this macOS.
-    simulator_set_destination_not_found: the selected Xcode cannot resolve a simulator from --ios-simulator-device-set. The reason names the set.
-    device_developer_mode_disabled: read from the iPhone's own report before the runner builds. It is the only device state that stops a run before the run starts.
-    device_developer_disk_image_unavailable: also read from the device. It is published on a startup failure that named no cause of its own, because iOS 17+ mounts the developer disk image on demand during build and launch, and does not gate the build.
-    build_failed_unclassified: when nothing proved a cause.
-  The two device reasons are never inferred from tool output or from each other. Branch on details.reason and follow hint. The message is for humans.
+  A runner startup failure names its class in error details.reason, not only in prose. Branch on details.reason and follow hint. The message is for humans. The section "iOS runner startup reasons" lists each reason.
   The first-run XCTest setup/build can take longer than normal commands. Keep the device connected. If setup times out, use --debug to examine signing/build diagnostics.
 
 Android physical-device prerequisites:
   Enable USB debugging. Confirm that the device appears in agent-device devices --platform android.
   Android does not need the iOS runner signing setup. For React Native/Expo Metro reachability, read help react-native.
+
+iOS runner startup reasons (details.reason):
+  signing_no_development_team
+  signing_provisioning_profile_missing
+  bundle_identifier_already_registered
+  signing_unspecified
+  devtools_security_developer_mode_disabled: the DevToolsSecurity setting of the Mac. It says nothing about the Developer Mode toggle of the device.
+  simulator_service_hub_unavailable: the Xcode is too old for the host macOS. macOS refuses to load its DTServiceHub, so every runner launch fails. The command stops as soon as the refusal reaches runner.log. On the daemon host, select an Xcode that supports this macOS.
+  simulator_set_destination_not_found: the selected Xcode cannot resolve a simulator from --ios-simulator-device-set. The reason names the set.
+  device_developer_mode_disabled: read from the iPhone's own report before the runner builds. It is the only device state that stops a run before the run starts.
+  device_developer_disk_image_unavailable: also read from the device. It is published on a startup failure that named no cause of its own, because iOS 17+ mounts the developer disk image on demand during build and launch, and does not gate the build.
+  build_failed_unclassified: when nothing proved a cause.
+  The two device reasons are never inferred from tool output or from each other.
 
 Runner and daemon lifecycle (applies to simulators too):
   open without --relaunch is idempotent-foreground for an already-running app (it brings the process forward; it does not restart it). open --relaunch restarts the app. On iOS simulators, this is one simctl launch --terminate-running-process call instead of a separate terminate-then-launch.
