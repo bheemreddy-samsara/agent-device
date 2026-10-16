@@ -205,25 +205,25 @@ export const qaReportHelpTopics = {
     summary: 'Exploratory QA workflow with reproducible evidence',
     body: `agent-device help dogfood
 
-Use this when asked to dogfood, exploratory test, bug hunt, QA, or find issues in an app.
+Use this topic when the task is to dogfood, do exploratory tests, hunt bugs, do QA, or find issues in an app.
 
 Goal:
   Find user-visible issues from runtime behavior. Do not read app source or invent findings from code.
   Produce a concise report with severity, repro commands, expected/actual behavior, and evidence paths.
 
 Loop:
-  1. Identify target app/platform; ask only if missing.
-  2. Create output dirs and open the app. If auth or OTP is required, sign in or ask the user for the code.
-  3. Capture baseline snapshot -i and screenshot.
-  4. Map top-level navigation, then exercise primary flows and edge states.
+  1. Identify the target app and platform. Ask only if one of them is missing.
+  2. Create the output directories and open the app. If the app requires auth or an OTP, sign in or ask the user for the code.
+  3. Capture a baseline snapshot -i and a screenshot.
+  4. Map the top-level navigation. Then exercise the primary flows and edge states.
   5. For each issue, capture evidence and write the finding immediately, then continue.
   6. Close the session and reconcile the report summary.
-  Keep stateful commands serial within the same session. Parallel runs can pollute text fields, focus, alerts, and navigation state.
+  Keep stateful commands serial within the same session. Parallel runs can corrupt text fields, focus, alerts, and navigation state.
 
 Coverage:
-  Navigation, forms, empty/error/loading states, offline or retry behavior, permissions, settings, accessibility labels, orientation/keyboard, and obvious performance stalls.
-  React Native warning/error overlays can be real findings or test blockers. Capture them, use react-native dismiss-overlay if unrelated, re-snapshot, and report them.
-  Expo Go/dev-client shells: use the provided exp:// or dev-client URL and record whether the shell, project load, or app UI is being tested. On iOS dogfood, prefer agent-device open "Expo Go" <url> when Expo Go is the known shell, then snapshot -i to confirm the project UI rather than the runner splash.
+  Cover navigation, forms, empty/error/loading states, offline or retry behavior, permissions, settings, accessibility labels, orientation/keyboard, and obvious performance stalls.
+  React Native warning/error overlays can be real findings or test blockers. Capture them. If an overlay is unrelated, use react-native dismiss-overlay. Then take a new snapshot and report the overlays.
+  Expo Go/dev-client shells: use the provided exp:// or dev-client URL. Record which part is under test: the shell, the project load, or the app UI. On iOS dogfood, if Expo Go is the known shell, prefer agent-device open "Expo Go" <url>. Then run snapshot -i to confirm the project UI, not the runner splash.
   Android RN/Expo/Re.Pack dev server: direct Android localhost URL opens with a port auto-configure host reachability.
   Categories: visual, functional, UX, content, performance, diagnostics, permissions, accessibility.
   Severity: critical blocks a core flow/data/crashes; high breaks a major feature; medium has friction or workaround; low is polish.
@@ -244,25 +244,25 @@ Evidence commands:
 
 Evidence rules:
   Interactive/behavioral issues need step screenshots and usually a repro video.
-  Static/on-load issues can use one screenshot; set repro video to N/A.
-  Use screenshot --overlay-refs when showing the tappable target or broken state helps repro.
+  Static/on-load issues can use one screenshot. For these issues, set the repro video to N/A.
+  If it helps the repro to show the tappable target or the broken state, use screenshot --overlay-refs.
 
 Report shape:
   ./dogfood-output/report.md
-  Include date, platform, target app, session, scope, severity counts, and issues.
+  Include the date, platform, target app, session, scope, severity counts, and issues.
   For each finding: ID, severity, category, title, affected flow/screen, repro commands, expected, actual, evidence files, notes.
-  Target 5-10 well-evidenced issues when available. If no issues are found, report coverage completed and residual risk instead of claiming the app is bug-free.
+  When available, target 5-10 well-evidenced issues. If you find no issues, report the completed coverage and the residual risk. Do not claim that the app is bug-free.
 
 Rules:
   Findings must come from observed runtime behavior, not source reads.
-  After each mutation, use the --settle diff as evidence when available; otherwise re-snapshot.
+  After each mutation, use the --settle diff as evidence if it is available. If it is not available, take a new snapshot.
   Wait timeouts are integer milliseconds in the trailing positional: agent-device wait 'role=tab' 10000. Do not write duration suffixes such as 10s.
-  scroll takes a selector-less direction+amount form: agent-device scroll down 0.8. One gesture cannot travel further than 0.8 of the viewport axis, so a larger amount saturates rather than covering more ground; to cross several screens use agent-device scroll down --until <selector> or scroll bottom. Use --settle to wait for the UI to go quiet and get the settled diff.
-  Keep commands in the report reproducible; use selectors or refs from fresh snapshots, not guessed coordinates.
+  scroll takes a selector-less direction+amount form: agent-device scroll down 0.8. One gesture cannot travel further than 0.8 of the viewport axis. A larger amount saturates at that limit and does not travel further. To cross several screens, use agent-device scroll down --until <selector> or scroll bottom. Use --settle to wait for the UI to go quiet and get the settled diff.
+  Keep the commands in the report reproducible. Use selectors or refs from fresh snapshots, not guessed coordinates.
   Prefer refs for exploration and selectors for deterministic replay.
   Use logs, network, screenshot --overlay-refs, trace, perf frames, perf memory, native profiles, or react-devtools only when they add evidence to a specific issue.
   Never delete screenshots, videos, traces, or report artifacts during a session.
-  Escalate to help debugging or help react-devtools when runtime symptoms require those tools.`,
+  If runtime symptoms require those tools, escalate to help debugging or help react-devtools.`,
   },
   validate: {
     summary: 'Engineering self-validation with device evidence and cleanup',
