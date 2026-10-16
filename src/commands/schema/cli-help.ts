@@ -508,7 +508,7 @@ iOS physical-device prerequisites:
   If Xcode cannot choose a profile, set AGENT_DEVICE_IOS_PROVISIONING_PROFILE to the profile name/specifier, not a file path.
   AGENT_DEVICE_IOS_SIGNING_IDENTITY is optional. Omit it unless xcodebuild asks for a specific identity.
   The profile/team must allow AGENT_DEVICE_IOS_BUNDLE_ID and <id>.uitests.
-  A runner startup failure names its class in error details.reason, not only in prose. Branch on details.reason and follow hint. The message is for humans. The section "iOS runner startup reasons" lists each reason.
+  A runner startup failure names its class in error details.reason, not only in prose. Branch on details.reason and follow hint. The message is for humans. devtools_security_developer_mode_disabled is the DevToolsSecurity setting of the Mac, not the Developer Mode of the device. device_developer_mode_disabled is read from the device before the runner builds, and is the only device state that stops a run before the run starts. device_developer_disk_image_unavailable is published on a startup failure that named no cause of its own. The two device reasons are never inferred from tool output or from each other. The section "iOS runner startup reasons" gives the details of each reason.
   The first-run XCTest setup/build can take longer than normal commands. Keep the device connected. If setup times out, use --debug to examine signing/build diagnostics.
 
 Android physical-device prerequisites:
@@ -526,7 +526,6 @@ iOS runner startup reasons (details.reason):
   device_developer_mode_disabled: read from the iPhone's own report before the runner builds. It is the only device state that stops a run before the run starts.
   device_developer_disk_image_unavailable: also read from the device. It is published on a startup failure that named no cause of its own, because iOS 17+ mounts the developer disk image on demand during build and launch, and does not gate the build.
   build_failed_unclassified: when nothing proved a cause.
-  The two device reasons are never inferred from tool output or from each other.
 
 Runner and daemon lifecycle (applies to simulators too):
   open without --relaunch is idempotent-foreground for an already-running app (it brings the process forward; it does not restart it). open --relaunch restarts the app. On iOS simulators, this is one simctl launch --terminate-running-process call instead of a separate terminate-then-launch.
