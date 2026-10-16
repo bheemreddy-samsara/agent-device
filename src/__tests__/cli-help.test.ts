@@ -56,7 +56,7 @@ test('connect help documents cloud auth environment origins', async () => {
   assert.equal(result.code, 0);
   assert.equal(result.calls.length, 0);
   assert.match(result.stdout, /AGENT_DEVICE_CLOUD_BASE_URL/);
-  assert.match(result.stdout, /bridge\/control-plane API origin/);
+  assert.match(result.stdout, /bridge or control-plane API origin/);
   assert.match(result.stdout, /AGENT_DEVICE_DAEMON_AUTH_TOKEN/);
 });
 

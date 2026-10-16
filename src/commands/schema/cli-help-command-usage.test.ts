@@ -208,7 +208,7 @@ test('takeover command help documents lease-bound foreground and host API flows'
   assert.match(help, /until Ctrl\+C/);
   assert.match(help, /\/admin\/human-control\/holds/);
   assert.match(help, /active remote lease device/);
-  assert.match(help, /do not survive daemon restart/);
+  assert.match(help, /Holds are lost when the daemon restarts/);
 });
 
 test('connect command help lists lease id in usage and flags', async () => {

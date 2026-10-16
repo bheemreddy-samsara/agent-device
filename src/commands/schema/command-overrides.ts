@@ -14,7 +14,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'Manage installed provider plugins',
       description:
-        'Install, list, update, or remove npm provider plugins in AGENT_DEVICE_HOME (default ~/.agent-device). Changes take effect after restarting the local daemon. Use --json for structured results.',
+        'Install, list, update, or remove npm provider plugins in AGENT_DEVICE_HOME (default: ~/.agent-device). Changes take effect after a restart of the local daemon. For structured results, use --json.',
     },
     usageOverride: 'plugins list|add <package[@version]>|update <package>|remove <package>',
     listUsageOverride: 'plugins',
@@ -36,7 +36,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   auth: {
     text: {
       summary: 'Manage cloud login state',
-      description: 'Manage cloud login state used by remote daemon and cloud device workflows.',
+      description: 'Manage the cloud login state for remote daemon and cloud device workflows.',
     },
     usageOverride: 'auth status|login|logout',
     listUsageOverride: 'auth',
@@ -45,9 +45,9 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   },
   daemon: {
     text: {
-      summary: 'Stop a local daemon and clean up resources',
+      summary: 'Stop a local daemon and remove its retained resources',
       description:
-        'Stop a local daemon after verifying its PID/start-time identity. Use --clean to remove retained Apple runner processes and leases owned by that daemon.',
+        'Stop a local daemon after the command confirms its PID and start-time identity. To remove retained Apple runner processes and leases that the daemon owns, use --clean.',
     },
     usageOverride: 'daemon stop [--state-dir <path>]',
     listUsageOverride: 'daemon stop',
@@ -57,9 +57,9 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   },
   device: {
     text: {
-      summary: 'Inspect and recover enforced local device ownership without a daemon',
+      summary: 'Examine and recover enforced local device ownership without a daemon',
       description:
-        'Inspect enforced host-local device ownership claims without starting or contacting a daemon; status --stale only inspects proven-stale claims. release --stale settles a provably dead owner through exact-owner resource reconciliation and clears its claim last — live and uncertain owners always fail closed. Automatic reclamation still occurs during open and daemon startup.',
+        'Examine enforced host-local device ownership claims. The command does not start or contact a daemon. status --stale examines only proven-stale claims. release --stale settles a provably dead owner through exact-owner resource reconciliation, and clears its claim last. Live and uncertain owners always fail closed. Automatic reclamation still occurs during open and daemon startup.',
     },
     usageOverride:
       'device status|release [--platform <platform>] [--udid <udid>] [--serial <serial>]',
@@ -72,7 +72,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'Configure remote or provider state',
       description:
-        'Configure remote access without allocating a device. Direct providers validate credentials/resources before saving state and print the exact device/app preparation needed before open. AGENT_DEVICE_CLOUD_BASE_URL is the bridge/control-plane API origin; use AGENT_DEVICE_DAEMON_AUTH_TOKEN=adc_live_... for CI/service-token automation.',
+        'Configure remote access without a device allocation. Direct providers validate credentials and resources before they save state. They also print the exact device and app preparation that open needs. AGENT_DEVICE_CLOUD_BASE_URL is the bridge or control-plane API origin. For CI or service-token automation, use AGENT_DEVICE_DAEMON_AUTH_TOKEN=adc_live_...',
     },
     usageOverride:
       'connect [provider] [--remote-config <path>] [--daemon-base-url <url>] [--tenant <id>] [--run-id <id>] [--lease-id <id>] [--lease-backend <backend>] [--force] [--no-login]',
@@ -121,8 +121,8 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   },
   connection: {
     text: {
-      summary: 'Inspect the saved remote connection',
-      description: 'Inspect active remote connection state',
+      summary: 'Examine the saved remote connection',
+      description: 'Examine the active remote connection state',
     },
     usageOverride: 'connection status',
     listUsageOverride: 'connection',
@@ -132,7 +132,8 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   disconnect: {
     text: {
       summary: 'Clear remote connection state and release leases',
-      description: 'Disconnect remote daemon state, stop owned Metro companion, and release lease',
+      description:
+        'Disconnect the remote daemon state, stop the owned Metro companion, and release the lease',
     },
     listUsageOverride: 'disconnect',
     allowedFlags: ['shutdown'],
@@ -140,16 +141,16 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   },
   mcp: {
     text: {
-      summary: 'Start MCP server',
+      summary: 'Start the MCP server',
       description:
-        'Start the official stdio MCP server. It exposes structured command tools backed by the agent-device client.',
+        'Start the official stdio MCP server. It exposes structured command tools that use the agent-device client.',
     },
   },
   proxy: {
     text: {
       summary: 'Expose a local daemon through an HTTP tunnel',
       description:
-        'Expose the local daemon HTTP contract through a tunnel-friendly reverse proxy.\n\nRun this on the host that has access to simulators/devices, expose the printed local proxy URL through a tunnel, then point another machine at the tunnel URL with connect proxy.\n\nThe proxy starts or reuses a local HTTP daemon, accepts /health, /rpc, /upload and resumable /upload/* routes, and /artifacts plus /artifacts/*, and also accepts the same routes under /agent-device/*. Health is unauthenticated for reachability probes. Other routes require the generated bearer token printed at startup, or the explicit --daemon-auth-token value when provided. The proxy rewrites authorized client requests to the upstream daemon token instead of exposing the local daemon token.\n\nUse the /agent-device base path when connecting through cloudflared, ngrok, or another shared origin. Treat the bearer token as a secret; anyone with it can control the proxied daemon. This direct proxy flow does not use agent-device auth.\n\nExamples:\n  agent-device proxy --port 4310\n  cloudflared tunnel --url http://127.0.0.1:4310\n  agent-device connect proxy --daemon-base-url https://example.trycloudflare.com/agent-device --daemon-auth-token <token>',
+        'Expose the local daemon HTTP contract through a tunnel-friendly reverse proxy.\n\nDo the steps that follow:\n  1. Run this command on the host that has access to simulators and devices.\n  2. Expose the printed local proxy URL through a tunnel.\n  3. On a different machine, run connect proxy with the tunnel URL.\n\nThe proxy starts or reuses a local HTTP daemon. It accepts /health, /rpc, /upload and resumable /upload/* routes, and /artifacts plus /artifacts/*. It also accepts the same routes under /agent-device/*. Health is unauthenticated for reachability probes. Other routes require the generated bearer token that the proxy prints at startup, or the explicit --daemon-auth-token value when you give one. The proxy rewrites authorized client requests to the upstream daemon token, and does not expose the local daemon token.\n\nWhen you connect through cloudflared, ngrok, or a different shared origin, use the /agent-device base path. Keep the bearer token secret, because anyone with it can control the proxied daemon. This direct proxy flow does not use agent-device auth.\n\nExamples:\n  agent-device proxy --port 4310\n  cloudflared tunnel --url http://127.0.0.1:4310\n  agent-device connect proxy --daemon-base-url https://example.trycloudflare.com/agent-device --daemon-auth-token <token>',
     },
     listUsageOverride: 'proxy',
     allowedFlags: ['proxyHost', 'proxyPort', 'daemonAuthToken', 'stateDir'],
@@ -158,7 +159,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'Pause agent interactions while a person controls a device',
       description:
-        'Temporarily hand control of the active remote lease device to a person. The foreground command pauses state-changing agent commands, renews the hold until Ctrl+C, and then releases it. Read-only diagnostics remain available. Uses the active connection and --session, with normal tenant and lease admission. status lists holds on that device; release removes a hold owned by the admitted lease. The host-only /admin/human-control/holds API uses the separate local daemon token. Holds do not survive daemon restart. Local takeover without a remote device lease is not supported.',
+        'Temporarily give control of the active remote lease device to a person. The foreground command pauses state-changing agent commands, renews the hold until Ctrl+C, and then releases the hold. Read-only diagnostics stay available. The command uses the active connection and --session, with normal tenant and lease admission. status lists the holds on that device. release removes a hold that the admitted lease owns. The host-only /admin/human-control/holds API uses the separate local daemon token. Holds are lost when the daemon restarts. Local takeover without a remote device lease is not supported.',
     },
     usageOverride: 'takeover [status | release <hold-id>] [--session <name>]',
     listUsageOverride: 'takeover [status|release]',
@@ -181,7 +182,7 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
     text: {
       summary: 'React Native components, props/state/hooks, and render profiling',
       description:
-        'Inspect React Native components and profile their renders through the Metro dev server',
+        'Examine React Native components and profile their renders through the Metro dev server',
     },
     usageOverride:
       'react-devtools tree [@ref|Name]|find <Name>|inspect <@ref|Name>|errors|profile start|stop|report [Component]|commit [N]',
@@ -192,9 +193,9 @@ const SCHEMA_ONLY_CLI_COMMAND_SCHEMAS = {
   },
   web: {
     text: {
-      summary: 'Manage web automation backend',
+      summary: 'Manage the web automation backend',
       description:
-        'Install and inspect the managed web automation backend used by --platform web.\n\nFirst-run flow:\n  agent-device web setup\n  agent-device open "https://example.com" --platform web\n  agent-device snapshot -i --platform web\n  agent-device close --platform web\n\nRuntime web commands do not install the backend implicitly. If the managed backend is missing, run agent-device web setup. The backend is resolved only from the managed install in the effective agent-device state dir.\n\nUse web setup to install or reuse the pinned backend. Use web doctor after setup to verify browser backend health.',
+        'Install and examine the managed web automation backend that --platform web uses.\n\nFirst-run flow:\n  agent-device web setup\n  agent-device open "https://example.com" --platform web\n  agent-device snapshot -i --platform web\n  agent-device close --platform web\n\nRuntime web commands do not install the backend implicitly. If the managed backend is missing, run agent-device web setup. The backend resolves only from the managed install in the effective agent-device state dir.\n\nTo install or reuse the pinned backend, use web setup. After setup, use web doctor to confirm the health of the browser backend.',
     },
     usageOverride: 'web setup | web doctor',
     listUsageOverride: 'web setup|doctor',
