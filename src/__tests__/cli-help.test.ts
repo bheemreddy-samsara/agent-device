@@ -213,7 +213,7 @@ test('help unknown command prints error plus root decision card and skips daemon
   assert.equal(result.calls.length, 0);
   assert.match(result.stderr, /Error \(INVALID_ARGS\): Unknown command: not-a-command/);
   assert.match(result.stdout, /All \d+ commands: agent-device help commands/);
-  assert.match(result.stdout, /When starting a task with a known app/);
+  assert.match(result.stdout, /When you start a task with a known app/);
   assert.doesNotMatch(result.stdout, /Global Flags:/);
 });
 
