@@ -54,6 +54,9 @@ agent-device action-button
 agent-device fold closed
 agent-device fold half-open
 agent-device fold open
+agent-device telephony call 5551234
+agent-device telephony cancel 5551234
+agent-device telephony sms 5551234 "Your code is 1234"
 agent-device device status --platform android --serial emulator-5554
 agent-device device release --stale
 agent-device daemon stop --clean
@@ -76,6 +79,7 @@ Device claims and the daemon:
 
 - `device status` lists host-local device claims without starting or contacting a daemon; `--stale` shows the stale claims it hides by default (owner exited, PID reused, state directory deleted, or daemon replaced), some of whose owners may still be running. Scope it with `--platform` plus `--udid` (Apple) or `--serial` (Android). A claim held by another live or uncertain owner blocks `open`, unless the device rebooted after the claim was taken: then `open` settles that owner's durable resources, takes the claim, and reports the release in `warnings`.
 - `device release --stale` settles the durable resources of an owner that provably can't release its claim (its process exited or a newer daemon replaced it), then clears the claim. Live, uncertain, PID-reused, corrupt, and deleted-state-directory claims are refused with the reason. See [Sessions](/agent-device/pr-preview/pr-3714/docs/sessions.md#release-a-device-another-session-or-workspace-holds).
+- A command that needs the shared local daemon starts it for its state directory when none runs; `device status` and `device release --stale` never contact one. When the running daemon comes from another version or build, the command replaces it only if it reports no work: no request in flight, no session, no repair session and no live lease. A resumable upload still streaming and a host human-control hold that names no lease are not counted, so a replacement can end them. Otherwise the command fails with `daemon-busy` and leaves the daemon alone. A daemon from a release that predates this check is never replaced, and fails with `daemon-incompatible`. End a busy or older daemon deliberately with `daemon stop`. Node.js clients choose this per client; see [Daemon lifecycle](/agent-device/pr-preview/pr-3714/docs/client-api.md#daemon-lifecycle).
 - `daemon stop --state-dir <path>` stops a local daemon after verifying its identity. `--clean` also removes the Apple runner processes and leases that daemon retained.
 
 Open apps and links:
@@ -115,6 +119,15 @@ Fold a foldable device:
 - `COMMAND_FAILED` with `reason: fold-pose-unverified` means the hinge reports another pose; `fold-pose-unsettled` means it reached `half-open` but never came to rest; `fold-pose-dispatched-unverified` means the pose was sent but the first hinge-angle read returned no sample, so check the lit panel with a screenshot; `hingeReadFailure` holds the read's own failure.
 - `UNSUPPORTED_OPERATION` covers single-panel devices (`single-panel-device` on Android) and simulators in a non-default `--ios-simulator-device-set` (`unsupported-device-scope`; use the default set). Physical devices are refused.
 - On Android, `fold` confirms the pose from the device state the emulator commits and reports `hingeAngleDegrees` as the hinge sensor reads it: the angle the AVD profile defines for the posture, such as 0°, 90°, and 180° on the Pixel folds or 15°, 90°, and 165° on the generic 7.6in Foldable. It also dismisses the lock screen that folding to the cover display can raise. For panels, poses, and timings, see `agent-device help foldable`.
+
+Simulate an incoming call or SMS:
+
+- `telephony call <number>` starts an incoming call from `<number>` on an Android emulator; `telephony accept <number>` answers it and `telephony cancel <number>` ends it. `telephony sms <number> <text>` delivers a text message from `<number>`. Use it to check how an app reacts when a call or message arrives, for example whether video playback pauses and resumes.
+- The events go through the emulator console (`adb emu gsm call|accept|cancel`, `adb emu sms send`), so they work on Android emulators reached through the local adb executor. Other adb executors, such as an ADB provider, have not been verified. Physical Android devices refuse with `UNSUPPORTED_OPERATION` and `reason: unsupported-device-kind`; iOS, macOS, tvOS, web, Linux, HarmonyOS, Vega, and Limrun and WebDriver (Appium) sessions refuse with `UNSUPPORTED_OPERATION` too: agent-device sends telephony only through adb and does not drive Appium's own call or SMS simulation.
+- `<number>` is digits with an optional leading `+`, up to 15 digits. Quote the SMS text, or pass it as the remaining words; the text is sent as one argument, with backslashes and line breaks (LF, or CRLF sent as LF) escaped for the emulator console. Tabs, lone carriage returns, and other C0 or C1 control characters are refused.
+- The emulator console answers some events with an error, such as `accept` for a number with no call. That fails with `COMMAND_FAILED`, `reason: telephony-console-refused`, and the console's own `consoleReason`. `cancel` for a number with no call succeeds, because the console answers it with `OK`.
+- The emulator drops SMS characters outside the Basic Multilingual Plane, such as emoji, and delivers the rest of the text. `textLength` counts the text as sent.
+- The call screen or message notification can cover the app. Re-snapshot before using refs from before the event.
 
 Remote daemons and tenants:
 
@@ -296,11 +309,12 @@ agent-device snapshot -i --platform apple --target desktop
 - `--platform macos`, or `--platform apple --target desktop`, selects the host Mac as a `desktop` target.
 - Use an `app` session for normal app control: `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `back`, `screenshot`, `record`. In app sessions, `screenshot` captures the app window, not the whole desktop.
 - Use the other surfaces to inspect desktop-wide UI before choosing an app, mainly with `snapshot`, `get`, `is`, and `wait`: `frontmost-app` is the focused app, `desktop` is the visible windows across the desktop, and `menubar` is the active app's menu bar and system menu extras. To click or fill inside one app afterwards, open it in an `app` session.
+- `open <app> --platform macos` attaches to a copy of the app that is already running, including one you started yourself from a script or supervisor. If that copy has not finished registering with macOS, the open waits briefly for it before handing the URL over, so a copy that registers within that window keeps the arguments it was started with; a copy still unregistered after the wait gets the plain `open`, which can start a second instance.
 - `open <app> --platform macos --surface menubar` targets one app's menu bar extras. Prefer it for status-item apps, which often expose little through the `app` surface.
 - Prefer selectors and `@ref`s; window positions shift between runs, so raw x/y is less stable. Use `click --button secondary` for context menus, then run `snapshot -i` again.
 - On `frontmost-app` and `menubar`, `press` and `click` post synthetic mouse events (`desktop` is inspect-only). `--hold-ms` keeps the button down (at least 40 ms, default 60 ms), `--count` sends independent clicks, and `--double-tap` sends double-click pairs. Apps like Finder read two clicks at the default interval as one double-click; pass an `--interval-ms` longer than the system double-click time to keep them apart. Long schedules get the time they need, and a cancelled or interrupted click releases the button. `--jitter-px` is ignored on these surfaces.
 - macOS also supports `clipboard read|write`, `trigger-app-event`, `logs`, `network dump`, `audio probe`, `alert`, and part of `settings` (see [Settings helpers](#settings-helpers)). `audio probe` samples host system audio and needs Screen Recording permission; see [Debugging & Profiling](/agent-device/pr-preview/pr-3714/docs/debugging-profiling.md#audio-probes).
-- Mobile-only commands are unsupported on macOS: `boot`, `shutdown`, `home`, `orientation`, `app-switcher`, `action-button`, `fold`, `install`, `reinstall`, `install-from-source`, and `push`.
+- Mobile-only commands are unsupported on macOS: `boot`, `shutdown`, `home`, `orientation`, `app-switcher`, `action-button`, `fold`, `install`, `reinstall`, `uninstall`, `install-from-source`, and `push`.
 
 Set `AGENT_DEVICE_MACOS_APP_BACKEND=native` to run macOS app sessions without XCTest. There is no Automation Mode overlay, the app can stay behind other windows, and your pointer stays yours while a drawn pointer shows each action.
 
@@ -383,6 +397,7 @@ agent-device alert dismiss
 - `alert` (same as `alert get`) inspects or handles system alerts on iOS simulator, macOS desktop, and Android permission dialogs. On iOS it also covers app-owned modal popups with native blocking markers.
 - Use `alert get` for a quick check, and `alert wait <short-ms>` only when a prompt may appear after async work. Don't use `settings permission` to answer a dialog already on screen; it is for setup before a flow.
 - `accept` and `dismiss` are sent once on every platform and never replayed, even if the response is lost. On iOS the runner activates the button once, then only observes until the alert disappears, changes, or the deadline expires. A changed alert does not prove a permission was granted; verify the app outcome.
+- On the Apple XCUITest runner, `dismiss` activates only a button its decline list recognizes (`Cancel`, `Don't Allow`, `Ask App Not to Track`, and similar English labels), or the close button of a popover whose native marker reads "dismiss popup". It never taps anything else: unknown, reworded, or fully localized decline copy fails with `error.code: ALERT_BUTTON_NOT_FOUND` and `details.dispatched: no`, tapping nothing, rather than guessing at an affirmative ([#3627](https://github.com/callstack/agent-device/issues/3627)). A button choice that finds no button to name answers with that code and `dispatched: no` for `accept` too. To answer a prompt with unrecognized wording, read the labels with `alert get`, then press the button by label through `snapshot` + `press @ref`. The macOS helper's `dismiss` keeps its own rules (the app's cancel-button attribute, its label list, and a last-button fallback).
 - An unreadable or ambiguous capture after the action fails with `error.details.runnerErrorCode: ALERT_CONFIRMATION_UNAVAILABLE`; an expired runner deadline fails with `ALERT_DEADLINE_EXCEEDED`. Neither proves the alert is gone or that nothing happened. Run `alert get` before acting again.
 - iOS runner refusals carry `error.details.reason`: `runner_busy` means the runner ran nothing (`dispatched: no`); `runner_main_thread_timeout` means the action may still land (`dispatched: unknown`).
 - If a sheet or permission prompt is visible but `alert` reports none, treat it as app UI: run `snapshot -i -s "<visible label>"`, then `press @ref`. Android alert support is snapshot-derived, and not every iOS simulator permission surface is a native alert.
@@ -434,6 +449,8 @@ A `click` or `press` whose target the daemon resolves to a point (`@ref` or sele
 Text-entry errors and what to do:
 
 - `TEXT_INPUT_NOT_FOCUSED` (`type`): focus a visible text input and retry. If accessibility does not expose the input, focus it by coordinates.
+- `NO_TEXT_INPUT_AT_POINT` (iOS `fill` under a degraded XCTest channel — coordinate, ref, selector, and replay fills all aim at a point): the runner identified no text input under that point, so it refused before dispatching anything (`error.details.reason` is `no_text_input_at_point`, `dispatched: no`) and no field changed. A ref or selector fill aims at the centre of the rect it resolved to, so an outer container or a non-input node can land outside the real field: run `snapshot -i`, pick the input node itself, and aim inside its rect.
+- `TEXT_INPUT_PROBE_UNAVAILABLE` (iOS `fill` under a degraded XCTest channel): the runner's input lookup for the point could not answer, so it refused before dispatching anything (`error.details.reason` is `text_input_probe_unavailable`, `dispatched: no`). Unlike the refusal above this does not mean the point has no input — retry the fill, or run `snapshot -i` once its capture reads back.
 - `TEXT_INPUT_SYNTHESIS_UNAVAILABLE` (iOS `type "\n"` with the software keyboard hidden): show the software keyboard, then retry.
 - `TEXT_INPUT_COMMIT_NOT_OBSERVED` (iOS `fill`): the runner could not confirm the text landed before its deadline, or the text equals the field's placeholder. The field may hold none, part, or all of it. Run `snapshot -i`; if it doesn't match, retry with the full text quoted and `fill --delay-ms 80`.
 - `TEXT_INPUT_CLEAR_NOT_OBSERVED` (iOS `fill`): the old text was not seen cleared, so nothing was typed. Inspect with `snapshot -i`, then retry `fill`.
@@ -481,7 +498,8 @@ Read-only commands such as `get`, `snapshot`, and `wait` report `no`, and so do 
 
 These refusals carry `dispatched: no` and a typed `error.details.reason`, so branch on the reason, not the message:
 
-- `session_or_device_selector_required`: the request had neither an active session nor a device selector. Open a session or pass `--platform`.
+- `session_or_device_selector_required`: the request had neither an active session nor a device selector. Open a session or pass `--platform`. Commands that require a session or a device selector before they read the request's target (`boot`, `clipboard`, `push`, `apps`, and siblings) answer this even when the request named a session the daemon does not hold.
+- `named_session_not_found`: the request named a session this daemon does not hold, with no device selector to fall back on (or no selector it can answer without the session — `appstate` on an Apple target refuses this even with an explicit device). The daemon lost its sessions (replaced or restarted), or the name is wrong; `agent-device session list` shows what it holds. Commands that require a session before they read anything else (interactions, `find` clicks, RN tooling, `screenshot`-style generic commands) answer the same missing-session cause as a message-level `SESSION_NOT_FOUND` carrying no `details.reason` — some carry a `dispatched` stamp from the disclosure layer, some carry no `details` at all; read the cause from the message, and read a present `dispatched` with its usual meaning.
 - `session_app_required`: a per-app setting was requested but the session binds no app and none was named. Run `open <app>`, or name the app on the request for a setting that takes one (`settings clear-app-state com.example.app`).
 - `app_not_installed`: the named app resolves to no installed app on the target. Run `apps --all` for the exact bundle id or package, or install the app, then retry.
 - `webdriver_route_unsupported`: on a WebDriver-backed device cloud, the driver does not implement the route; the limit is the cloud's driver, not the device. A command with a second route (`orientation` has two) tries it before failing. After an ambiguous failure on that transport, only read-only requests are resent.
@@ -574,6 +592,15 @@ agent-device reinstall com.example.app ./build/MyApp.app --platform ios
 ```
 
 - `reinstall <app> <path>` uninstalls and installs in one command, for login/logout resets and deterministic test setup. Device coverage, formats, and remote upload match `install`.
+
+## App uninstall
+
+```bash
+agent-device uninstall com.example.app --platform android
+```
+
+- `uninstall <app>` removes an installed app, for example to start a test without the app installed. Android (ADB), iOS simulators, and CoreDevice iOS devices are supported.
+- A package name or bundle id that is not installed succeeds with `wasInstalled: false`; another name that matches nothing installed fails with `APP_NOT_INSTALLED`.
 
 ## App install from source URL
 
