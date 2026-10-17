@@ -222,6 +222,7 @@
     "dist",
     "apple/macos-helper",
     "!apple/macos-helper/**/.build",
+    "!apple/macos-helper/Tests",
     "apple/snapshot-bridge",
     "apple/fold-helper",
     "android/snapshot-helper/dist",
