@@ -482,26 +482,24 @@ private func numberAttribute(_ element: AXUIElement, attribute: String) -> Doubl
   return number.doubleValue
 }
 
-private struct OnScreenWindow {
+struct OnScreenWindow {
   let number: Int
   let bounds: CGRect
 }
 
-/// The pid's normal-layer windows, front to back. Bounds and owners need no Screen Recording
-/// permission; only titles do.
-private func onScreenWindows(pid: pid_t) -> [OnScreenWindow] {
-  guard
-    let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-      as? [[String: Any]]
-  else {
-    return []
-  }
-  return info.compactMap { entry in
+let frontWindowLayer = 0
+
+/// The pid's visible, nonempty normal-layer windows, front to back.
+func onScreenWindows(pid: pid_t, windowInfo: [[String: Any]]) -> [OnScreenWindow] {
+  windowInfo.compactMap { entry in
     guard (entry[kCGWindowOwnerPID as String] as? Int32) == pid,
-      (entry[kCGWindowLayer as String] as? Int) == 0,
+      (entry[kCGWindowLayer as String] as? Int) == frontWindowLayer,
+      (entry[kCGWindowIsOnscreen as String] as? Bool) == true,
+      let alpha = entry[kCGWindowAlpha as String] as? Double, alpha > 0,
       let number = entry[kCGWindowNumber as String] as? Int,
       let boundsDict = entry[kCGWindowBounds as String] as? NSDictionary,
-      let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary)
+      let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
+      bounds.width > 0, bounds.height > 0
     else {
       return nil
     }
@@ -509,8 +507,13 @@ private func onScreenWindows(pid: pid_t) -> [OnScreenWindow] {
   }
 }
 
-private func frontWindowFrame(pid: pid_t) -> CGRect? {
-  onScreenWindows(pid: pid).first?.bounds
+func appWindowInfo() -> [[String: Any]] {
+  CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+    as? [[String: Any]] ?? []
+}
+
+func frontWindowFrame(pid: pid_t, windowInfo: [[String: Any]] = appWindowInfo()) -> CGRect? {
+  onScreenWindows(pid: pid, windowInfo: windowInfo).first?.bounds
 }
 
 private let returnVirtualKey: CGKeyCode = 36

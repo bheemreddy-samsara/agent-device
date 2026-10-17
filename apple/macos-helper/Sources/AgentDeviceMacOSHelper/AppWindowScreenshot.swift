@@ -10,14 +10,9 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
     throw HelperError.commandFailed("app window screenshots require macOS 14 or newer")
   }
   let pid = app.processIdentifier
-  let windowInfo = CGWindowListCopyWindowInfo(
-    [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
-  let frontWindowID = frontCaptureWindowNumber(windowInfo, pid: pid)
+  let frontWindowID = onScreenWindows(pid: pid, windowInfo: appWindowInfo()).first?.number
   let content = try awaitShareableContent()
-  let candidates = content.windows.filter {
-    $0.owningApplication?.processID == pid && $0.windowLayer == 0 && $0.frame.width > 0
-      && $0.frame.height > 0
-  }
+  let candidates = content.windows.filter { $0.owningApplication?.processID == pid }
   let window: SCWindow
   let selection = frontCaptureWindow(
     candidates, frontWindowID: frontWindowID, windowID: { Int($0.windowID) })
@@ -52,23 +47,6 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
     throw HelperError.commandFailed("screenshot failed")
   }
   try writePNG(capturedImage, to: outPath)
-}
-
-/// WindowServer returns windows front to back. Invisible and empty windows cannot be capture targets.
-func frontCaptureWindowNumber(_ windowInfo: [[String: Any]], pid: pid_t) -> Int? {
-  for entry in windowInfo {
-    guard (entry[kCGWindowOwnerPID as String] as? Int32) == pid,
-      (entry[kCGWindowLayer as String] as? Int) == 0,
-      (entry[kCGWindowIsOnscreen as String] as? Bool) == true,
-      let alpha = entry[kCGWindowAlpha as String] as? Double, alpha > 0,
-      let boundsDict = entry[kCGWindowBounds as String] as? NSDictionary,
-      let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
-      bounds.width > 0, bounds.height > 0,
-      let number = entry[kCGWindowNumber as String] as? Int
-    else { continue }
-    return number
-  }
-  return nil
 }
 
 /// Why an app screenshot refuses. The capture is the app's front window or nothing: another

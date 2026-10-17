@@ -10,7 +10,7 @@ private struct Candidate: Equatable {
 
 /// An app screenshot captures the front window or refuses; it never substitutes another window.
 final class AppWindowScreenshotTests: XCTestCase {
-  func testSelectsTheFirstVisibleNonemptyNormalLayerWindowOfTheApp() {
+  func testCaptureIdentityAndScrollAndClickFallbackFrameSelectTheSameEligibleFrontWindow() {
     let windows = [
       windowInfo(id: 1, pid: 99),
       windowInfo(id: 2, layer: 1),
@@ -22,9 +22,13 @@ final class AppWindowScreenshotTests: XCTestCase {
       windowInfo(id: 8),
     ]
 
-    let frontID = frontCaptureWindowNumber(windows, pid: 42)
+    let frontID = onScreenWindows(pid: 42, windowInfo: windows).first?.number
     let selected = frontCaptureWindow([7, 8], frontWindowID: frontID, windowID: { $0 })
 
+    // Scroll and the click actionWindow fallback both consume frontWindowFrame.
+    XCTAssertEqual(
+      frontWindowFrame(pid: 42, windowInfo: windows),
+      CGRect(x: 10, y: 10, width: 20, height: 20))
     XCTAssertEqual(frontID, 7)
     XCTAssertEqual(try selected.get(), 7)
   }
@@ -36,9 +40,10 @@ final class AppWindowScreenshotTests: XCTestCase {
       windowInfo(id: 3, width: 0),
       windowInfo(id: 4, height: 0),
     ]
-    let frontID = frontCaptureWindowNumber(windows, pid: 42)
+    let frontID = onScreenWindows(pid: 42, windowInfo: windows).first?.number
     let selected = frontCaptureWindow([5], frontWindowID: frontID, windowID: { $0 })
 
+    XCTAssertNil(frontWindowFrame(pid: 42, windowInfo: windows))
     XCTAssertNil(frontID)
     XCTAssertThrowsError(try selected.get()) { error in
       XCTAssertEqual(error as? AppWindowScreenshotRefusal, .windowNotFound)
