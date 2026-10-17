@@ -22,7 +22,7 @@ final class AppWindowScreenshotTests: XCTestCase {
       windowInfo(id: 8),
     ]
 
-    let frontID = onScreenWindows(pid: 42, windowInfo: windows).first?.number
+    let frontID = frontWindow(pid: 42, windowInfo: windows)?.number
     let selected = frontCaptureWindow([7, 8], frontWindowID: frontID, sharingState: 1, windowID: { $0 })
 
     // Scroll and the click actionWindow fallback both consume frontWindowFrame.
@@ -33,6 +33,17 @@ final class AppWindowScreenshotTests: XCTestCase {
     XCTAssertEqual(try selected.get(), 7)
   }
 
+  func testSkipsAppModalAlertInFrontOfNormalLayerWindow() throws {
+    let windows = [windowInfo(id: 8, layer: 8), windowInfo(id: 3)]
+    let front = frontWindow(pid: 42, windowInfo: windows)
+    let selected = frontCaptureWindow(
+      [8, 3], frontWindowID: front?.number, sharingState: front?.sharingState, windowID: { $0 })
+
+    XCTAssertEqual(front?.number, 3)
+    XCTAssertEqual(try selected.get(), 3)
+    XCTAssertEqual(frontWindowFrame(pid: 42, windowInfo: windows), front?.bounds)
+  }
+
   func testRefusesWhenOnlyInvisibleOrEmptyWindowsRemain() {
     let windows = [
       windowInfo(id: 1, onScreen: false),
@@ -40,7 +51,7 @@ final class AppWindowScreenshotTests: XCTestCase {
       windowInfo(id: 3, width: 0),
       windowInfo(id: 4, height: 0),
     ]
-    let frontID = onScreenWindows(pid: 42, windowInfo: windows).first?.number
+    let frontID = frontWindow(pid: 42, windowInfo: windows)?.number
     let selected = frontCaptureWindow([5], frontWindowID: frontID, sharingState: 1, windowID: { $0 })
 
     XCTAssertNil(frontWindowFrame(pid: 42, windowInfo: windows))
@@ -70,7 +81,7 @@ final class AppWindowScreenshotTests: XCTestCase {
 
   func testCaptureExclusionSurvivesWindowSelectionAndNeverSubstitutesAnotherWindow() {
     let windows = [windowInfo(id: 3, sharingState: 0), windowInfo(id: 7)]
-    let front = onScreenWindows(pid: 42, windowInfo: windows).first
+    let front = frontWindow(pid: 42, windowInfo: windows)
     XCTAssertEqual(front?.number, 3)
     XCTAssertEqual(front?.sharingState, 0)
 
@@ -84,7 +95,7 @@ final class AppWindowScreenshotTests: XCTestCase {
 
     var entry = windowInfo(id: 3)
     entry.removeValue(forKey: kCGWindowSharingState as String)
-    let unknown = onScreenWindows(pid: 42, windowInfo: [entry]).first
+    let unknown = frontWindow(pid: 42, windowInfo: [entry])
     let selected = frontCaptureWindow(
       [3], frontWindowID: unknown?.number, sharingState: unknown?.sharingState, windowID: { $0 })
     XCTAssertEqual(try selected.get(), 3)

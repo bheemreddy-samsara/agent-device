@@ -10,7 +10,7 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
     throw HelperError.commandFailed("app window screenshots require macOS 14 or newer")
   }
   let pid = app.processIdentifier
-  let frontWindow = onScreenWindows(pid: pid, windowInfo: appWindowInfo()).first
+  let frontWindow = frontWindow(pid: pid)
   let frontWindowID = frontWindow?.number
   let content = try awaitShareableContent()
   let candidates = content.windows.filter { $0.owningApplication?.processID == pid }

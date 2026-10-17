@@ -306,10 +306,7 @@ private func perform(_ target: PressTarget) -> BackgroundDeliveryMechanism? {
 /// own on-screen windows, its menus and sheets included, and never on a menu bar element: the app
 /// owns its menu bar's window too, so the window check alone does not exclude it.
 private func requireAppWindowPoint(_ point: CGPoint, app: NSRunningApplication) throws {
-  guard
-    let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-      as? [[String: Any]]
-  else {
+  guard let info = appWindowInfo() else {
     throw refusal(.noAccessibleTarget, "the app's on-screen windows could not be read", app: app)
   }
   let inAppWindow = info.contains { entry in
@@ -488,6 +485,7 @@ struct OnScreenWindow {
   let sharingState: Int?
 }
 
+/// Only normal-layer windows qualify; app-modal alerts at level 8 are excluded.
 let frontWindowLayer = 0
 
 /// The pid's visible, nonempty normal-layer windows, front to back.
@@ -509,13 +507,17 @@ func onScreenWindows(pid: pid_t, windowInfo: [[String: Any]]) -> [OnScreenWindow
   }
 }
 
-func appWindowInfo() -> [[String: Any]] {
+func appWindowInfo() -> [[String: Any]]? {
   CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-    as? [[String: Any]] ?? []
+    as? [[String: Any]]
 }
 
-func frontWindowFrame(pid: pid_t, windowInfo: [[String: Any]] = appWindowInfo()) -> CGRect? {
-  onScreenWindows(pid: pid, windowInfo: windowInfo).first?.bounds
+func frontWindow(pid: pid_t, windowInfo: [[String: Any]] = appWindowInfo() ?? []) -> OnScreenWindow? {
+  onScreenWindows(pid: pid, windowInfo: windowInfo).first
+}
+
+func frontWindowFrame(pid: pid_t, windowInfo: [[String: Any]] = appWindowInfo() ?? []) -> CGRect? {
+  frontWindow(pid: pid, windowInfo: windowInfo)?.bounds
 }
 
 private let returnVirtualKey: CGKeyCode = 36
