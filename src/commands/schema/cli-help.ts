@@ -213,7 +213,7 @@ Shapes:
   For repeated iOS smoke checks, use press <x> <y> --count <n> --jitter-px <n> for tap series, and swipe <x1> <y1> <x2> <y2> --count <n> for drag series.
 
 Platform quirks:
-  iOS simulator transform/pinch/rotate use private XCTest synthesis for a continuous two-finger pan/scale/rotation path. Verify app metrics. Do not assume that requested values map exactly to recognizer output.
+  iOS simulator transform/pinch/rotate use private XCTest synthesis for a continuous two-finger pan/scale/rotation path. For these iOS simulator gestures, verify app metrics. Do not assume that requested values map exactly to recognizer output.
   Android transform injects a geometric two-finger path. App recognizers may report pan/scale/rotation values that are not exact. Unless the app exposes stable metrics, verify semantic app state or coarse per-component effects instead of exact numeric deltas. If you need exact values on Android, prefer isolated gesture pan --pointer-count 2, gesture pinch, or gesture rotate over one combined transform:
     agent-device gesture transform 200 420 80 -40 2 35 700 --platform android
     agent-device wait text "pan changed yes" 3000 --platform android
@@ -430,7 +430,7 @@ React Native dev loop:
   Android RN/Expo/Re.Pack dev server: direct Android localhost URL opens with a port auto-configure host reachability. For app/package launches, run metro prepare when the app cannot reach the local dev server.
   Verify Metro/Re.Pack from the same host context that owns the dev server. If a sandboxed shell cannot curl localhost:8081/status but an unrestricted host shell can, the dev server is running and the sandbox probe is not authoritative.
   adb reverse only affects Android device-to-host traffic. It does not prove host-to-dev-server reachability, and it does not fix a redbox caused by a stale or wrong bundle/app state.
-  Multiple local worktrees can reuse one native iOS simulator build. Run the dev server of each worktree on a different port. Open the same installed app on different simulators with explicit runtime hints:
+  Multiple local worktrees can reuse one native iOS simulator build. To do this, run the dev server of each worktree on a different port, and open the same installed app on different simulators with explicit runtime hints:
     agent-device open "React Navigation Example" --platform ios --device "iPhone 17" --session rn-a --metro-host 127.0.0.1 --metro-port 8081 --relaunch
     agent-device open "React Navigation Example" --platform ios --device "iPhone 17 Pro" --session rn-b --metro-host 127.0.0.1 --metro-port 8082 --relaunch
   Before launch, an iOS simulator open writes the per-simulator debug server settings of bare React Native. A detected Expo development client receives its server URL through a launch link instead. Use separate sessions/devices. When you finish, close both sessions. Rebuild only for native changes, or for dependency changes that affect the binary. One simulator cannot run two copies of the same bundle id.
@@ -748,7 +748,7 @@ Rules:
   Do not let iOS simulator-set scoping hide macOS desktop targets.
   Prefer refs/selectors over raw coordinates.
   macOS snapshot rects are window-space. Use current refs or overlay refs. Do not guess coordinates.
-  On the default XCTest backend, a read (snapshot, get, find) of a session app behind other windows does not raise the app. The read gets its answer from the app where the app is. Interactions and a window-level screenshot of that app still bring it forward.`,
+  On the default XCTest backend, a read (snapshot, get, find) of a session app behind other windows does not raise the app. The read gets its answer from the app where the app is. On the default XCTest backend, interactions and a window-level screenshot of that app still bring it forward.`,
   },
   web: {
     summary: 'Minimal browser workflow with the managed web backend',
