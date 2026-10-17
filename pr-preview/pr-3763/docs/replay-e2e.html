@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3763/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3763/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3763/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3763/static/js/index.0a1641bb83.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3763/static/js/index.277aa72bad.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -285,7 +285,7 @@ fresh snapshot can be captured to verify against), the divergence cause is
 <ul>
 <li><strong><code>step</code></strong> — the 1-based plan index and its source file/line (through Maestro <code>runFlow</code> includes).</li>
 <li><strong><code>screen</code></strong> — a fresh post-failure snapshot digest with actionable refs, or <code>unavailable</code> with a reason/hint when capture failed or was sparse (never a stale tree).</li>
-<li><strong><code>suggestions</code></strong> — up to 5 ranked, re-resolved candidates for the failing selector (id match ranks above role+label, which ranks above label-only), each with a <code>basis</code> you can inspect before acting.</li>
+<li><strong><code>suggestions</code></strong> — up to 5 ranked, re-resolved candidates for the failing selector (id match ranks above role+label, which ranks above label-only), each with a <code>basis</code> you can inspect before acting. For a verified <code>target-v1</code> annotation, equally strong candidates in the recorded scroll region rank first; document order breaks remaining ties.</li>
 <li><strong><code>resume</code></strong> — whether and how to continue without re-running the script from the top.</li>
 </ul>
 <div class="rp-codeblock language-jsonc"><div class="rp-codeblock__content"><div class="rp-codeblock__content__scroll-container rp-scrollbar rp-scrollbar--always"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0" data-lang="jsonc"><code><span class="line"><span style="color:var(--shiki-foreground)">{</span></span>
