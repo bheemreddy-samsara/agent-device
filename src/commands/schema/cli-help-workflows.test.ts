@@ -45,7 +45,7 @@ test('usageForCommand resolves debugging help topic', async () => {
   assert.match(help, /prefill with clipboard write "some text"/);
   assert.match(help, /Android Gboard handwriting\/stylus UI can capture text/);
   assert.match(help, /targetInput\/actualInput details/);
-  assert.match(help, /Do not keep retrying fill\/type against the same field/);
+  assert.match(help, /On Android, do not keep retrying fill\/type against the same field/);
 });
 
 test('usageForCommand resolves manual QA help topic', async () => {

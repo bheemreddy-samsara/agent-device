@@ -76,7 +76,7 @@ Logs:
     agent-device logs path
   Do not cat a full stale log into the agent context. When necessary, open or grep only the relevant window.
   logs clear --restart is the compact command that clears old logs and starts a fresh capture. Do not split it into logs stop, logs clear, logs start.
-  On iOS simulators, logs scope by bundle id and resolved app executable. Use logs instead of raw simctl log stream predicates.
+  On iOS simulators, logs scope by bundle id and resolved app executable. Thus, on iOS simulators, use logs instead of raw simctl log stream predicates.
   On iOS physical devices, logs clear --restart relaunches the session app through devicectl process launch --console, so that stdout/stderr can be captured.
   To capture launch-time stdout/stderr on an iOS simulator, use --launch-console on the direct app launch:
     agent-device open MyApp --platform ios --relaunch --launch-console ./artifacts/app.console.log
@@ -187,7 +187,7 @@ Text-entry quirks:
     1. Read the diagnostic targetInput/actualInput details.
     2. If necessary, examine keyboard status or get.
     3. Switch or disable handwriting outside the command plan.
-  Do not keep retrying fill/type against the same field while the IME owns focus. If the exact target changes but app-owned formatting prevents raw equality, fill succeeds with verification: "unconfirmed" plus target-bound requested/before/after evidence. Examine that evidence. Do not retry the same mutation.
+  On Android, do not keep retrying fill/type against the same field while the IME owns focus. On Android, if the exact target changes but app-owned formatting prevents raw equality, fill succeeds with verification: "unconfirmed" plus target-bound requested/before/after evidence. Examine that evidence. Do not retry the same mutation.
   iOS accessibility-driven fill types the replacement once. It never clears and retypes a read-back mismatch. Exact settled text confirms the entry.
     A value that contains only characters, in order, from the post-clear value plus the request fails with TEXT_ENTRY_MISMATCH. This includes plain dropped characters and unchanged values. Legitimate trimming or masks can also hit this limit ("5" into "$0.00" displaying "$0.05").
     Other settled values return verification: "unconfirmed" with requested/before/after/target evidence. Examples are grouping ("00 062 91 77" for "000629177"), currency ("$10.00" for "1000"), and OTP summaries. Missing, reordered, duplicated, or stale text can also be unconfirmed. Before you continue, assert the expected value with a value selector, get/is, or the resulting screen.
