@@ -282,7 +282,7 @@ for (const reason of ['front-window-not-shareable', 'front-window-capture-exclud
     assert.equal(error.details?.reason, reason);
     assert.equal(error.details?.frontWindowId, '4242');
     if (reason === 'front-window-capture-excluded') {
-      assert.match(String(error.details?.hint), /Use a window that permits capture/);
+      assert.match(String(error.details?.hint), /Run `snapshot` to read the window/);
       assert.match(String(error.details?.hint), /retrying the excluded window will not help/);
       assert.doesNotMatch(String(error.details?.hint), /retry after/);
     } else if (reason === 'front-window-not-shareable') {

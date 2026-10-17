@@ -158,7 +158,7 @@ const MACOS_SCREENSHOT_REFUSAL_HINTS: Record<MacOsScreenshotRefusalReason, strin
   'front-window-not-shareable':
     'The front window is unavailable to screen capture. If it is opening or closing, retry after it settles.',
   'front-window-capture-excluded':
-    'The app excludes the front window from screen capture. Use a window that permits capture; retrying the excluded window will not help.',
+    "The app excludes the front window from screen capture. Run `snapshot` to read the window's UI tree; retrying the excluded window will not help.",
 };
 export const MACOS_DELIVERY_MECHANISMS = [
   'ax-press',
