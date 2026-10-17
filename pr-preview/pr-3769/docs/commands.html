@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3769/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3769/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3769/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3769/static/js/index.060bcea314.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3769/static/js/index.b3cc793e55.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -84,6 +84,7 @@
 <ul>
 <li><code>device status</code> lists host-local device claims without starting or contacting a daemon; <code>--stale</code> shows the stale claims it hides by default (owner exited, PID reused, state directory deleted, or daemon replaced), some of whose owners may still be running. Scope it with <code>--platform</code> plus <code>--udid</code> (Apple) or <code>--serial</code> (Android). A claim held by another live or uncertain owner blocks <code>open</code>, unless the device rebooted after the claim was taken: then <code>open</code> settles that owner&#x27;s durable resources, takes the claim, and reports the release in <code>warnings</code>.</li>
 <li><code>device release --stale</code> settles the durable resources of an owner that provably can&#x27;t release its claim (its process exited or a newer daemon replaced it), then clears the claim. Live, uncertain, PID-reused, corrupt, and deleted-state-directory claims are refused with the reason. See <a href="/agent-device/pr-preview/pr-3769/docs/sessions#release-a-device-another-workspace-holds" class="rp-link">Sessions</a>.</li>
+<li>A command that needs the shared local daemon starts it for its state directory when none runs; <code>device status</code> and <code>device release --stale</code> never contact one. When the running daemon comes from another version or build, the command replaces it only if it reports no work: no request in flight, no session, no repair session and no live lease. A resumable upload still streaming and a host human-control hold that names no lease are not counted, so a replacement can end them. Otherwise the command fails with <code>daemon-busy</code> and leaves the daemon alone. A daemon from a release that predates this check is never replaced, and fails with <code>daemon-incompatible</code>. End a busy or older daemon deliberately with <code>daemon stop</code>. Node.js clients choose this per client; see <a href="/agent-device/pr-preview/pr-3769/docs/client-api#daemon-lifecycle" class="rp-link">Daemon lifecycle</a>.</li>
 <li><code>daemon stop --state-dir &lt;path&gt;</code> stops a local daemon after verifying its identity. <code>--clean</code> also removes the Apple runner processes and leases that daemon retained.</li>
 <li><code>daemon status [--state-dir &lt;path&gt;] [--json]</code> reads the daemon&#x27;s record without contacting it. For a running daemon it lists every provider it registered, built in or installed, and the reason any plugin failed to register. See <a href="/agent-device/pr-preview/pr-3769/docs/plugins" class="rp-link">provider plugins</a>.</li>
 </ul>
