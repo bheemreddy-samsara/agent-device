@@ -23,16 +23,20 @@ const cliHelpPath = path.join(repoRoot, 'src/commands/schema/cli-help.ts');
 /** The two reasons the device reports about itself, spread into the startup union. */
 const DEVICE_READINESS_MEMBERS = 'RUNNER_DEVICE_READINESS_FAILURE_REASONS';
 
+/** The heading of the vertical reason list, as the STE rewrite of the CLI help writes it. */
+const STARTUP_REASONS_HEADING = /^iOS runner startup reasons \(details\.reason\):$/;
+
 test('the runner startup reason union is documented in full at both prose surfaces', () => {
   const reasons = startupFailureReasons();
 
-  for (const { surface, line } of [
-    { surface: 'installation.md', line: startupReasonSentence(readFile(installationDocPath)) },
-    { surface: 'cli-help.ts', line: startupReasonSentence(readFile(cliHelpPath)) },
+  for (const { surface, text } of [
+    { surface: 'installation.md', text: readFile(installationDocPath) },
+    { surface: 'cli-help.ts', text: readFile(cliHelpPath) },
   ]) {
+    const enumeration = startupReasonEnumeration(text, reasons, surface);
     for (const reason of reasons) {
       assert.ok(
-        line.includes(reason),
+        enumeration.includes(reason),
         `${surface} must document the ${reason} reason: the union in ` +
           `${path.relative(repoRoot, classificationPath)} publishes it and a client cannot branch on ` +
           'a value it was never told exists.',
@@ -74,12 +78,34 @@ function literalMembers(source: string, name: string): string[] {
   );
 }
 
-/** The sentence that enumerates the startup reasons, found on the same line at both surfaces. */
-function startupReasonSentence(text: string): string {
-  const line = text
-    .split('\n')
-    .find((candidate) => /error details\.reason|`error\.details\.reason`/.test(candidate));
-  assert.ok(line, 'no sentence enumerating error.details.reason was found');
+/**
+ * The enumeration of the startup reasons on one prose surface: either the STE vertical list
+ * under the "iOS runner startup reasons" heading, or the single sentence that names
+ * `error.details.reason`. The block is scoped to the list or the sentence, never the whole
+ * file, so a reason named only in unrelated prose cannot satisfy the guard.
+ */
+function startupReasonEnumeration(text: string, reasons: string[], surface: string): string {
+  const lines = text.split('\n');
+  const heading = lines.findIndex((line) => STARTUP_REASONS_HEADING.test(line.trim()));
+  if (heading !== -1) {
+    const block: string[] = [];
+    for (const line of lines.slice(heading + 1)) {
+      if (line.trim() === '') {
+        break;
+      }
+      block.push(line);
+    }
+    assert.ok(
+      block.length >= reasons.length,
+      `${surface}: the list under "${STARTUP_REASONS_HEADING.source}" lists fewer entries than ` +
+        `the ${reasons.length} reasons the union publishes; the enumeration must not shrink.`,
+    );
+    return block.join('\n');
+  }
+  const line = lines.find((candidate) =>
+    /error details\.reason|`error\.details\.reason`/.test(candidate),
+  );
+  assert.ok(line, `no startup-reason enumeration was found at ${surface}`);
   return line;
 }
 
