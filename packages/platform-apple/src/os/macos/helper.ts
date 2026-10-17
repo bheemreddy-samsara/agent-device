@@ -155,7 +155,7 @@ const MACOS_SCREENSHOT_REFUSAL_HINTS: Record<MacOsScreenshotRefusalReason, strin
   'window-not-found':
     'Open or unminimize a window of the app on the current Space, then retry the screenshot.',
   'front-window-not-shareable':
-    'The front window may still be opening or closing, or the app excludes it from screen capture. Retry after the window settles.',
+    'If the front window is opening or closing, retry after it settles. If the app excludes the window from screen capture, use a window that permits capture; retrying the excluded window will not help.',
 };
 export const MACOS_DELIVERY_MECHANISMS = [
   'ax-press',

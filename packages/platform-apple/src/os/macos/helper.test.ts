@@ -280,7 +280,8 @@ test('an app screenshot that cannot reach the front window refuses with its reas
   assert.equal(error.code, 'COMMAND_FAILED');
   assert.equal(error.details?.reason, 'front-window-not-shareable');
   assert.equal(error.details?.frontWindowId, '4242');
-  assert.match(String(error.details?.hint), /Retry after the window settles/);
+  assert.match(String(error.details?.hint), /retry after it settles/);
+  assert.match(String(error.details?.hint), /use a window that permits capture/);
 });
 
 test('helper entry points accept only an owner-routed surface', () => {
