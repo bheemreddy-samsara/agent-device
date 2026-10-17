@@ -509,10 +509,6 @@ private func onScreenWindows(pid: pid_t) -> [OnScreenWindow] {
   }
 }
 
-func frontWindowNumber(pid: pid_t) -> Int? {
-  onScreenWindows(pid: pid).first?.number
-}
-
 private func frontWindowFrame(pid: pid_t) -> CGRect? {
   onScreenWindows(pid: pid).first?.bounds
 }

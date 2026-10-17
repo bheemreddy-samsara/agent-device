@@ -1,3 +1,4 @@
+import CoreGraphics
 import XCTest
 
 @testable import AgentDeviceMacOSHelper
@@ -9,6 +10,41 @@ private struct Candidate: Equatable {
 
 /// An app screenshot captures the front window or refuses; it never substitutes another window.
 final class AppWindowScreenshotTests: XCTestCase {
+  func testSelectsTheFirstVisibleNonemptyNormalLayerWindowOfTheApp() {
+    let windows = [
+      windowInfo(id: 1, pid: 99),
+      windowInfo(id: 2, layer: 1),
+      windowInfo(id: 3, onScreen: false),
+      windowInfo(id: 4, alpha: 0),
+      windowInfo(id: 5, width: 0),
+      windowInfo(id: 6, height: 0),
+      windowInfo(id: 7, alpha: 0.5, width: 20, height: 20),
+      windowInfo(id: 8),
+    ]
+
+    let frontID = frontCaptureWindowNumber(windows, pid: 42)
+    let selected = frontCaptureWindow([7, 8], frontWindowID: frontID, windowID: { $0 })
+
+    XCTAssertEqual(frontID, 7)
+    XCTAssertEqual(try selected.get(), 7)
+  }
+
+  func testRefusesWhenOnlyInvisibleOrEmptyWindowsRemain() {
+    let windows = [
+      windowInfo(id: 1, onScreen: false),
+      windowInfo(id: 2, alpha: 0),
+      windowInfo(id: 3, width: 0),
+      windowInfo(id: 4, height: 0),
+    ]
+    let frontID = frontCaptureWindowNumber(windows, pid: 42)
+    let selected = frontCaptureWindow([5], frontWindowID: frontID, windowID: { $0 })
+
+    XCTAssertNil(frontID)
+    XCTAssertThrowsError(try selected.get()) { error in
+      XCTAssertEqual(error as? AppWindowScreenshotRefusal, .windowNotFound)
+    }
+  }
+
   func testSelectsTheFrontWindowEvenWhenAnotherIsLarger() {
     let candidates = [Candidate(id: 7, area: 10_000), Candidate(id: 3, area: 100)]
 
@@ -35,4 +71,18 @@ final class AppWindowScreenshotTests: XCTestCase {
       XCTAssertEqual(error as? AppWindowScreenshotRefusal, .windowNotFound)
     }
   }
+}
+
+private func windowInfo(
+  id: Int, pid: Int32 = 42, layer: Int = 0, onScreen: Bool = true,
+  alpha: Double = 1, width: Double = 100, height: Double = 100
+) -> [String: Any] {
+  [
+    kCGWindowNumber as String: id,
+    kCGWindowOwnerPID as String: pid,
+    kCGWindowLayer as String: layer,
+    kCGWindowIsOnscreen as String: onScreen,
+    kCGWindowAlpha as String: alpha,
+    kCGWindowBounds as String: CGRect(x: 10, y: 10, width: width, height: height).dictionaryRepresentation,
+  ]
 }
