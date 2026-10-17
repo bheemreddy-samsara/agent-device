@@ -23,7 +23,7 @@ final class AppWindowScreenshotTests: XCTestCase {
     ]
 
     let frontID = onScreenWindows(pid: 42, windowInfo: windows).first?.number
-    let selected = frontCaptureWindow([7, 8], frontWindowID: frontID, windowID: { $0 })
+    let selected = frontCaptureWindow([7, 8], frontWindowID: frontID, sharingState: 1, windowID: { $0 })
 
     // Scroll and the click actionWindow fallback both consume frontWindowFrame.
     XCTAssertEqual(
@@ -41,7 +41,7 @@ final class AppWindowScreenshotTests: XCTestCase {
       windowInfo(id: 4, height: 0),
     ]
     let frontID = onScreenWindows(pid: 42, windowInfo: windows).first?.number
-    let selected = frontCaptureWindow([5], frontWindowID: frontID, windowID: { $0 })
+    let selected = frontCaptureWindow([5], frontWindowID: frontID, sharingState: 1, windowID: { $0 })
 
     XCTAssertNil(frontWindowFrame(pid: 42, windowInfo: windows))
     XCTAssertNil(frontID)
@@ -53,7 +53,7 @@ final class AppWindowScreenshotTests: XCTestCase {
   func testSelectsTheFrontWindowEvenWhenAnotherIsLarger() {
     let candidates = [Candidate(id: 7, area: 10_000), Candidate(id: 3, area: 100)]
 
-    let selected = frontCaptureWindow(candidates, frontWindowID: 3, windowID: \.id)
+    let selected = frontCaptureWindow(candidates, frontWindowID: 3, sharingState: 1, windowID: \.id)
 
     XCTAssertEqual(try selected.get(), Candidate(id: 3, area: 100))
   }
@@ -61,16 +61,38 @@ final class AppWindowScreenshotTests: XCTestCase {
   func testRefusesWhenTheFrontWindowIsNotShareable() {
     let candidates = [Candidate(id: 7, area: 10_000), Candidate(id: 8, area: 100)]
 
-    let selected = frontCaptureWindow(candidates, frontWindowID: 3, windowID: \.id)
+    let selected = frontCaptureWindow(candidates, frontWindowID: 3, sharingState: 1, windowID: \.id)
 
     XCTAssertThrowsError(try selected.get()) { error in
       XCTAssertEqual(error as? AppWindowScreenshotRefusal, .frontWindowNotShareable)
     }
   }
 
+  func testCaptureExclusionSurvivesWindowSelectionAndNeverSubstitutesAnotherWindow() {
+    let windows = [windowInfo(id: 3, sharingState: 0), windowInfo(id: 7)]
+    let front = onScreenWindows(pid: 42, windowInfo: windows).first
+    XCTAssertEqual(front?.number, 3)
+    XCTAssertEqual(front?.sharingState, 0)
+
+    for candidates in [[3, 7], [7]] {
+      let selected = frontCaptureWindow(
+        candidates, frontWindowID: front?.number, sharingState: front?.sharingState, windowID: { $0 })
+      XCTAssertThrowsError(try selected.get()) { error in
+        XCTAssertEqual(error as? AppWindowScreenshotRefusal, .frontWindowCaptureExcluded)
+      }
+    }
+
+    var entry = windowInfo(id: 3)
+    entry.removeValue(forKey: kCGWindowSharingState as String)
+    let unknown = onScreenWindows(pid: 42, windowInfo: [entry]).first
+    let selected = frontCaptureWindow(
+      [3], frontWindowID: unknown?.number, sharingState: unknown?.sharingState, windowID: { $0 })
+    XCTAssertEqual(try selected.get(), 3)
+  }
+
   func testRefusesWhenTheAppHasNoOnScreenWindow() {
     let selected = frontCaptureWindow(
-      [Candidate(id: 7, area: 10_000)], frontWindowID: nil, windowID: \.id)
+      [Candidate(id: 7, area: 10_000)], frontWindowID: nil, sharingState: nil, windowID: \.id)
 
     XCTAssertThrowsError(try selected.get()) { error in
       XCTAssertEqual(error as? AppWindowScreenshotRefusal, .windowNotFound)
@@ -80,7 +102,7 @@ final class AppWindowScreenshotTests: XCTestCase {
 
 private func windowInfo(
   id: Int, pid: Int32 = 42, layer: Int = 0, onScreen: Bool = true,
-  alpha: Double = 1, width: Double = 100, height: Double = 100
+  alpha: Double = 1, sharingState: Int = 1, width: Double = 100, height: Double = 100
 ) -> [String: Any] {
   [
     kCGWindowNumber as String: id,
@@ -88,6 +110,7 @@ private func windowInfo(
     kCGWindowLayer as String: layer,
     kCGWindowIsOnscreen as String: onScreen,
     kCGWindowAlpha as String: alpha,
+    kCGWindowSharingState as String: sharingState,
     kCGWindowBounds as String: CGRect(x: 10, y: 10, width: width, height: height).dictionaryRepresentation,
   ]
 }

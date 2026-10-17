@@ -244,45 +244,55 @@ test('macOS helper screenshot argv carries only --out and --surface', async () =
   assert.deepEqual(receivedArgs, ['screenshot', '--out', '/tmp/out.png', '--surface', 'desktop']);
 });
 
-test('an app screenshot that cannot reach the front window refuses with its reason and a hint', async () => {
-  const provider = createLocalAppleToolProvider({
-    macosHelper: {
-      run: async () => ({
-        exitCode: 1,
-        stdout: JSON.stringify({
-          ok: false,
-          error: {
-            message:
-              "screenshot could not capture the app's front window: ScreenCaptureKit does not offer it",
-            details: {
-              reason: 'front-window-not-shareable',
-              bundleId: 'com.apple.TextEdit',
-              frontWindowId: '4242',
+for (const reason of ['front-window-not-shareable', 'front-window-capture-excluded', undefined]) {
+  test(`an app screenshot refusal gives the remedy for ${reason}`, async () => {
+    const provider = createLocalAppleToolProvider({
+      macosHelper: {
+        run: async () => ({
+          exitCode: 1,
+          stdout: JSON.stringify({
+            ok: false,
+            error: {
+              message:
+                "screenshot could not capture the app's front window: ScreenCaptureKit does not offer it",
+              details: {
+                reason,
+                bundleId: 'com.apple.TextEdit',
+                frontWindowId: '4242',
+              },
             },
-          },
+          }),
+          stderr: '',
         }),
-        stderr: '',
-      }),
-    },
+      },
+    });
+
+    const error = await withAppleToolProvider(provider, async () =>
+      runMacOsScreenshotAction('/tmp/out.png', {
+        surface: nativeApp,
+        bundleId: 'com.apple.TextEdit',
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+    );
+
+    assert.ok(error instanceof AppError);
+    assert.equal(error.code, 'COMMAND_FAILED');
+    assert.equal(error.details?.reason, reason);
+    assert.equal(error.details?.frontWindowId, '4242');
+    if (reason === 'front-window-capture-excluded') {
+      assert.match(String(error.details?.hint), /Use a window that permits capture/);
+      assert.match(String(error.details?.hint), /retrying the excluded window will not help/);
+      assert.doesNotMatch(String(error.details?.hint), /retry after/);
+    } else if (reason === 'front-window-not-shareable') {
+      assert.match(String(error.details?.hint), /retry after it settles/);
+      assert.doesNotMatch(String(error.details?.hint), /excludes/);
+    } else {
+      assert.equal(error.details?.hint, undefined);
+    }
   });
-
-  const error = await withAppleToolProvider(provider, async () =>
-    runMacOsScreenshotAction('/tmp/out.png', {
-      surface: nativeApp,
-      bundleId: 'com.apple.TextEdit',
-    }).then(
-      () => undefined,
-      (error: unknown) => error,
-    ),
-  );
-
-  assert.ok(error instanceof AppError);
-  assert.equal(error.code, 'COMMAND_FAILED');
-  assert.equal(error.details?.reason, 'front-window-not-shareable');
-  assert.equal(error.details?.frontWindowId, '4242');
-  assert.match(String(error.details?.hint), /retry after it settles/);
-  assert.match(String(error.details?.hint), /use a window that permits capture/);
-});
+}
 
 test('helper entry points accept only an owner-routed surface', () => {
   // Never invoked: each directive fails typecheck once its entry point widens back to an

@@ -10,12 +10,13 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
     throw HelperError.commandFailed("app window screenshots require macOS 14 or newer")
   }
   let pid = app.processIdentifier
-  let frontWindowID = onScreenWindows(pid: pid, windowInfo: appWindowInfo()).first?.number
+  let frontWindow = onScreenWindows(pid: pid, windowInfo: appWindowInfo()).first
+  let frontWindowID = frontWindow?.number
   let content = try awaitShareableContent()
   let candidates = content.windows.filter { $0.owningApplication?.processID == pid }
   let window: SCWindow
   let selection = frontCaptureWindow(
-    candidates, frontWindowID: frontWindowID, windowID: { Int($0.windowID) })
+    candidates, frontWindowID: frontWindowID, sharingState: frontWindow?.sharingState, windowID: { Int($0.windowID) })
   switch selection {
   case .success(let front):
     window = front
@@ -55,15 +56,18 @@ func captureAppWindowScreenshot(app: NSRunningApplication, outPath: String) thro
 enum AppWindowScreenshotRefusal: String, CaseIterable, Error {
   case windowNotFound = "window-not-found"
   case frontWindowNotShareable = "front-window-not-shareable"
+  case frontWindowCaptureExcluded = "front-window-capture-excluded"
 }
 
 /// The shareable candidate whose WindowServer ID is the app's front window.
 func frontCaptureWindow<Window>(
   _ candidates: [Window],
   frontWindowID: Int?,
+  sharingState: Int?,
   windowID: (Window) -> Int
 ) -> Result<Window, AppWindowScreenshotRefusal> {
   guard let frontWindowID else { return .failure(.windowNotFound) }
+  guard sharingState != 0 else { return .failure(.frontWindowCaptureExcluded) }
   guard let front = candidates.first(where: { windowID($0) == frontWindowID }) else {
     return .failure(.frontWindowNotShareable)
   }
@@ -79,6 +83,12 @@ private func screenshotRefusal(
   switch refusal {
   case .windowNotFound:
     return .commandFailed("screenshot could not find an on-screen window for the app", details: details)
+  case .frontWindowCaptureExcluded:
+    details["frontWindowId"] = frontWindowID.map(String.init) ?? ""
+    return .commandFailed(
+      "screenshot could not capture the app's front window: the app excludes it from capture",
+      details: details
+    )
   case .frontWindowNotShareable:
     details["frontWindowId"] = frontWindowID.map(String.init) ?? ""
     return .commandFailed(

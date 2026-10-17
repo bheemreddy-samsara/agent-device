@@ -149,13 +149,16 @@ export const MACOS_HELPER_REFUSAL_REASONS = [
 export const MACOS_SCREENSHOT_REFUSAL_REASONS = [
   'window-not-found',
   'front-window-not-shareable',
+  'front-window-capture-excluded',
 ] as const;
 type MacOsScreenshotRefusalReason = (typeof MACOS_SCREENSHOT_REFUSAL_REASONS)[number];
 const MACOS_SCREENSHOT_REFUSAL_HINTS: Record<MacOsScreenshotRefusalReason, string> = {
   'window-not-found':
     'Open or unminimize a window of the app on the current Space, then retry the screenshot.',
   'front-window-not-shareable':
-    'If the front window is opening or closing, retry after it settles. If the app excludes the window from screen capture, use a window that permits capture; retrying the excluded window will not help.',
+    'The front window is unavailable to screen capture. If it is opening or closing, retry after it settles.',
+  'front-window-capture-excluded':
+    'The app excludes the front window from screen capture. Use a window that permits capture; retrying the excluded window will not help.',
 };
 export const MACOS_DELIVERY_MECHANISMS = [
   'ax-press',

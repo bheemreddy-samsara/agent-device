@@ -15,5 +15,9 @@
     "ax-scroll-bar",
     "key-events"
   ],
-  "screenshotRefusalReasons": ["window-not-found", "front-window-not-shareable"]
+  "screenshotRefusalReasons": [
+    "window-not-found",
+    "front-window-not-shareable",
+    "front-window-capture-excluded"
+  ]
 }

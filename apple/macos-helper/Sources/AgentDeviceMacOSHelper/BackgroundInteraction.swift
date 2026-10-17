@@ -485,6 +485,7 @@ private func numberAttribute(_ element: AXUIElement, attribute: String) -> Doubl
 struct OnScreenWindow {
   let number: Int
   let bounds: CGRect
+  let sharingState: Int?
 }
 
 let frontWindowLayer = 0
@@ -503,7 +504,8 @@ func onScreenWindows(pid: pid_t, windowInfo: [[String: Any]]) -> [OnScreenWindow
     else {
       return nil
     }
-    return OnScreenWindow(number: number, bounds: bounds)
+    return OnScreenWindow(
+      number: number, bounds: bounds, sharingState: entry[kCGWindowSharingState as String] as? Int)
   }
 }
 
