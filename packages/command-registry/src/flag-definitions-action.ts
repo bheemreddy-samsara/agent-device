@@ -213,7 +213,7 @@ export const ACTION_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     min: 0,
     usageLabel: '--settle-quiet <ms>',
     usageDescription:
-      '--settle: the quiet window that the UI must hold to be settled (default: 500ms, or 300ms when the settled tree comes from the iOS simulator snapshot bridge). On iOS, a broad screen replacement, such as a modal dismissal, gets a confirmation of at least 1500ms for any requested window, within the --timeout settle deadline. A replacement from a screen that the pre-action capture read as presenting nothing, such as a tab switch, gets no 1500ms confirmation and keeps the requested window',
+      '--settle: the quiet window that the UI must hold to be settled. The default is 500ms. When the settled tree comes from the iOS simulator snapshot bridge, the default is 300ms. On iOS, a broad screen replacement, such as a modal dismissal, gets a confirmation of at least 1500ms for any requested window. This confirmation stays within the --timeout settle deadline. On iOS, a replacement can start from a screen that the pre-action capture read as presenting nothing, such as a tab switch. Such a replacement gets no 1500ms confirmation and keeps the requested window',
     projectConfig: true,
     recorded: false,
   },
