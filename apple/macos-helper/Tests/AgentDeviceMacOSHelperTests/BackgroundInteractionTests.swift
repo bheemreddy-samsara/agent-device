@@ -27,6 +27,7 @@ private struct HelperOutcomesFixture: Decodable {
   let refusalReasons: [String]
   let deliveryMechanisms: [String]
   let screenshotRefusalReasons: [String]
+  let windowListRefusalReasons: [String]
 }
 
 /// `#filePath` is `<repo>/apple/macos-helper/Tests/AgentDeviceMacOSHelperTests/<file>`.
@@ -42,6 +43,7 @@ final class BackgroundInteractionTests: XCTestCase {
       from: Data(
         contentsOf: repoRoot.appendingPathComponent("contracts/fixtures/macos-native-helper-outcomes.json"))
     )
+    XCTAssertEqual(WindowListRefusal.allCases.map(\.rawValue), fixture.windowListRefusalReasons)
     XCTAssertEqual(BackgroundRefusal.allCases.map(\.rawValue), fixture.refusalReasons)
     XCTAssertEqual(BackgroundDeliveryMechanism.allCases.map(\.rawValue), fixture.deliveryMechanisms)
     XCTAssertEqual(

@@ -160,6 +160,7 @@ const MACOS_SCREENSHOT_REFUSAL_HINTS: Record<MacOsScreenshotRefusalReason, strin
   'front-window-capture-excluded':
     "The app excludes the front window from screen capture. Run `snapshot` to read the window's UI tree; retrying the excluded window will not help.",
 };
+export const MACOS_WINDOW_LIST_REFUSAL_REASONS = ['window-list-unreadable'] as const;
 export const MACOS_DELIVERY_MECHANISMS = [
   'ax-press',
   'ax-focus',
@@ -372,6 +373,7 @@ async function runMacOsHelper<T extends Record<string, unknown>>(
     parsed && !parsed.ok
       ? (parsed.error?.message ?? `macOS helper exited with code ${result.exitCode}`)
       : stdout || result.stderr.trim() || `macOS helper exited with code ${result.exitCode}`;
+  const details = parsed && !parsed.ok ? parsed.error?.details : undefined;
   // exec-guard-allow: the message is already built from the helper's JSON error
   // envelope (or its output); a stderr excerpt would only degrade it, and the
   // throw is reachable at exit 0 when the envelope reports ok=false.
@@ -381,7 +383,10 @@ async function runMacOsHelper<T extends Record<string, unknown>>(
     stdout: result.stdout,
     stderr: result.stderr,
     exitCode: result.exitCode,
-    ...(parsed && !parsed.ok ? parsed.error?.details : {}),
+    ...details,
+    ...(details?.reason === MACOS_WINDOW_LIST_REFUSAL_REASONS[0]
+      ? { hint: "The app's on-screen window list could not be read. Retry the command." }
+      : {}),
   });
 }
 
