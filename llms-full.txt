@@ -2809,6 +2809,7 @@ explicit config:
 - local code and write destinations (`reporter`, `reportJunit`, `saveScript`, `launchConsole`)
 
 Project config can also set `snapshotDepth`, `snapshotScope`, `screenshotScale`, `activity`, `relaunch`, `shutdown`, `fps`, and `quality`. Local paths and executable modules, such as `stepsFile` and `reporter`, are allowed only in user or explicit config.
+The `record` config key and `AGENT_DEVICE_RECORD` were removed. `--record` is per-invocation only: pass it on the command, or set `record: true` in an SDK/MCP call, to keep a corrective read in a healed script.
 
 `install-from-source` can read a GitHub Actions artifact source from user or explicit config when the remote daemon supports resolving CI artifacts. Repository config rejects this key:
 
@@ -4714,6 +4715,8 @@ A failing `replay`/`test` step returns a structured `REPLAY_DIVERGENCE` error. T
 Text output prints a compact summary of the same fields; `--json`/MCP carry the full object.
 
 ## Resume a failed replay
+
+During a repair armed with `replay --save-script`, diagnostic reads stay out of the healed script. To keep a corrective read, pass `--record` on that invocation, or `record: true` in that SDK/MCP call. `--record` is per-invocation only: the config key `record` and `AGENT_DEVICE_RECORD` were removed, and a config file or environment still naming them fails with migration guidance. Authored replay observations are retained automatically.
 
 `replay --from <n> --plan-digest <sha256>` resumes **at** plan step `n`, not after it, skipping `1..n-1` without executing them. Both flags come from a divergence report's `resume` field — `from` is the failed step, `planDigest` is the digest of the exact unchanged plan that produced it.
 

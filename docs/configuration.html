@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.2290d944e8.js"></script>
+<script defer src="/agent-device/static/js/index.1c80866cf7.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -121,7 +121,8 @@ explicit config:</p>
 <li>request headers and structured install sources</li>
 <li>local code and write destinations (<code>reporter</code>, <code>reportJunit</code>, <code>saveScript</code>, <code>launchConsole</code>)</li>
 </ul>
-<p>Project config can also set <code>snapshotDepth</code>, <code>snapshotScope</code>, <code>screenshotScale</code>, <code>activity</code>, <code>relaunch</code>, <code>shutdown</code>, <code>fps</code>, and <code>quality</code>. Local paths and executable modules, such as <code>stepsFile</code> and <code>reporter</code>, are allowed only in user or explicit config.</p>
+<p>Project config can also set <code>snapshotDepth</code>, <code>snapshotScope</code>, <code>screenshotScale</code>, <code>activity</code>, <code>relaunch</code>, <code>shutdown</code>, <code>fps</code>, and <code>quality</code>. Local paths and executable modules, such as <code>stepsFile</code> and <code>reporter</code>, are allowed only in user or explicit config.
+The <code>record</code> config key and <code>AGENT_DEVICE_RECORD</code> were removed. <code>--record</code> is per-invocation only: pass it on the command, or set <code>record: true</code> in an SDK/MCP call, to keep a corrective read in a healed script.</p>
 <p><code>install-from-source</code> can read a GitHub Actions artifact source from user or explicit config when the remote daemon supports resolving CI artifacts. Repository config rejects this key:</p>
 <div class="rp-codeblock language-json"><div class="rp-codeblock__content"><div class="rp-codeblock__content__scroll-container rp-scrollbar rp-scrollbar--always"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0" data-lang="json"><code><span class="line"><span style="color:var(--shiki-foreground)">{</span></span>
 <span class="line"><span style="color:var(--shiki-token-keyword)">  &quot;platform&quot;</span><span style="color:var(--shiki-token-punctuation)">:</span><span style="color:var(--shiki-token-string-expression)"> &quot;android&quot;</span><span style="color:var(--shiki-token-punctuation)">,</span></span>
