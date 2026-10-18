@@ -158,6 +158,7 @@ export async function readReusableLocalDaemon(
     throw daemonNotRetirableError({
       info: existing,
       stateDir: settings.paths.baseDir,
+      owner: 'embedded',
     });
   }
   // A record stating an owner this build cannot read is not a licence to replace what it names: the
