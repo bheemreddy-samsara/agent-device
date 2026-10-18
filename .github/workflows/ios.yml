@@ -137,6 +137,32 @@ jobs:
           runtime-version: ${{ env.IOS_RUNTIME_VERSION }}
           preferred-device-name: iPhone 17 Pro
 
+      - name: Boot second iOS XCTest simulator
+        id: ios-xctest-second-simulator
+        if: steps.xctest-impact.outputs.run != 'false'
+        env:
+          FIRST_UDID: ${{ steps.ios-simulator.outputs.simulator-udid }}
+        run: |
+          set -euo pipefail
+          read -r RUNTIME DEVICE_TYPE < <(
+            xcrun simctl list devices -j | node -e '
+              const fs = require("node:fs");
+              const { devices } = JSON.parse(fs.readFileSync(0, "utf8"));
+              for (const [runtime, entries] of Object.entries(devices)) {
+                const device = entries.find((entry) => entry.udid === process.env.FIRST_UDID);
+                if (device?.deviceTypeIdentifier) {
+                  console.log(`${runtime} ${device.deviceTypeIdentifier}`);
+                  process.exit(0);
+                }
+              }
+              throw new Error("The primary XCTest simulator is missing from inventory");
+            '
+          )
+          SECOND_UDID="$(xcrun simctl create agent-device-xctest-shard-2 "$DEVICE_TYPE" "$RUNTIME")"
+          echo "simulator-udid=$SECOND_UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$SECOND_UDID"
+          perl -e 'alarm shift; exec @ARGV' 300 xcrun simctl bootstatus "$SECOND_UDID" -b
+
       - name: Run targeted iOS runner XCTest regressions
         id: ios-xctest
         if: steps.xctest-impact.outputs.run != 'false'
@@ -144,22 +170,64 @@ jobs:
           set -euo pipefail
           XCTESTRUN_PATH="$(find "$AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit)"
           test -n "$XCTESTRUN_PATH"
-          IOS_PR_TEST_ARGS=()
           IOS_PR_TEST_IDS="$(node --experimental-strip-types scripts/check-xctest-selection.ts --ios-pr-tests)"
-          while IFS= read -r test_id; do
-            IOS_PR_TEST_ARGS+=("-only-testing:$test_id")
-          done <<< "$IOS_PR_TEST_IDS"
-          test "${#IOS_PR_TEST_ARGS[@]}" -gt 0
-          xcodebuild test-without-building \
-            -xctestrun "$XCTESTRUN_PATH" \
-            -destination "platform=iOS Simulator,id=${{ steps.ios-simulator.outputs.simulator-udid }}" \
-            "${IOS_PR_TEST_ARGS[@]}" 2>&1 | tee /tmp/agent-device-runner-regressions.log
+          test -n "$IOS_PR_TEST_IDS"
+          SIMULATORS=("${{ steps.ios-simulator.outputs.simulator-udid }}" "${{ steps.ios-xctest-second-simulator.outputs.simulator-udid }}")
+          LOG_DIR="$AGENT_DEVICE_IOS_RUNNER_DERIVED_PATH/Logs/PRXCTest"
+          mkdir -p "$LOG_DIR"
+          START_SECONDS=$SECONDS
+          PIDS=()
+          for SHARD_INDEX in 0 1; do
+            (
+              IOS_PR_TEST_ARGS=()
+              TEST_INDEX=0
+              while IFS= read -r test_id; do
+                if [ "$((TEST_INDEX % 2))" -eq "$SHARD_INDEX" ]; then
+                  IOS_PR_TEST_ARGS+=("-only-testing:$test_id")
+                fi
+                TEST_INDEX=$((TEST_INDEX + 1))
+              done <<< "$IOS_PR_TEST_IDS"
+              test "${#IOS_PR_TEST_ARGS[@]}" -gt 0
+              xcodebuild test-without-building \
+                -xctestrun "$XCTESTRUN_PATH" \
+                -destination "platform=iOS Simulator,id=${SIMULATORS[$SHARD_INDEX]}" \
+                -parallel-testing-enabled NO \
+                -resultBundlePath "$LOG_DIR/shard-$SHARD_INDEX.xcresult" \
+                "${IOS_PR_TEST_ARGS[@]}"
+            ) 2>&1 | tee "$LOG_DIR/shard-$SHARD_INDEX.log" &
+            PIDS+=("$!")
+          done
+          NATIVE_STATUS=0
+          for SHARD_INDEX in 0 1; do
+            if wait "${PIDS[$SHARD_INDEX]}"; then SHARD_STATUS=0; else SHARD_STATUS=$?; fi
+            echo "$SHARD_STATUS" > "$LOG_DIR/shard-$SHARD_INDEX.exit"
+            echo "XCTest shard $SHARD_INDEX exited $SHARD_STATUS"
+            if [ "$NATIVE_STATUS" -eq 0 ] && [ "$SHARD_STATUS" -ne 0 ]; then NATIVE_STATUS=$SHARD_STATUS; fi
+          done
+          echo "XCTest phase wall time: $((SECONDS - START_SECONDS))s" | tee -a "$GITHUB_STEP_SUMMARY"
+          cat "$LOG_DIR/shard-0.log" "$LOG_DIR/shard-1.log" > /tmp/agent-device-runner-regressions.log
+          if [ "$NATIVE_STATUS" -ne 0 ]; then exit "$NATIVE_STATUS"; fi
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const log = readFileSync("/tmp/agent-device-runner-regressions.log", "utf8");
             if (!/\] AGENT_DEVICE_RUNNER_OPTIONAL_PROBE_WAIT_COMPLETED$/m.test(log)) {
               throw new Error("Optional observation ended the runner test before its wait completed");
             }
+          '
+
+      - name: Remove second iOS XCTest simulator
+        if: ${{ always() && steps.ios-xctest-second-simulator.outputs.simulator-udid != '' }}
+        env:
+          SECOND_UDID: ${{ steps.ios-xctest-second-simulator.outputs.simulator-udid }}
+        run: |
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            const id = process.env.SECOND_UDID;
+            const { devices } = JSON.parse(execFileSync("xcrun", ["simctl", "list", "devices", "-j"], { encoding: "utf8" }));
+            const device = Object.values(devices).flat().find((entry) => entry.udid === id);
+            if (!device) process.exit(0);
+            if (device.state === "Booted") execFileSync("xcrun", ["simctl", "shutdown", id], { stdio: "inherit" });
+            execFileSync("xcrun", ["simctl", "delete", id], { stdio: "inherit" });
           '
 
       - name: Build CLI used by every smoke step
