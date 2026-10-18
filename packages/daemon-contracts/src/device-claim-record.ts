@@ -20,11 +20,7 @@ export const DEVICE_CLAIM_SCHEMA_VERSION = 3;
  * `wrapper` names a plain CLI process holding the device for the lifetime of a child it runs
  * (#3263); it is not a daemon, so the daemon-supersession proof never reads against its record.
  */
-export type DeviceClaimOwnerKind =
-  | 'open-session'
-  | 'transient-command'
-  | 'wrapper'
-  | 'unstated';
+export type DeviceClaimOwnerKind = 'open-session' | 'transient-command' | 'wrapper' | 'unstated';
 
 const DEVICE_CLAIM_OWNER_KINDS: readonly DeviceClaimOwnerKind[] = [
   'open-session',

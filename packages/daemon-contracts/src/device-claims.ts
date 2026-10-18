@@ -247,7 +247,8 @@ async function claimHeldDevice(params: {
   const { deviceKey, identity } = params;
   const owner = readCurrentOwnerIdentity();
   const claimOwnerKind: DeviceClaimAcquirerKind =
-    params.claimOwnerKind ?? (params.transientCommand === undefined ? 'open-session' : 'transient-command');
+    params.claimOwnerKind ??
+    (params.transientCommand === undefined ? 'open-session' : 'transient-command');
   const existing = await resolveExistingClaim({
     ...params,
     owner,

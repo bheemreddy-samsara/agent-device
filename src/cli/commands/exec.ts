@@ -191,7 +191,7 @@ type SignalForwarding = Readonly<{
 // deliberately absent: stopping the wrapper with the child left running is the
 // shell's own semantics, and job control here would need a controlling
 // terminal the detached child does not share.
-const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'] as const;
+export const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'] as const;
 
 function attachSignalForwarding(): SignalForwarding {
   let first: NodeJS.Signals | null = null;
@@ -241,8 +241,6 @@ async function releaseExecDeviceClaim(ownership: DeviceClaimSessionOwnership): P
         error instanceof Error ? error.message : String(error)
       }\n`,
     );
-    // The wrapper is about to exit, so a claim left behind names a process that
-    // is gone and every acquirer reconciles it as stale.
     return;
   }
   // The wrapper is about to exit, so a claim left behind names a process that is

@@ -13,7 +13,7 @@ import {
 } from '@agent-device/daemon-contracts/device-claims';
 import { runCmdBackground } from '@agent-device/host-kit/command';
 import type { CliFlags } from '@agent-device/contracts/command';
-import { runExecCommand } from '../exec.ts';
+import { FORWARDED_SIGNALS, runExecCommand } from '../exec.ts';
 
 // #3263: `exec` takes the host-global device claim on its own process identity,
 // runs the child, and releases on every exit path. The claim assertions read the
@@ -183,7 +183,7 @@ test('records the wrapper claim with its owner kind under an exec state dir', as
     await running.inventoryReady();
     await waitFor(() => claimEntry()?.claim?.session === 'exec:sh');
     const stored = storedClaim(dirs.claimsDir);
-    assert.equal(stored?.ownerKind, 'wrapper');
+    assert.equal(stored?.claimOwnerKind, 'wrapper');
     assert.equal(stored?.stateDir, path.join(dirs.stateDir, 'exec'));
     assert.equal(claimEntry()?.classification, 'live');
   } finally {
@@ -301,8 +301,12 @@ test.skipIf(IS_WINDOWS)(
     const grandchildGotSignal = path.join(dirs.stateDir, 'grandchild-got-term.txt');
     const childStarted = path.join(dirs.stateDir, 'child-started.txt');
     // An in-place emit reaches every SIGTERM listener in this worker, so pin that
-    // the wrapper starts from the worker's own baseline and returns to it.
-    const sigtermListenersBefore = process.listenerCount('SIGTERM');
+    // the wrapper starts from the worker's own baseline and returns to it — for
+    // every signal the wrapper forwards, so a leaked SIGQUIT or SIGHUP handler
+    // fails here too.
+    const signalListenersBefore = new Map(
+      FORWARDED_SIGNALS.map((name) => [name, process.listenerCount(name)]),
+    );
     const running = runExec(
       [
         'sh',
@@ -328,7 +332,11 @@ test.skipIf(IS_WINDOWS)(
     // also proves the group signal left this worker.
     process.emit('SIGTERM');
     assert.equal(await running.promise, 128 + 15);
-    assert.equal(process.listenerCount('SIGTERM'), sigtermListenersBefore);
+    // The wrapper registered a handler for every forwarded signal even though
+    // only SIGTERM arrived, so every one of them must be gone again.
+    for (const [name, before] of signalListenersBefore) {
+      assert.equal(process.listenerCount(name), before);
+    }
     assert.equal(fs.readFileSync(gotSignal, 'utf8').trim(), 'got');
     await waitFor(() => fs.existsSync(grandchildGotSignal));
     assert.equal(fs.readFileSync(grandchildGotSignal, 'utf8').trim(), 'got');
