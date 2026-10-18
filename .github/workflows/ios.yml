@@ -206,7 +206,11 @@ jobs:
           done
           echo "XCTest phase wall time: $((SECONDS - START_SECONDS))s" | tee -a "$GITHUB_STEP_SUMMARY"
           cat "$LOG_DIR/shard-0.log" "$LOG_DIR/shard-1.log" > /tmp/agent-device-runner-regressions.log
+          SUMMARY_STATUS=0
+          node --experimental-strip-types scripts/xctest-run-summary.ts --ios-pr-logs \
+            "$LOG_DIR/shard-0.log" "$LOG_DIR/shard-1.log" || SUMMARY_STATUS=$?
           if [ "$NATIVE_STATUS" -ne 0 ]; then exit "$NATIVE_STATUS"; fi
+          test "$SUMMARY_STATUS" -eq 0
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const log = readFileSync("/tmp/agent-device-runner-regressions.log", "utf8");

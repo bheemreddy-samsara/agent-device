@@ -1,5 +1,4 @@
-// Renders a whole-bundle XCTest lane's job summary, and asserts the run executed exactly the
-// tests the source says that lane reaches.
+// Reports whole-bundle XCTest counts and exact method coverage across iOS PR shards.
 //
 // Two jobs in one place because they read the same file. `xcodebuild` exits 0 when a test
 // selection matches nothing, so "green" and "ran no tests" produce the same log tail: a
@@ -105,7 +104,85 @@ export function livenessFailure(summary: ResultSummary, expected: number): strin
   ].join('\n');
 }
 
+type TestExecution = {
+  identifier: string;
+  status: 'passed' | 'failed' | 'skipped';
+  seconds: number;
+};
+
+/** Read completed methods instead of trusting a successful xcodebuild exit. */
+export function parseTestExecutions(log: string): TestExecution[] {
+  const completed =
+    /Test Case '-\[([A-Za-z_]\w*)\.([A-Za-z_]\w*) ([A-Za-z_]\w*)\]' (passed|failed|skipped) \((\d+(?:\.\d+)?) seconds\)\./g;
+  return [...log.matchAll(completed)].map((match) => ({
+    identifier: `${match[1]}/${match[2]}/${match[3]}`,
+    status: match[4] as TestExecution['status'],
+    seconds: Number(match[5]),
+  }));
+}
+
+/** Count equality alone cannot detect a missing method replaced by a duplicate or another test. */
+export function executionSelectionFailure(
+  expected: readonly string[],
+  shards: readonly (readonly TestExecution[])[],
+): string | null {
+  const selected = new Set(expected);
+  if (expected.length === 0 || selected.size !== expected.length) {
+    return 'The generated iOS XCTest selection must be nonempty and unique.';
+  }
+  if (shards.length === 0 || shards.some((shard) => shard.length === 0)) {
+    return 'An iOS XCTest shard executed no identifiable test methods.';
+  }
+  const counts = new Map<string, number>();
+  for (const execution of shards.flat()) {
+    counts.set(execution.identifier, (counts.get(execution.identifier) ?? 0) + 1);
+  }
+  const missing = expected.filter((identifier) => !counts.has(identifier));
+  const unexpected = [...counts.keys()].filter((identifier) => !selected.has(identifier));
+  const repeated = [...counts].filter(([, count]) => count > 1).map(([identifier]) => identifier);
+  const errors = [
+    ['missing', missing],
+    ['unexpected', unexpected],
+    ['repeated', repeated],
+  ] as const;
+  const details = errors
+    .filter(([, identifiers]) => identifiers.length > 0)
+    .map(
+      ([kind, identifiers]) =>
+        `${kind} (${identifiers.length}): ${identifiers.slice(0, 10).join(', ')}`,
+    );
+  return details.length > 0 ? `iOS XCTest selection mismatch: ${details.join('; ')}` : null;
+}
+
+function summarizePrShards(paths: readonly string[]): number {
+  const expected = [...loadReport().reach.pr];
+  const shards = paths.map((file) => parseTestExecutions(fs.readFileSync(file, 'utf8')));
+  const executions = shards.flat();
+  const passed = executions.filter((entry) => entry.status === 'passed').length;
+  const failed = executions.filter((entry) => entry.status === 'failed').length;
+  const skipped = executions.filter((entry) => entry.status === 'skipped').length;
+  const failure = executionSelectionFailure(expected, shards);
+  const lines = [
+    '### iOS runner XCTest shards',
+    '',
+    `- executed: ${executions.length} of ${expected.length} selected methods`,
+    `- passed: ${passed}; failed: ${failed}; skipped: ${skipped}`,
+    ...shards.map(
+      (entries, index) =>
+        `- shard ${index}: ${entries.length} methods; ${entries.reduce((sum, entry) => sum + entry.seconds, 0).toFixed(1)}s in test cases`,
+    ),
+    `- exact method coverage: ${failure ? 'failed' : 'passed'}`,
+    '',
+  ];
+  const rendered = lines.join('\n');
+  process.stdout.write(rendered);
+  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, rendered);
+  if (failure) process.stderr.write(`${failure}\n`);
+  return failure || failed > 0 ? 1 : 0;
+}
+
 function main(): number {
+  if (process.argv[2] === '--ios-pr-logs') return summarizePrShards(process.argv.slice(3));
   const summaryPath = process.env.RESULT_SUMMARY_PATH;
   if (!summaryPath) throw new Error('RESULT_SUMMARY_PATH is not set.');
   const current: Lane = lane(process.env.XCTEST_LANE ?? '');

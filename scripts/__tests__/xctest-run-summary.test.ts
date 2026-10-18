@@ -3,7 +3,9 @@
 
 import { describe, expect, test } from 'vitest';
 import {
+  executionSelectionFailure,
   livenessFailure,
+  parseTestExecutions,
   MAX_FAILURE_TEXT,
   MAX_LISTED_FAILURES,
   renderSummary,
@@ -145,5 +147,97 @@ describe('the job summary', () => {
       153,
     );
     expect(rendered).toContain('`RunnerTests/testY()`');
+  });
+});
+
+describe('iOS PR XCTest execution coverage', () => {
+  const first = 'AgentDeviceRunnerUITests/RunnerTests/testFirst';
+  const second = 'AgentDeviceRunnerUITests/RunnerTests/testSecond';
+
+  function completed(method: string, status: 'passed' | 'failed' | 'skipped' = 'passed') {
+    return `Test Case '-[AgentDeviceRunnerUITests.RunnerTests ${method}]' ${status} (1.234 seconds).`;
+  }
+
+  test('reads completed method identities and outcomes without counting start or suite records', () => {
+    const log = [
+      "Test Case '-[AgentDeviceRunnerUITests.RunnerTests testFirst]' started.",
+      completed('testFirst'),
+      completed('testSecond', 'skipped'),
+      completed('testThird', 'failed'),
+      "Test Suite 'RunnerTests' failed.",
+    ].join('\n');
+    expect(parseTestExecutions(log)).toEqual([
+      { identifier: first, status: 'passed', seconds: 1.234 },
+      { identifier: second, status: 'skipped', seconds: 1.234 },
+      {
+        identifier: 'AgentDeviceRunnerUITests/RunnerTests/testThird',
+        status: 'failed',
+        seconds: 1.234,
+      },
+    ]);
+  });
+
+  test('accepts a complete disjoint execution regardless of shard or completion order', () => {
+    expect(
+      executionSelectionFailure(
+        [first, second],
+        [parseTestExecutions(completed('testSecond')), parseTestExecutions(completed('testFirst'))],
+      ),
+    ).toBeNull();
+  });
+
+  test('rejects an equally sized run that replaced a selected method with an unexpected method', () => {
+    const failure = executionSelectionFailure(
+      [first, second],
+      [parseTestExecutions(completed('testFirst')), parseTestExecutions(completed('testOther'))],
+    );
+    expect(failure).toContain(second);
+    expect(failure).toContain('AgentDeviceRunnerUITests/RunnerTests/testOther');
+  });
+
+  test('rejects repeats across shards even when total execution count matches selection', () => {
+    expect(
+      executionSelectionFailure(
+        [first, second],
+        [parseTestExecutions(completed('testFirst')), parseTestExecutions(completed('testFirst'))],
+      ),
+    ).not.toBeNull();
+  });
+
+  test('rejects repeated execution within a shard', () => {
+    expect(
+      executionSelectionFailure(
+        [first, second],
+        [
+          parseTestExecutions(`${completed('testFirst')}\n${completed('testFirst')}`),
+          parseTestExecutions(completed('testSecond')),
+        ],
+      ),
+    ).not.toBeNull();
+  });
+
+  test('rejects a shard whose xcodebuild matched no methods even if its exit was successful', () => {
+    expect(
+      executionSelectionFailure([first], [parseTestExecutions('** TEST EXECUTE SUCCEEDED **')]),
+    ).not.toBeNull();
+    expect(executionSelectionFailure([first], [])).not.toBeNull();
+  });
+
+  test('rejects an empty or duplicate generated selection', () => {
+    const observed = [parseTestExecutions(completed('testFirst'))];
+    expect(executionSelectionFailure([], observed)).not.toBeNull();
+    expect(executionSelectionFailure([first, first], observed)).not.toBeNull();
+  });
+
+  test('keeps coverage distinct from pass status when a selected method fails or skips', () => {
+    expect(
+      executionSelectionFailure(
+        [first, second],
+        [
+          parseTestExecutions(completed('testFirst', 'failed')),
+          parseTestExecutions(completed('testSecond', 'skipped')),
+        ],
+      ),
+    ).toBeNull();
   });
 });
