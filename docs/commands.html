@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.a0fe23d409.js"></script>
+<script defer src="/agent-device/static/js/index.4a94939736.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -104,9 +104,11 @@
 <li>An <code>open</code> that launches an app reports <code>timing.postOpenObservation</code>. When it is present and not <code>&quot;observable&quot;</code>, the next command that reads the screen waits briefly until two reads agree, so a <code>click</code> lands where the element comes to rest. If the screen is still moving after that wait, the command proceeds and warns that the surface was still changing.</li>
 <li>If CoreSimulator never answers a URL hand-off, <code>open</code> fails within 20 seconds with <code>details.reason: ios-simulator-openurl-timeout</code>. The Simulator may still have received the URL; retry the open or answer the prompt with <code>alert accept</code>.</li>
 <li>When <code>open &lt;app&gt; --launch-url &lt;url&gt;</code> raises an <code>Open in &quot;&lt;App&gt;&quot;?</code> prompt and the URL&#x27;s scheme belongs to the session app, <code>open</code> taps <strong>Open</strong> and returns <code>launchConfirmation: &quot;accepted&quot;</code>. If the app still never starts, <code>open</code> hands over the URL once more.</li>
+<li>When that prompt stays unanswered, <code>open</code> returns <code>launchConfirmation: &quot;unanswered&quot;</code> with <code>launchConfirmationReason</code>: <code>alert-unrecognized</code> for a prompt it did not recognize (such as a non-English Simulator), or <code>url-owner-unresolved</code> when no single installed app owns the URL&#x27;s scheme or that lookup failed. The prompt stays on screen; <code>warnings</code> name the next step. Inspect with <code>alert get</code>, then answer with <code>alert accept</code>.</li>
+<li>When <code>open</code> could not read whether a prompt is up at all (the alert read, the accept, or the runner itself failed), <code>open</code> succeeds with <code>launchConfirmationProbeFailure</code> set to <code>alert-read</code>, <code>alert-accept</code>, or <code>runner</code> and no <code>launchConfirmation</code>, plus a warning to check with <code>alert get</code> before retrying.</li>
 <li><code>details.reason: launch_confirmation_unanswered</code> means the app never started after the prompt was accepted, or the prompt stayed visible after a failed tap. Answer it with <code>alert accept</code> or <code>alert dismiss</code> before continuing.</li>
 <li><code>details.reason: launch_confirmation_foreign_app</code> means another installed app owns the scheme (<code>details.foreignAppBundleId</code>). Close the prompt with <code>alert dismiss</code> and pass a URL your app handles.</li>
-<li><code>open</code> leaves the prompt on screen and returns as if none appeared when the Simulator isn&#x27;t set to English (run with <code>--debug</code> to see the title), when the prompt appears after <code>open</code> has seen your app, or when no single installed app owns the scheme (none does, a debug and a release build both do, or the app list can&#x27;t be read). Answer it with <code>alert accept</code> or <code>alert dismiss</code>.</li>
+<li>A prompt that appears after <code>open</code> has already seen the app is not reported and not answered; use <code>alert accept</code>.</li>
 </ul>
 <p>Back, orientation, and hardware buttons:</p>
 <ul>
