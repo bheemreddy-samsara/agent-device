@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3732/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3732/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3732/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3732/static/js/index.be59bd9e54.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3732/static/js/index.c8e1d8dc00.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -293,7 +293,7 @@ restart; reconnect and take the hold again. See <a href="/agent-device/pr-previe
 </ul>
 <p>Set <code>AGENT_DEVICE_MACOS_APP_BACKEND=native</code> to run macOS app sessions without XCTest. There is no Automation Mode overlay, the app can stay behind other windows, and your pointer stays yours while a drawn pointer shows each action.</p>
 <ul>
-<li><code>click</code>, <code>press</code>, and <code>fill</code> use accessibility actions on the element at the target point, which must be inside one of the app&#x27;s on-screen windows, not its menu bar. <code>type</code> inserts at the focused control or falls back to key events. <code>scroll</code> moves the scroll bar under the front window&#x27;s center. Chromium-based apps expose their full tree. <code>screenshot</code> captures only the app&#x27;s front window, even when it is covered.</li>
+<li><code>click</code>, <code>press</code>, and <code>fill</code> use accessibility actions on the element at the target point, which must be inside one of the app&#x27;s on-screen windows, not its menu bar. <code>type</code> inserts at the focused control or falls back to key events. <code>scroll</code> moves the scroll bar under the front window&#x27;s center. Chromium-based apps expose their full tree. <code>screenshot</code> captures only the app&#x27;s front window, even when it is covered. The front window is the app&#x27;s frontmost visible, nonempty normal-level (layer-0) window on the current Space: floating palettes and app-modal alerts at window level 8 are skipped, and a sheet is captured as its own window. If that window cannot be captured, <code>screenshot</code> fails; it never captures another window.</li>
 <li><code>record</code>, <code>prepare</code>, <code>back</code>, <code>longpress</code>, <code>--hold-ms</code>, <code>--double-tap</code>, <code>--button secondary</code>, gestures, and clicks on an element with no accessibility action fail with <code>UNSUPPORTED_OPERATION</code> (<code>reason: unsupported-device-backend</code>). Use the default XCTest backend for those.</li>
 </ul>
 <div class="rp-codeblock language-bash"><div class="rp-codeblock__content"><div class="rp-codeblock__content__scroll-container rp-scrollbar rp-scrollbar--always"><pre class="shiki css-variables" style="background-color:var(--shiki-background);color:var(--shiki-foreground)" tabindex="0" data-lang="bash"><code><span class="line"><span style="color:var(--shiki-token-comment)"># One app, full interaction</span></span>
