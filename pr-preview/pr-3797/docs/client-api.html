@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3797/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3797/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3797/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3797/static/js/index.6e59f1f242.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3797/static/js/index.be678e9b5b.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -187,7 +187,7 @@ Use it for BrowserStack, AWS Device Farm, or TestMu AI session videos/logs after
 <h2 class="rp-toc-include" id="daemon-lifecycle"><a href="#daemon-lifecycle" class="rp-header-anchor rp-link" aria-hidden="true">#</a>Daemon lifecycle</h2>
 <p>A client talks to one local daemon per state directory. <code>daemonLifecycle</code> says who owns that daemon.</p>
 <p>A host-owned daemon ends through its host&#x27;s own close or an authenticated shutdown request over its registered local transport. Clients never signal the host. A <code>&#x27;managed&#x27;</code> client reuses a matching host-owned daemon. Takeover, drain, and timeout recovery ask the central retirement, which judges the record&#x27;s owner once: a live host-owned or unrecognized owner is refused without a signal, while a record whose owner provably exited is retired like any abandoned one, so the state directory stays usable. <code>agent-device daemon stop --state-dir &lt;path&gt;</code> sends the shutdown request and waits for the close report. It can also ask a readable record with unrecognized ownership: an embedded runtime can close itself, but a detached answer fails with <code>daemon-not-embedded</code> and a record-repair hint, without signaling. A host&#x27;s direct close also records its result, so stops already waiting can confirm a clean release.</p>
-<p>For these shutdown requests, stop fails with <code>daemon-embedded-stop-unreachable</code> when the record lacks usable transport or token, <code>daemon-shutdown-unconfirmed</code> when the close cannot be confirmed (including after connection failure), or <code>daemon-record-unreadable</code> when <code>daemon.json</code> cannot be read. These are <code>error.details.reason</code> values. A retained close returns <code>stopped: true</code>, warnings and <code>cleanupConfidence: &#x27;unknown&#x27;</code> with exit 0: the runtime stopped serving, but resource cleanup is unconfirmed. Later stops can read that retained answer while the same host holds the registration.</p>
+<p>For these shutdown requests, stop fails with <code>daemon-embedded-stop-unreachable</code> when the record lacks usable transport or token, <code>daemon-shutdown-unconfirmed</code> when the close cannot be confirmed (including after connection failure), or, without <code>--clean</code>, <code>daemon-record-unreadable</code> when <code>daemon.json</code> cannot be read. These are <code>error.details.reason</code> values. A retained close returns <code>stopped: true</code>, warnings and <code>cleanupConfidence: &#x27;unknown&#x27;</code> with exit 0: the runtime stopped serving, but resource cleanup is unconfirmed. Later stops can read that retained answer while the same host holds the registration.</p>
 
 
 
