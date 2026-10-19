@@ -1,3 +1,4 @@
+import { withSdkCommandHost } from './command-host.ts';
 import { loadAndroidMechanics } from '../platform-runtime-android-mechanics.ts';
 
 type ResolveAndroidArchivePackageName =
@@ -6,6 +7,8 @@ type ResolveAndroidArchivePackageName =
 export async function resolveAndroidArchivePackageName(
   ...args: Parameters<ResolveAndroidArchivePackageName>
 ): Promise<Awaited<ReturnType<ResolveAndroidArchivePackageName>>> {
-  const { resolveAndroidArchivePackageName: resolve } = await loadAndroidMechanics();
-  return await resolve(...args);
+  return await withSdkCommandHost(async () => {
+    const { resolveAndroidArchivePackageName: resolve } = await loadAndroidMechanics();
+    return await resolve(...args);
+  });
 }

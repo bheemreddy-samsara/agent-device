@@ -273,3 +273,36 @@ test('Limrun iOS settings evaluate the Apple simctl plan module on the first set
     [['privacy', 'booted', 'grant', 'photos-add', 'com.example.app']],
   ]);
 });
+
+test('deferred Limrun reverse operations and archive commands retain their construction host', async () => {
+  const { createLimrunRuntimeDependencies } = await import('./limrun-runtime-dependencies.ts');
+  const { commandHostEnvironment, withCommandExecutorOverride } =
+    await import('@agent-device/host-kit/command');
+  const host = { env: { SDK_HOST: 'limrun' }, cwd: '/limrun' };
+  const dependencies = createLimrunRuntimeDependencies(host);
+  const adb = async () => {
+    assert.equal(commandHostEnvironment(), host);
+    return { exitCode: 0, stdout: '', stderr: '' };
+  };
+  const reverse = await dependencies.android.createPortReverse(adb, { noRebind: false });
+  await reverse.ensure({ local: 'tcp:8081', remote: 'tcp:8081', ownerId: 'sdk' });
+  assert.deepEqual(await reverse.list?.(), []);
+  await reverse.removeAllOwned('sdk');
+
+  let archived = false;
+  await withCommandExecutorOverride(
+    async (command) => {
+      assert.equal(command, 'zip');
+      assert.equal(commandHostEnvironment(), host);
+      archived = true;
+      return { exitCode: 0, stdout: '', stderr: '' };
+    },
+    () =>
+      dependencies.host.archiveDirectory({
+        sourceDirectory: '/app',
+        entryName: 'Example.app',
+        archivePath: '/app.zip',
+      }),
+  );
+  assert.equal(archived, true);
+});

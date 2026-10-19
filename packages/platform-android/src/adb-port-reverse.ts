@@ -28,6 +28,24 @@ export type AndroidExecPortReverseOptions = Readonly<{
 const ANDROID_PORT_REVERSE_REBIND_REFUSED_REASON = 'android_port_reverse_rebind_refused';
 
 const managedAndroidPortReverseProviders = new WeakSet<AndroidPortReverseProvider>();
+const scopedAndroidPortReverseProviders = new WeakMap<
+  AndroidPortReverseProvider,
+  AndroidPortReverseProvider
+>();
+
+/** Keeps scoped managers canonical when another provider reuses them as its reverse capability. */
+export function scopeAndroidPortReverseManager(
+  manager: AndroidPortReverseProvider,
+  scope: (manager: AndroidPortReverseProvider) => AndroidPortReverseProvider,
+): AndroidPortReverseProvider {
+  const existing = scopedAndroidPortReverseProviders.get(manager);
+  if (existing) return existing;
+  const scoped = scope(manager);
+  managedAndroidPortReverseProviders.add(scoped);
+  scopedAndroidPortReverseProviders.set(manager, scoped);
+  scopedAndroidPortReverseProviders.set(scoped, scoped);
+  return scoped;
+}
 
 export function createAndroidPortReverseManager(
   provider: AndroidAdbProvider | AndroidAdbExecutor,

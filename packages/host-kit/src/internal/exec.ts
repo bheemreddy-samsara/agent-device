@@ -13,32 +13,21 @@ import {
   type HostEnvironment,
 } from '@agent-device/kernel/source-value';
 
-export type ExecResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  stdoutBuffer?: Buffer;
-};
-
-export type ExecOptions = {
-  cwd?: string;
-  env?: NodeJS.ProcessEnv;
-  allowFailure?: boolean;
-  binaryStdout?: boolean;
-  stdin?: string | Buffer;
-  timeoutMs?: number;
-  detached?: boolean;
-  signal?: AbortSignal;
-  /** Max stdout/stderr bytes for synchronous runs (default Node ~1MB). */
-  maxBuffer?: number;
-  /**
-   * How a deadline or a cancelled request stops the child. Without this it is SIGKILL at
-   * once. A child that has to undo something before it dies — the macOS helper releasing a
-   * mouse button it is holding — is sent `signal` first, and SIGKILL only once `graceMs`
-   * pass without it exiting.
-   */
-  kill?: { readonly signal: NodeJS.Signals; readonly graceMs: number };
-};
+import type {
+  CommandExecutorOverride,
+  CommandHostScope,
+  ExecResult,
+  ExecOptions,
+  ExecDetachedExit,
+  ExecDetachedProcess,
+} from './exec-types.ts';
+export type {
+  CommandExecutorOverride,
+  ExecResult,
+  ExecOptions,
+  ExecDetachedExit,
+  ExecDetachedProcess,
+} from './exec-types.ts';
 
 export type ExecStreamOptions = ExecOptions & {
   /** Set false when chunk callbacks own output and only the exit code is needed. */
@@ -55,18 +44,6 @@ export type ExecBackgroundResult = {
 
 type ExecDetachedOptions = ExecOptions & {
   stdio?: StdioOptions;
-};
-
-export type ExecDetachedExit = {
-  pid: number;
-  exitCode?: number;
-  signal?: NodeJS.Signals;
-  error?: string;
-};
-
-export type ExecDetachedProcess = {
-  pid: number;
-  exited: Promise<ExecDetachedExit>;
 };
 
 /**
@@ -89,12 +66,6 @@ export type ExecBackgroundOptions = Omit<ExecOptions, 'timeoutMs'> & {
 const BARE_COMMAND_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 const WINDOWS_PATH_EXTENSIONS = ['.com', '.exe', '.bat', '.cmd'];
 const EXEC_DIAGNOSTIC_ARG_LIMIT = 6;
-export type CommandExecutorOverride = (
-  cmd: string,
-  args: readonly string[],
-  options: ExecOptions,
-) => Promise<ExecResult> | undefined;
-
 const commandExecutorOverrideScope = new AsyncLocalStorage<CommandExecutorOverride | undefined>();
 
 export async function withCommandExecutorOverride<T>(
@@ -110,11 +81,6 @@ export async function withoutCommandExecutorOverride<T>(fn: () => Promise<T>): P
   return await commandExecutorOverrideScope.run(undefined, fn);
 }
 
-type CommandHostScope = Readonly<{
-  host: HostEnvironment;
-  requestEnv: EnvMap | undefined;
-}>;
-
 const commandHostScope = new AsyncLocalStorage<CommandHostScope>();
 
 /**
@@ -122,15 +88,14 @@ const commandHostScope = new AsyncLocalStorage<CommandHostScope>();
  * from `host.env`, then takes `requestEnv` on top, so neither the process's environment nor a
  * concurrent request's values reach it. Outside a scope a command without `env` inherits the process's.
  */
-export async function withCommandHost<T>(
-  scope: CommandHostScope,
-  fn: () => Promise<T>,
-): Promise<T> {
+export function withCommandHost<T>(scope: CommandHostScope, fn: () => Promise<T>): Promise<T>;
+export function withCommandHost<T>(scope: CommandHostScope, fn: () => T): T;
+export function withCommandHost<T>(scope: CommandHostScope, fn: () => T): T {
   // A nested scope of the same host that names no request env keeps the enclosing request's.
   const enclosing = commandHostScope.getStore();
   const requestEnv =
     scope.requestEnv ?? (enclosing?.host === scope.host ? enclosing.requestEnv : undefined);
-  return await commandHostScope.run({ host: scope.host, requestEnv }, fn);
+  return commandHostScope.run({ host: scope.host, requestEnv }, fn);
 }
 
 /**

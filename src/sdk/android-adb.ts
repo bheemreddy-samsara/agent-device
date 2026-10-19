@@ -1,56 +1,88 @@
+import { withMethodScope } from '@agent-device/kernel/scoped-provider';
 import '../platform-runtime-android-adb-host.ts';
-export {
-  createAndroidPortReverseManager,
-  type AndroidAdbExecutor,
-  type AndroidAdbExecutorOptions,
-  type AndroidAdbProvider,
-  type AndroidPortReverseEndpoint,
-} from '@agent-device/platform-android/mechanics';
-export { listAndroidAppsWithAdb } from '@agent-device/platform-android/mechanics';
-export { runAdbExecOut, runAdbShell } from '@agent-device/platform-android/mechanics';
-import {
-  runAndroidExecOut as runAndroidExecOutOnHost,
-  runAndroidShell as runAndroidShellOnHost,
-} from '@agent-device/platform-android/mechanics';
-import { captureHostEnvironment } from '@agent-device/host-kit/process';
-import { withCommandHost } from '@agent-device/host-kit/command';
-
-export async function runAndroidShell(...args: Parameters<typeof runAndroidShellOnHost>) {
-  const host = captureHostEnvironment(process);
-  return await withCommandHost({ host, requestEnv: undefined }, () =>
-    runAndroidShellOnHost(...args),
-  );
-}
-
-export async function runAndroidExecOut(...args: Parameters<typeof runAndroidExecOutOnHost>) {
-  const host = captureHostEnvironment(process);
-  return await withCommandHost({ host, requestEnv: undefined }, () =>
-    runAndroidExecOutOnHost(...args),
-  );
-}
-export type { ShellWord } from '@agent-device/kernel/device-shell';
-
+import * as mechanics from '@agent-device/platform-android/mechanics';
+import { withSdkCommandHost } from './command-host.ts';
 import type { AndroidAdbExecutor } from '@agent-device/platform-android/mechanics';
 import type { AppStateRuntimeResult } from '@agent-device/contracts/app-state-runtime';
+
+export type {
+  AndroidAdbExecutor,
+  AndroidAdbExecutorOptions,
+  AndroidAdbProvider,
+  AndroidPortReverseEndpoint,
+  AndroidKeyboardDismissResult,
+  AndroidKeyboardState,
+} from '@agent-device/platform-android/mechanics';
+export type { ShellWord } from '@agent-device/kernel/device-shell';
+
+export const runAndroidShell: typeof mechanics.runAndroidShell = (...args) =>
+  withSdkCommandHost(() => mechanics.runAndroidShell(...args));
+
+export const runAndroidExecOut: typeof mechanics.runAndroidExecOut = (...args) =>
+  withSdkCommandHost(() => mechanics.runAndroidExecOut(...args));
+
+export const runAdbShell: typeof mechanics.runAdbShell = (...args) =>
+  withSdkCommandHost(() => mechanics.runAdbShell(...args));
+
+export const runAdbExecOut: typeof mechanics.runAdbExecOut = (...args) =>
+  withSdkCommandHost(() => mechanics.runAdbExecOut(...args));
+
+export const listAndroidAppsWithAdb: typeof mechanics.listAndroidAppsWithAdb = (...args) =>
+  withSdkCommandHost(() => mechanics.listAndroidAppsWithAdb(...args));
+
+export const forceStopAndroidAppWithAdb: typeof mechanics.forceStopAndroidAppWithAdb = (...args) =>
+  withSdkCommandHost(() => mechanics.forceStopAndroidAppWithAdb(...args));
+
+export const openAndroidAppWithAdb: typeof mechanics.openAndroidAppWithAdb = (...args) =>
+  withSdkCommandHost(() => mechanics.openAndroidAppWithAdb(...args));
+
+export const captureAndroidLogcatWithAdb: typeof mechanics.captureAndroidLogcatWithAdb = (
+  ...args
+) => withSdkCommandHost(() => mechanics.captureAndroidLogcatWithAdb(...args));
+
+export const dismissAndroidKeyboardWithAdb: typeof mechanics.dismissAndroidKeyboardWithAdb = (
+  ...args
+) => withSdkCommandHost(() => mechanics.dismissAndroidKeyboardWithAdb(...args));
+
+export const getAndroidKeyboardStatusWithAdb: typeof mechanics.getAndroidKeyboardStatusWithAdb = (
+  ...args
+) => withSdkCommandHost(() => mechanics.getAndroidKeyboardStatusWithAdb(...args));
+
+export const readAndroidClipboardWithAdb: typeof mechanics.readAndroidClipboardWithAdb = (
+  ...args
+) => withSdkCommandHost(() => mechanics.readAndroidClipboardWithAdb(...args));
+
+export const writeAndroidClipboardWithAdb: typeof mechanics.writeAndroidClipboardWithAdb = (
+  ...args
+) => withSdkCommandHost(() => mechanics.writeAndroidClipboardWithAdb(...args));
+
+export function createAndroidPortReverseManager(
+  provider: mechanics.AndroidAdbProvider | AndroidAdbExecutor,
+): ReturnType<typeof mechanics.createAndroidPortReverseManager>;
+export function createAndroidPortReverseManager(
+  ...args: Parameters<typeof mechanics.createAndroidPortReverseManager>
+): ReturnType<typeof mechanics.createAndroidPortReverseManager>;
+export function createAndroidPortReverseManager(
+  provider: mechanics.AndroidAdbProvider | AndroidAdbExecutor,
+  options?: Parameters<typeof mechanics.createAndroidPortReverseManager>[1],
+): ReturnType<typeof mechanics.createAndroidPortReverseManager> {
+  return withSdkCommandHost((host) => {
+    const manager =
+      options && typeof provider === 'function'
+        ? mechanics.createAndroidPortReverseManager(provider, options)
+        : mechanics.createAndroidPortReverseManager(provider);
+    return mechanics.scopeAndroidPortReverseManager(manager, (target) =>
+      withMethodScope(target, (task) => withSdkCommandHost(task, host)),
+    );
+  });
+}
 
 export async function getAndroidAppStateWithAdb(
   adb: AndroidAdbExecutor,
   signal?: AbortSignal,
 ): Promise<AppStateRuntimeResult> {
-  const { getAndroidAppStateWithAdb: read } = await import('../platform-runtime.ts');
-  return await read(adb, signal);
+  return await withSdkCommandHost(async () => {
+    const { getAndroidAppStateWithAdb: read } = await import('../platform-runtime.ts');
+    return await read(adb, signal);
+  });
 }
-
-export {
-  forceStopAndroidAppWithAdb,
-  openAndroidAppWithAdb,
-} from '@agent-device/platform-android/mechanics';
-export { captureAndroidLogcatWithAdb } from '@agent-device/platform-android/mechanics';
-export {
-  dismissAndroidKeyboardWithAdb,
-  getAndroidKeyboardStatusWithAdb,
-  readAndroidClipboardWithAdb,
-  type AndroidKeyboardDismissResult,
-  type AndroidKeyboardState,
-  writeAndroidClipboardWithAdb,
-} from '@agent-device/platform-android/mechanics';

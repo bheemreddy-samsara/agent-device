@@ -364,3 +364,5 @@ export {
   type AndroidBlockingDialogObservation,
   type AndroidWindowDumpReader,
 } from './window-state.ts';
+
+export { scopeAndroidPortReverseManager } from './adb-port-reverse.ts';

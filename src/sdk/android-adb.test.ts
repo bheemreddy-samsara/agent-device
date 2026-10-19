@@ -65,3 +65,28 @@ test.skipIf(process.platform === 'win32')(
     }
   },
 );
+
+test('scoped SDK reverse managers remain canonical when reused by another provider', async () => {
+  const { createAndroidPortReverseManager } = await import('./android-adb.ts');
+  const { commandHostEnvironment } = await import('@agent-device/host-kit/command');
+  const calls: (readonly string[])[] = [];
+  const provider: import('@agent-device/platform-android/mechanics').AndroidAdbProvider = {
+    exec: async (args) => {
+      assert.ok(commandHostEnvironment().env);
+      calls.push(args);
+      return { exitCode: 0, stdout: '', stderr: '' };
+    },
+  };
+  const first = createAndroidPortReverseManager(provider);
+  const second = createAndroidPortReverseManager({ ...provider, reverse: first });
+  assert.equal(second, first);
+  const mapping = { local: 'tcp:8081', remote: 'tcp:8081' } as const;
+  await second.ensure(mapping);
+  await first.remove(mapping.local);
+  await second.ensure(mapping);
+  assert.deepEqual(calls, [
+    ['reverse', 'tcp:8081', 'tcp:8081'],
+    ['reverse', '--remove', 'tcp:8081'],
+    ['reverse', 'tcp:8081', 'tcp:8081'],
+  ]);
+});
