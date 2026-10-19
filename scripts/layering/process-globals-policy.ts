@@ -17,10 +17,8 @@ const PROCESS_ENTRIES = new Set([
   'packages/maestro/src/daemon-port/run-script-http-child.ts',
   // Released SDK defaults; #3759 removes these captures after agent-device/host ships (#3757).
   'src/io.ts',
-  'src/sdk/remote-config.ts',
-  'src/sdk/android-adb.ts',
-  'src/sdk/metro.ts',
-  'src/provider-limrun-runtime.ts',
+  // SDK entry defaults until #3759; reserve agent-device/host's entry when #3757 ships.
+  'src/sdk/command-host.ts',
   'src/mcp/command-tools.ts',
   'src/daemon-client/daemon-client.ts',
   'src/daemon-client/daemon-client-ensure.ts',
