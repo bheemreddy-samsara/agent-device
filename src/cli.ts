@@ -203,6 +203,7 @@ async function runCliOnHost(argv: string[], deps: CliDeps, host: HostEnvironment
             await runExecCommand(positionals, {
               flags: ctx.effectiveFlags,
               stateDir: ctx.daemonPaths.baseDir,
+              host,
             }),
           );
           return;

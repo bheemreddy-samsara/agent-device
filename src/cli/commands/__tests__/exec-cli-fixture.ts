@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { withTestDeviceInventory } from '@agent-device/device-selection/inventory-gateways-fixtures';
-import { ANDROID_EMULATOR } from '@agent-device/test-kit';
+import { ANDROID_EMULATOR, createTestHostEnvironment } from '@agent-device/test-kit';
 import type { CliFlags } from '@agent-device/contracts/command';
 import { runExecCommand } from '../exec.ts';
 
@@ -36,6 +36,11 @@ fs.mkdirSync(path.join(stateDir, 'exec'), { recursive: true });
 // outlives the direct child is exactly what must not keep the device fenced.
 const exitCode = await withTestDeviceInventory(
   { local: async () => [ANDROID_EMULATOR] },
-  async () => await runExecCommand(['sh', '-c', 'sleep 10'], { flags, stateDir }),
+  async () =>
+    await runExecCommand(['sh', '-c', 'sleep 10'], {
+      flags,
+      stateDir,
+      host: createTestHostEnvironment(),
+    }),
 );
 process.exit(exitCode);

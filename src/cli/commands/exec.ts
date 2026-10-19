@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import type { CliFlags } from '@agent-device/contracts/command';
 import type { DeviceInfo } from '@agent-device/kernel/device';
+import type { HostEnvironment } from '@agent-device/kernel/source-value';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   acquireWrapperDeviceClaim,
@@ -28,6 +29,8 @@ export type ExecCommandOptions = Readonly<{
   flags: CliFlags;
   /** The CLI's resolved daemon state dir; the wrapper's claim lives under it. */
   stateDir: string;
+  /** The host captured at the CLI entry point; it locates the claim store and the workspace. */
+  host: HostEnvironment;
 }>;
 
 /**
@@ -68,12 +71,12 @@ export async function runExecCommand(
   }
   const termination = attachSignalForwarding();
   try {
-    const device = await resolveExecDevice(options.flags);
+    const device = await resolveExecDevice(options.flags, options.host);
     if (termination.signal) return signalExitCode(termination.signal);
     const ownership = await acquireExecDeviceClaim(device, command, options);
     try {
       if (termination.signal) return signalExitCode(termination.signal);
-      return await runClaimedChild(command, args, termination);
+      return await runClaimedChild(command, args, termination, options.host);
     } catch (error) {
       // A command missing from PATH is the child failing to start; shells report
       // that as 127, and `exec` promises the command's exit code.
@@ -83,21 +86,21 @@ export async function runExecCommand(
       }
       throw error;
     } finally {
-      await releaseExecDeviceClaim(ownership);
+      await releaseExecDeviceClaim(ownership, options.host);
     }
   } finally {
     termination.dispose();
   }
 }
 
-async function resolveExecDevice(flags: CliFlags): Promise<DeviceInfo> {
+async function resolveExecDevice(flags: CliFlags, host: HostEnvironment): Promise<DeviceInfo> {
   if (hasDeviceInventoryContext()) return await resolveTargetDevice(flags);
   // Claims exist only for local devices, so the wrapper composes the local
   // inventory itself; a scope installed by a host (a test or embedding caller)
   // is reused as-is. Platform modules are named by the gateway composition, so
   // it is imported only on this path.
   const { createPlatformDeviceInventoryGateways } = await import('../../platform-runtime.ts');
-  const gateways = await createPlatformDeviceInventoryGateways();
+  const gateways = await createPlatformDeviceInventoryGateways(host);
   return await withDeviceInventoryContext(
     { ...gateways, requestScope: createRecoveryPlatformScope() },
     async () => await resolveTargetDevice(flags),
@@ -114,15 +117,17 @@ async function acquireExecDeviceClaim(
   // common claim-free path stays as light as `device release --stale` keeps it.
   const { createOwnerScopedDeviceClaimReconciler } =
     await import('@agent-device/daemon-contracts/device-claim-recovery');
-  const { createClaimRecoveryGateway } = await import('../../platform-runtime-claim-recovery.ts');
+  const { createClaimRecoveryGatewayFor } =
+    await import('../../platform-runtime-claim-recovery.ts');
   const result = await acquireWrapperDeviceClaim({
     device,
     command,
-    workspace: process.cwd(),
+    workspace: options.host.cwd,
     stateDir: prepareExecClaimStateDir(options.stateDir),
+    env: options.host.env,
     reconcileOrphanedDeviceClaim: createOwnerScopedDeviceClaimReconciler({
       scope: createRecoveryPlatformScope(),
-      composeGateway: createClaimRecoveryGateway,
+      composeGateway: createClaimRecoveryGatewayFor(options.host),
     }),
   });
   if (result.status === 'conflict') throw deviceClaimConflictError(device, result.conflict);
@@ -145,20 +150,19 @@ async function runClaimedChild(
   command: string,
   args: readonly string[],
   termination: SignalForwarding,
+  host: HostEnvironment,
 ): Promise<number> {
   // A build tool named with a path (`./gradlew`, `./scripts/build.sh`) is how the
   // fence is used day to day; resolve it against the cwd the way a shell would,
   // because the spawn helper keeps bare PATH names and absolute paths only.
   const executable =
-    !path.isAbsolute(command) && command.includes('/')
-      ? path.resolve(process.cwd(), command)
-      : command;
+    !path.isAbsolute(command) && command.includes('/') ? path.resolve(host.cwd, command) : command;
   // The child leads its own process group so a forwarded signal reaches the
   // build tools it spawns — the grandchildren the fence exists to cover — not
   // just its direct process.
   const child = runCmdBackground(executable, args, {
-    cwd: process.cwd(),
-    env: process.env,
+    cwd: host.cwd,
+    env: host.env,
     stdio: 'inherit',
     captureOutput: false,
     allowFailure: true,
@@ -231,10 +235,13 @@ function signalExitCode(signal: NodeJS.Signals): number {
   return 128 + (signum ?? 0);
 }
 
-async function releaseExecDeviceClaim(ownership: DeviceClaimSessionOwnership): Promise<void> {
+async function releaseExecDeviceClaim(
+  ownership: DeviceClaimSessionOwnership,
+  host: HostEnvironment,
+): Promise<void> {
   let outcome: DeviceClaimClearOutcome;
   try {
-    outcome = await clearDeviceClaim(ownership);
+    outcome = await clearDeviceClaim(ownership, host.env);
   } catch (error) {
     process.stderr.write(
       `agent-device exec: could not release the device claim: ${

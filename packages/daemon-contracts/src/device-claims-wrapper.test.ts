@@ -44,7 +44,7 @@ function useClaimsRoot(): string {
 }
 
 function storedClaimFile(): string {
-  return resolveDeviceClaimPath(canonicalLocalDeviceKey(device));
+  return resolveDeviceClaimPath(canonicalLocalDeviceKey(device), process.env);
 }
 
 /**
@@ -65,6 +65,7 @@ test('a wrapper claim records its owner kind and names the wrapped command', asy
   const root = useClaimsRoot();
   const acquired = await acquireWrapperDeviceClaim({
     device,
+    env: process.env,
     command: 'expo',
     workspace: '/worktrees/wrapper',
     stateDir: root,
@@ -73,7 +74,7 @@ test('a wrapper claim records its owner kind and names the wrapped command', asy
   assert.equal(acquired.status, 'acquired');
   const stored = JSON.parse(fs.readFileSync(storedClaimFile(), 'utf8')) as Record<string, unknown>;
   assert.equal(stored.claimOwnerKind, 'wrapper');
-  const inspected = inspectDeviceClaims({ serial: device.id })[0];
+  const inspected = inspectDeviceClaims({ serial: device.id }, process.env)[0];
   assert.equal(inspected?.claim?.session, 'exec:expo');
   assert.equal(inspected?.claim?.ownerPid, process.pid);
   assert.equal(inspected?.classification, 'live');
@@ -89,6 +90,7 @@ test('a live wrapper claim survives a daemon registration published for its stat
   fs.mkdirSync(stateDir, { recursive: true });
   const wrapper = await acquireWrapperDeviceClaim({
     device,
+    env: process.env,
     command: 'expo',
     workspace: '/worktrees/wrapper',
     stateDir,
@@ -101,6 +103,7 @@ test('a live wrapper claim survives a daemon registration published for its stat
 
   const second = await acquireDeviceClaim({
     device,
+    env: process.env,
     session: 'foreign-session',
     workspace: '/worktrees/foreign',
     stateDir: path.join(root, 'foreign-state'),
@@ -122,6 +125,7 @@ test('a daemon-served claim is still reclaimed from a superseded registration', 
   fs.mkdirSync(stateDir, { recursive: true });
   const seeded = await acquireDeviceClaim({
     device,
+    env: process.env,
     session: 'superseded-daemon-session',
     workspace: '/w',
     stateDir,
@@ -134,6 +138,7 @@ test('a daemon-served claim is still reclaimed from a superseded registration', 
 
   const second = await acquireDeviceClaim({
     device,
+    env: process.env,
     session: 'successor-session',
     workspace: '/w',
     stateDir,

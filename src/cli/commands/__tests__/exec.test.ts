@@ -3,7 +3,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, test } from 'vitest';
-import { ANDROID_EMULATOR, mkdtempForTestSync } from '@agent-device/test-kit';
+import {
+  ANDROID_EMULATOR,
+  createTestHostEnvironment,
+  mkdtempForTestSync,
+} from '@agent-device/test-kit';
 import { withTestDeviceInventory } from '@agent-device/device-selection/inventory-gateways-fixtures';
 import {
   acquireDeviceClaim,
@@ -68,7 +72,12 @@ function runExec(args: readonly string[], dirs: ExecDirs): RunningExec {
         return [ANDROID_EMULATOR];
       },
     },
-    async () => await runExecCommand(args, { flags: execFlags(), stateDir: dirs.stateDir }),
+    async () =>
+      await runExecCommand(args, {
+        flags: execFlags(),
+        stateDir: dirs.stateDir,
+        host: createTestHostEnvironment(),
+      }),
   );
   return { promise, inventoryReady: () => inventoryReady };
 }
@@ -90,7 +99,7 @@ function storedClaim(claimsDir: string): Record<string, unknown> | undefined {
 }
 
 function claimEntry(): ReturnType<typeof inspectDeviceClaims>[number] | undefined {
-  return inspectDeviceClaims({ serial: ANDROID_EMULATOR.id })[0];
+  return inspectDeviceClaims({ serial: ANDROID_EMULATOR.id }, process.env)[0];
 }
 
 /**
@@ -101,6 +110,7 @@ async function foreignAcquireAttempt(dirs: ExecDirs): Promise<unknown> {
   return await withTestDeviceInventory({ local: async () => [] }, async () =>
     acquireDeviceClaim({
       device: ANDROID_EMULATOR,
+      env: process.env,
       session: 'other-workspace',
       workspace: '/worktrees/other',
       stateDir: path.join(dirs.stateDir, 'other'),
@@ -206,20 +216,14 @@ test('runs a command named by relative path and reports a missing command as she
   const script = path.join(dirs.stateDir, 'build.sh');
   fs.writeFileSync(script, '#!/bin/sh\nexit 3\n');
   fs.chmodSync(script, 0o755);
-  const previousCwd = process.cwd();
   const exitCode = await withTestDeviceInventory(
     { local: async () => [ANDROID_EMULATOR] },
-    async () => {
-      process.chdir(dirs.stateDir);
-      try {
-        return await runExecCommand(['./build.sh'], {
-          flags: execFlags(),
-          stateDir: dirs.stateDir,
-        });
-      } finally {
-        process.chdir(previousCwd);
-      }
-    },
+    async () =>
+      await runExecCommand(['./build.sh'], {
+        flags: execFlags(),
+        stateDir: dirs.stateDir,
+        host: createTestHostEnvironment({ cwd: dirs.stateDir }),
+      }),
   );
   assert.equal(exitCode, 3);
   assert.equal(storedClaim(dirs.claimsDir), undefined);
@@ -243,6 +247,7 @@ test('refuses to start while a foreign live claim holds the device, and runs aft
   const foreign = await withTestDeviceInventory({ local: async () => [] }, async () =>
     acquireDeviceClaim({
       device: ANDROID_EMULATOR,
+      env: process.env,
       session: 'other-workspace',
       workspace: '/worktrees/other',
       stateDir: foreignStateDir,
@@ -263,7 +268,7 @@ test('refuses to start while a foreign live claim holds the device, and runs aft
   });
   assert.equal(claimEntry()?.claim?.session, 'other-workspace');
 
-  await clearDeviceClaim(foreign.ownership);
+  await clearDeviceClaim(foreign.ownership, process.env);
   assert.equal(await runExec(['true'], dirs).promise, 0);
   assert.equal(storedClaim(dirs.claimsDir), undefined);
 });

@@ -129,12 +129,14 @@ export async function acquireWrapperDeviceClaim(params: {
   command: string;
   workspace: string;
   stateDir: string;
+  env: EnvMap;
   reconcileOrphanedDeviceClaim: DeviceClaimReconciler;
 }): Promise<DeviceClaimAcquireResult> {
   const identity = deviceClaimIdentity(params.device);
   const deviceKey = canonicalLocalDeviceKey(identity);
   return await withDeviceClaimLock(
     deviceKey,
+    params.env,
     async () =>
       await claimHeldDevice({
         ...params,

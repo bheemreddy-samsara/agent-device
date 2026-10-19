@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { withTestDeviceInventory } from '@agent-device/device-selection/inventory-gateways-fixtures';
-import { ANDROID_EMULATOR } from '@agent-device/test-kit';
+import { ANDROID_EMULATOR, createTestHostEnvironment } from '@agent-device/test-kit';
 import type { CliFlags } from '@agent-device/contracts/command';
 import { runExecCommand } from '../exec.ts';
 
@@ -39,6 +39,7 @@ const exitCode = await withTestDeviceInventory(
     await runExecCommand(['sh', '-c', `echo $$ > ${JSON.stringify(childPidFile)}; exec sleep 8`], {
       flags,
       stateDir,
+      host: createTestHostEnvironment(),
     }),
 );
 process.exit(exitCode);
