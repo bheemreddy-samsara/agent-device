@@ -332,7 +332,7 @@ await client.command.back({
 await client.command.tvRemote({
   platform: 'android',
   target: 'tv',
-  button: 'down',
+  button: 'volume-down',
 });
 
 await client.command.tvRemote({
@@ -374,6 +374,8 @@ await client.interactions.press({ selector: 'label="Continue"' });
 ```
 
 If the wait times out, check the selector and app state with a fresh snapshot. A covered, off-screen, or ambiguous target still fails the interaction.
+
+`tvRemote` is TV-only. Android TV accepts the navigation buttons, named volume, power, media, channel, and color keys, and `android-keycode:N`. tvOS and Vega OS accept only `up`, `down`, `left`, `right`, `select`, `menu`, `home`, and `back`; other buttons fail with `UNSUPPORTED_OPERATION`. Phones and WebDriver sessions are unsupported. See [TV targets](/agent-device/docs/commands.md#tv-targets) for the full button list and hold behavior.
 
 Vega OS client support is VVD-only and covers device discovery, app open/close, `back`, `home`, and `tvRemote`. Physical Fire TV, capture, selector, install, logging, and performance methods report unsupported for Vega targets.
 
