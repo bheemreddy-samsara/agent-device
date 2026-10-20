@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.3506c2f434.js"></script>
+<script defer src="/agent-device/static/js/index.c20e93e49f.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -444,7 +444,7 @@ restart; reconnect and take the hold again. See <a href="/agent-device/docs/remo
 <h3 class="rp-toc-include" id="scroll"><a href="#scroll" class="rp-header-anchor rp-link" aria-hidden="true">#</a>Scroll</h3>
 <ul>
 <li><code>scroll &lt;direction&gt; [amount]</code> takes the finger path as a fraction of the viewport (<code>0.5</code> is half), or <code>--pixels &lt;n&gt;</code> for a fixed distance. Large distances are clamped. The app&#x27;s scroll physics decide the final offset, so a scroll does not land on an exact position.</li>
-<li><code>scroll &lt;direction&gt; --until &lt;selector&gt;</code> repeats passes until the selector is on screen and fails if the content runs out first. Add an amount (<code>scroll down 0.8 --until &lt;selector&gt;</code>) to widen each pass. Use it in <code>.ad</code> scripts too, instead of fixed amounts that depend on screen size; see <a href="/agent-device/docs/replay-e2e" class="rp-link">Replay &amp; E2E</a>.</li>
+<li><code>scroll &lt;direction&gt; --until &lt;selector&gt;</code> repeats passes until the selector is on screen and fails if the content runs out first. It stops after at most 12 gestures by default. For a longer list, use <code>scroll down --until &#x27;id=&quot;row-512&quot;&#x27; --max-passes 90</code> (1–200 gestures). The pass limit does not extend the 90-second request timeout. Large pass budgets can hit that timeout; inspect the current screen and continue with another search if that happens. Add an amount (<code>scroll down 0.8 --until &lt;selector&gt;</code>) to widen each pass. Use it in <code>.ad</code> scripts too, instead of fixed amounts that depend on screen size; see <a href="/agent-device/docs/replay-e2e" class="rp-link">Replay &amp; E2E</a>.</li>
 <li>Default snapshot text summarizes off-screen interactive content instead of listing refs. <code>scroll &lt;direction&gt; --settle</code> (and <code>back --settle</code>) waits for the UI to go quiet and returns the diff with fresh refs, so you don&#x27;t need another <code>snapshot -i</code>. Settle is best-effort and never fails the action.</li>
 <li>On Android, settle ignores an allowlist of system-bar containers and shade/keyguard status headers; other SystemUI overlays remain content. Appium settle also applies package rules for keyboard and system chrome.</li>
 <li>With a keyboard up on iOS or Android, the swipe stays above the keyboard (reported as <code>keyboardAvoided</code> and <code>keyboardMinY</code>) and the keyboard stays open. If too little room is left, the command refuses with <code>scroll_keyboard_occludes_surface</code>; run <code>keyboard dismiss</code> first.</li>
