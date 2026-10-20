@@ -168,7 +168,7 @@ if ('cloudArtifacts' in result) {
 
 A client talks to one local daemon per state directory. `daemonLifecycle` says who owns that daemon.
 
-Close an embedded runtime in its host process with the handle returned by `startAgentDevice()`. `agent-device daemon stop --state-dir <path>` refuses with `error.details.reason: 'daemon-owner-embedded'` and a hint naming the host PID. It sends no request or signal. If the host has exited, call `ensureDaemon({ stateDir })` to recover its abandoned registration. A record with unrecognized ownership is also refused, with `daemon-owner-unrecognized`. Without `--clean`, an unreadable `daemon.json` fails with `daemon-record-unreadable`.
+Close an embedded runtime in its host process with the handle returned by `startAgentDevice()`. `agent-device daemon stop --state-dir <path>` refuses a live runtime with `error.details.reason: 'daemon-owner-embedded'` and a hint naming the host PID. It sends no request or signal. If the recorded host lifetime has provably exited, `daemon stop` retires its abandoned registration. A record with live unrecognized ownership is also refused, with `daemon-owner-unrecognized`. Without `--clean`, an unreadable `daemon.json` fails with `daemon-record-unreadable`.
 
 A `'managed'` client reuses a matching embedded runtime. Takeover, drain, and timeout recovery refuse a live embedded or unrecognized owner without a signal. A provably exited owner is retired so you can reuse the state directory.
 
@@ -201,7 +201,7 @@ These failures carry a typed `error.details.reason`:
 | `daemon-incompatible`       | The running daemon does not match the client. `details.daemon` and `details.client` hold both identities. For an embedded runtime, close it in its host process. For a detached daemon, use `agent-device daemon stop --state-dir <path>`. Then call `ensureDaemon()`. A daemon from a release that predates quiescing cannot be asked to leave, so `ensureDaemon()` reports it the same way. |
 | `daemon-busy`               | `ensureDaemon()` found an incompatible daemon that still holds work. `details` counts `inFlightRequests`, `sessions`, `repairSessions` and `leases`. Wait for them to end and retry.                                                                                                                                                                                                          |
 | `daemon-drain-timeout`      | A daemon accepted the request to leave but was still running 60 s later and could not be force-retired, either because it still answers or because its process cannot be proven to be a detached daemon. It was not signaled. Retry once it has exited, or stop it with `agent-device daemon stop --state-dir <path>`.                                                                        |
-| `daemon-owner-embedded`     | A host process owns the daemon on `stateDir`, so this client neither replaced it nor retired it, and signaled nothing. A daemon that matches the client is still usable. Close the runtime in its host process with its `close()` handle.                                                                                                                                                     |
+| `daemon-owner-embedded`     | A live host process owns the daemon on `stateDir`, so this client neither replaced it nor retired it, and signaled nothing. A daemon that matches the client is still usable. Close the runtime in its host process with its `close()` handle.                                                                                                                                                |
 | `daemon-owner-unrecognized` | The record on `stateDir` states an owner this version cannot read, so this client replaced nothing and signaled nothing. Update agent-device if the record comes from a newer build. Otherwise check what owns that process: a host that started it closes it with its own close, and otherwise remove `daemon.json` once that process is gone.                                               |
 | `daemon-binding-mismatch`   | A client pinned to one daemon instance reached another one instead. `details.mismatch` says which: `replaced`, `absent`, or `unaddressable`. Nothing was dispatched, started, or signaled. Take a fresh config from the host that owns the daemon, or start a host of your own.                                                                                                               |
 
@@ -224,7 +224,7 @@ await host.close();
 
 `stateDir` is required. If another daemon owns it, startup refuses with `daemon_registration_refused`; choose a separate directory or close its owner first. Pass imported plugin objects in `plugins`. They register after the built-ins without reading the plugin store, so `plugin add` does not change a running host. Plugin failures appear in `agent-device daemon status --state-dir <path>`. `close()` reports unfinished teardown. Repeated calls share one close and never exit your process.
 
-The runtime stays alive until you call `close()` in its host process; idle reaping is disabled. `daemon stop` refuses embedded runtimes with `daemon-owner-embedded`. `daemon stop --clean` is refused because cleanup must stay within this runtime. If the shutdown report lists abandoned requests or unfinished cleanup, inspect those outcomes before reusing the state directory: the runtime may retain its registration to protect work still in progress.
+The runtime stays alive until you call `close()` in its host process; idle reaping is disabled. `daemon stop` refuses live embedded runtimes with `daemon-owner-embedded`. `daemon stop --clean` is refused because cleanup must stay within this runtime. If the shutdown report lists abandoned requests or unfinished cleanup, inspect those outcomes before reusing the state directory: the runtime may retain its registration to protect work still in progress.
 
 `host.clientConfig` is serializable JSON: pass it to another process or worker and build an attach client from it. The client must pass normal version and code compatibility checks, then match the pinned instance. An incompatible or replacement daemon is refused:
 
@@ -408,13 +408,19 @@ Domain client methods:
 - `client.leases.allocate()`, `heartbeat()`, `release()`. Pass `retainOnClose: true` to `allocate()` when you release the lease yourself; session `close` then leaves it active until `release()`, expiry, or daemon shutdown. The returned lease has `retainOnClose: true` only when the daemon honored it. Keep heartbeating a retained lease between sessions: it expires after its `ttlMs` like any other lease. Pass `leaseId` (16 to 128 hex characters) to `allocate()` to name a new lease with an id the daemon has never issued, or to get back your live lease with that id when you retry with the same tenant, run, client, lease backend, and provider (and no device, or the leased one), then use the returned `leaseId`: a run that already holds a lease gets that one back, and an older daemon mints its own. `allocate()` with a `leaseProvider` the daemon has no runtime for fails with `UNSUPPORTED_OPERATION`, reason `provider-not-registered`, and `details.registeredProviders`; no lease is recorded. Leases with no provider, `proxy`, or `cloud` need no runtime.
 - `client.metro.prepare()`, `reload()`
 - `client.capture.snapshot()`, `screenshot()`, `diff()`
-- `client.interactions.click()`, `press()`, `longPress()`, `swipe()`, `pan()`, `drag()`, `fling()`, `swipeGesture()`, `focus()`, `type()`, `fill()`, `scroll()`, `pinch()`, `rotateGesture()`, `transformGesture()`, `get()`, `is()`, `find()`
+- `client.interactions.gesture()`, `click()`, `press()`, `longPress()`, `swipe()`, `pan()`, `drag()`, `fling()`, `swipeGesture()`, `focus()`, `type()`, `fill()`, `scroll()`, `pinch()`, `rotateGesture()`, `transformGesture()`, `tapGesture()`, `get()`, `is()`, `find()`
 - `client.replay.run()` and `client.replay.test()`
 - `client.batch.run()`
 - `client.observability.perf(options)`, `logs()`, `events()`, `network()`, and `audio()`
 - `client.debug.symbols()`
 - `client.recording.record()` and `client.recording.trace()`
 - `client.settings.update()`
+
+Use `client.interactions.gesture()` with a `kind` and the corresponding [gesture inputs](/agent-device/pr-preview/pr-3850/docs/commands.md#pointer-and-gestures):
+
+```ts
+await client.interactions.gesture({ kind: 'pan', origin: { x: 100, y: 200 }, delta: { x: 40, y: -20 } });
+```
 
 If the daemon returns a missing or non-object lease, or a lease without a non-empty string for `leaseId`, `tenantId`, `runId`, or `backend`, `client.leases.allocate()` and `client.leases.heartbeat()` reject with `COMMAND_FAILED` and `details.reason: "INVALID_LEASE_RESPONSE"`.
 The original daemon response is available in `error.details.response`.
