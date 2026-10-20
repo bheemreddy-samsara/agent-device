@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.a41d4dd948.js"></script>
+<script defer src="/agent-device/static/js/index.7552d3fd82.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -979,7 +979,7 @@ hardware keys) still start a stopped app.</li>
 <h2 class="rp-toc-include" id="ios-springboard-widgets-and-system-ui-surfaces"><a href="#ios-springboard-widgets-and-system-ui-surfaces" class="rp-header-anchor rp-link" aria-hidden="true">#</a>iOS SpringBoard, widgets, and system-UI surfaces</h2>
 <p>For CLI-discoverable workflow guidance, run <code>agent-device help ios-system-ui</code>.</p>
 <ul>
-<li><code>agent-device open com.apple.springboard --platform ios</code> binds the session to SpringBoard. This is verified on iOS simulators only; physical iPhones are unverified (see <a href="https://github.com/callstack/agent-device/issues/1296" target="_blank" rel="noopener noreferrer" class="rp-link">#1296</a>).</li>
+<li><code>agent-device open com.apple.springboard --platform ios</code> binds the session to SpringBoard on iOS simulators and physical iPhones. On a physical iPhone, <code>snapshot -i</code> and selector presses on visible home-screen icons are verified; the widget add/edit/remove flow below is verified on simulators only (see <a href="https://github.com/callstack/agent-device/issues/1296" target="_blank" rel="noopener noreferrer" class="rp-link">#1296</a>).</li>
 <li>The full widget add/edit/remove flow is selector-driven from a fresh <code>snapshot -i</code>, except two coordinate-based steps: the empty-space long-press that enters edit mode, and the widget-gallery search-result rows, which return unlabeled accessibility nodes.</li>
 <li>SpringBoard labels vary by iOS version and locale; discover them from the current snapshot rather than hard-coding strings like <code>Edit</code> or <code>Add Widget</code>.</li>
 <li>Reopen the app bundle under test to return to normal app automation after a SpringBoard step.</li>
