@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3858/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3858/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3858/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3858/static/js/index.4100f149af.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3858/static/js/index.45b39cd10d.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -887,7 +887,9 @@ hardware keys) still start a stopped app.</li>
 <p><strong>Screenshot diffs</strong></p>
 <ul>
 <li><code>diff screenshot</code> compares a live capture, or a saved <code>current.png</code> (no session needed), against <code>--baseline</code>. Inputs may be PNG or JPEG regardless of extension; HarmonyOS captures are JPEG. Output ranks changed regions with rectangles, changed-pixel counts, and share of the diff; <code>--out</code> writes a diff PNG with changed pixels tinted red. <code>ocr</code> and <code>nonTextDeltas</code> are never populated, so read the images yourself for qualitative review.</li>
-<li><code>--threshold &lt;0-1&gt;</code> sets the per-pixel RGB tolerance (default <code>0.1</code>). Image dimensions must match. Keep it above <code>0</code> when either input is JPEG.</li>
+<li><code>--threshold &lt;0-1&gt;</code> sets the per-pixel RGB tolerance (default <code>0.1</code>). Keep it above <code>0</code> when either input is JPEG.</li>
+<li>The current image scales proportionally to the baseline width and aligns at the top left. Its scaled height rounds to the nearest pixel, with a minimum of one row. The comparison includes the full height of both images: extra or missing bottom rows count as differences, including blank or transparent rows, even at <code>--threshold 1</code>. Your original files stay unchanged. This does not crop system bars or move content into alignment.</li>
+<li>When dimensions differ, JSON <code>normalization</code> reports <code>baseline</code>, <code>current</code>, <code>scaledCurrent</code>, and <code>compared</code> dimensions. <code>currentScale.x</code> and <code>.y</code> map original current pixels to comparison pixels; the height scale includes pixel rounding. Region rectangles and ref-match rectangles use comparison pixels, and normalized region rectangles use percentages of the compared canvas. The separate current-screen overlay keeps its original capture size.</li>
 <li><code>--overlay-refs</code> also writes a separate current-screen ref overlay and lists refs under changed regions. It needs a live capture, so it is unavailable with a saved <code>current.png</code>.</li>
 <li>Live iOS simulator diffs normalize status-bar chrome by default.</li>
 </ul>
