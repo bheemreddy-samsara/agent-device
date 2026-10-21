@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.01157b06b6.js"></script>
+<script defer src="/agent-device/static/js/index.ca9364f8f5.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -256,6 +256,11 @@ and macOS captures.</li>
 <code>--scope</code> all report the same value for one screen. Use <code>-i</code> or a <code>--scope</code> to keep the output small
 and still trust the answer.</p>
 <h2 class="rp-toc-include" id="ios-capture-behavior"><a href="#ios-capture-behavior" class="rp-header-anchor rp-link" aria-hidden="true">#</a>iOS capture behavior</h2>
+<p>Regular iOS snapshots clip overflowing elements to their visible area and omit elements entirely
+outside it, including system alerts at large text sizes. With <code>--json</code>,
+<code>snapshotQualityNotes</code> can include <code>code: &quot;regular-geometry-clipped&quot;</code> with <code>clippedNodeCount</code>
+and <code>droppedNodeCount</code>. You can continue using visible controls. Use <code>--raw</code> to inspect reported
+frames before clipping.</p>
 <p>iOS snapshots use XCTest on simulators and physical devices. You can&#x27;t pick the capture backend. <code>--raw</code> switches between two strategies, and each strategy
 decides which backends it tries.</p>
 <ul>
