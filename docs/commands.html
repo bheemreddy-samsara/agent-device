@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.2a7cae9af1.js"></script>
+<script defer src="/agent-device/static/js/index.638ee375c3.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -95,7 +95,7 @@
 </ul>
 <p>Open apps and links:</p>
 <ul>
-<li><code>open [app|url] [url]</code> boots and activates the selected target when needed. <code>open &lt;url&gt;</code> opens deep links on Android and iOS, and <code>open &lt;app&gt; &lt;url&gt;</code> opens a deep link in that app on iOS.</li>
+<li><code>open [app|url] [url]</code> boots the selected device when needed and opens the target in a session. <code>open &lt;url&gt;</code> opens deep links on Android and iOS, and <code>open &lt;app&gt; &lt;url&gt;</code> opens a deep link in that app on iOS. See <a href="#desktop-targets" class="rp-link">Desktop targets</a> for macOS activation behavior.</li>
 <li>On iOS devices, <code>http(s)://</code> URLs open in Safari when no app is active. Custom-scheme URLs need an active app in the session.</li>
 <li><code>open &lt;app&gt; --wait &lt;ms&gt;</code> waits up to that budget for a device another session holds, then fails with <code>DEVICE_IN_USE</code>. The wait extends the command&#x27;s timeout, so you don&#x27;t need a longer <code>--timeout</code>. A claim held by another workspace&#x27;s daemon is not waited for; <code>open</code> returns its recovery command at once. Device-mutating commands like <code>install</code> and <code>reinstall</code> never wait either: a claim held by another session fails them at once, and when the caller sends a workspace, another workspace&#x27;s claim under the same session name fails too. See <a href="/agent-device/docs/sessions#wait-for-a-slow-or-busy-device" class="rp-link">Sessions</a>.</li>
 <li><code>open &lt;app&gt; --launch-console &lt;path&gt;</code> captures launch-time stdout/stderr for iOS simulator app launches. It is not valid for URL opens or other targets.</li>
@@ -307,7 +307,16 @@ restart; reconnect and take the hold again. See <a href="/agent-device/docs/remo
 <li>macOS also supports <code>clipboard read|write</code>, <code>trigger-app-event</code>, <code>logs</code>, <code>network dump</code>, <code>audio probe</code>, <code>alert</code>, and part of <code>settings</code> (see <a href="#settings-helpers" class="rp-link">Settings helpers</a>). <code>audio probe</code> samples host system audio and needs Screen Recording permission; see <a href="/agent-device/docs/debugging-profiling#audio-probes" class="rp-link">Debugging &amp; Profiling</a>.</li>
 <li>Mobile-only commands are unsupported on macOS: <code>boot</code>, <code>shutdown</code>, <code>home</code>, <code>orientation</code>, <code>app-switcher</code>, <code>action-button</code>, <code>fold</code>, <code>install</code>, <code>reinstall</code>, <code>uninstall</code>, <code>install-from-source</code>, and <code>push</code>.</li>
 </ul>
+<p>XCTest opens bring the named app to the front. <code>open --surface frontmost-app</code> takes no app target and opens the app that is already frontmost. <code>--foreground</code> requests an initial snapshot; it does not choose activation. Run <code>agent-device help macos</code> for the versioned contract.</p>
 <p>Set <code>AGENT_DEVICE_MACOS_APP_BACKEND=native</code> to run macOS app sessions without XCTest. There is no Automation Mode overlay, the app can stay behind other windows, and your pointer stays yours while a drawn pointer shows each action.</p>
+<p>With the native backend, each app you open on the <code>app</code> surface is a device of its own. Several agents can drive different apps of one Mac at the same time, in one daemon or in daemons that share a claims directory. Two sessions on the same app conflict. A <code>desktop</code>, <code>menubar</code>, or <code>frontmost-app</code> session holds the whole Mac, so it conflicts with every app session. <code>open --wait</code> waits for a conflicting session in the same daemon only; another daemon&#x27;s session refuses the open at once. An app session:</p>
+<ul>
+<li>Opens its app in the background, so the frontmost app stays in front.</li>
+<li>Opens and closes only its own app. <code>open &lt;url&gt;</code> opens the link in that app. Use a new <code>--session</code> for another app or surface.</li>
+<li>Refuses <code>clipboard</code>, <code>settings</code>, and <code>audio probe</code>, which act on the whole Mac, with <code>UNSUPPORTED_OPERATION</code> (<code>reason: unsupported-device-scope</code>). Use a <code>--surface desktop</code> session for them.</li>
+<li>Cannot see UI that another process shows, such as a system permission prompt.</li>
+</ul>
+<p>Copies of one app need distinct bundle ids. Screenshots run one at a time across the Mac. Use one agent-device version per claims directory.</p>
 <ul>
 <li><code>click</code>, <code>press</code>, and <code>fill</code> use accessibility actions on the element at the target point, which must be inside one of the app&#x27;s on-screen windows, not its menu bar. <code>type</code> inserts at the focused control or falls back to key events. <code>scroll</code> moves the scroll bar under the front window&#x27;s center. Chromium-based apps expose their full tree. <code>screenshot</code> captures only the app&#x27;s front window, even when it is covered. The front window is the app&#x27;s frontmost visible, nonempty normal-level (layer-0) window on the current Space: floating palettes and app-modal alerts at window level 8 are skipped, and a sheet is captured as its own window. If that window cannot be captured, <code>screenshot</code> fails; it never captures another window.</li>
 <li><code>record</code>, <code>prepare</code>, <code>back</code>, <code>longpress</code>, <code>--hold-ms</code>, <code>--double-tap</code>, <code>--button secondary</code>, gestures, and clicks on an element with no accessibility action fail with <code>UNSUPPORTED_OPERATION</code> (<code>reason: unsupported-device-backend</code>). Use the default XCTest backend for those.</li>
