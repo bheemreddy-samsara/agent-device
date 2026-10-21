@@ -56,6 +56,10 @@ import {
   type RequestExecutionScope,
 } from './request-execution-scope.ts';
 import { unsupportedSaveScriptFlagResponse } from './request-save-script-policy.ts';
+import {
+  deviceSpecUnsupportedError,
+  namedLeaseDeviceSpecKeys,
+} from '@agent-device/contracts/lease-scope';
 import { canRunReplayScopedAction } from '../core/daemon-command-registry.ts';
 import { isWebSession } from '../sessions/web-session-names.ts';
 import {
@@ -239,6 +243,10 @@ export function createRequestHandler(deps: RequestRouterDeps): DaemonInvokeFn {
     // admission, device work, or a handler that could arm publication.
     const unsupportedSaveScript = unsupportedSaveScriptFlagResponse(req);
     if (unsupportedSaveScript) return unsupportedSaveScript;
+    // A device spec is honoured only by a backend in front of this daemon, which strips it; one that
+    // reaches here is refused before admission, so no lease is recorded and no device is picked.
+    const unsupportedDeviceSpec = deviceSpecFlagsResponse(req);
+    if (unsupportedDeviceSpec) return unsupportedDeviceSpec;
 
     let scope: RequestExecutionScope | undefined;
     let response: DaemonResponse;
@@ -540,6 +548,12 @@ function customActionFlagsResponse(req: DaemonRequest): DaemonResponse | undefin
     );
   }
   return undefined;
+}
+
+function deviceSpecFlagsResponse(req: DaemonRequest): DaemonResponse | undefined {
+  const keys = namedLeaseDeviceSpecKeys(req.flags);
+  if (keys.length === 0) return undefined;
+  return { ok: false, error: normalizeError(deviceSpecUnsupportedError(keys)) };
 }
 
 /** The text of a fill the caller marked sensitive, or `undefined` for any other request. */

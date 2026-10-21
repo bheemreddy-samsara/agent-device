@@ -33,6 +33,8 @@ export const METRO_PREPARE_FLAGS = flagKeys(
 );
 
 export const METRO_RELOAD_FLAGS = flagKeys('metroHost', 'metroPort', 'bundleUrl');
+// The device spec a proxy lease is allocated by; the commands that allocate a proxy lease take it.
+export const LEASE_DEVICE_SPEC_FLAGS = flagKeys('osVersion', 'imageTag', 'physical');
 export const REPEATED_TOUCH_FLAGS = flagKeys(
   'count',
   'intervalMs',

@@ -9,7 +9,7 @@ import { resolveRemoteConfigProfile } from '@agent-device/remote/remote-config';
 // resolveRemoteConfigProfile.
 import { readRemoteConfigFile } from '@agent-device/remote/remote-config-core';
 import { shouldAgentCdpUseRemoteBridgeUrl } from './agent-cdp.ts';
-import { isInactiveLeaseError } from '@agent-device/contracts/lease-scope';
+import { isInactiveLeaseError, readLeaseDeviceSpec } from '@agent-device/contracts/lease-scope';
 import {
   narrowConnectionPlatform,
   buildRemoteConnectionDaemonState,
@@ -22,7 +22,7 @@ import {
   type RemoteConnectionRequestMetadata,
 } from '@agent-device/remote/remote-connection-state';
 import { profileToCliFlags } from '../remote-config-flags.ts';
-import type { BatchStep } from '@agent-device/contracts/client';
+import type { BatchStep, LeaseDevice } from '@agent-device/contracts/client';
 import { AppError } from '@agent-device/kernel/errors';
 import {
   isSessionRuntimePlatform,
@@ -39,7 +39,7 @@ import {
   connectionProviderCapabilities,
   primeProviderConnection,
 } from '../connection/provider-policy.ts';
-import { readCloudDeviceFeatureProfileFields } from '../connection/profile-fields.ts';
+import { readHostedDeviceProfileFields } from '../connection/profile-fields.ts';
 import type { PreviousLeaseReleaseNotice } from './connection-presentation.ts';
 import {
   bindLeaseNamedDevice,
@@ -73,6 +73,8 @@ export async function materializeRemoteConnectionForCommand(options: {
   flags: CliFlags;
   runtime?: SessionRuntimeHints;
   connection?: RemoteConnectionRequestMetadata;
+  /** The device the proxy backend granted for the lease's device spec, when it named one. */
+  leaseDevice?: LeaseDevice;
 }> {
   const { command, flags, client, host } = options;
   if (!flags.remoteConfig) {
@@ -202,6 +204,7 @@ export async function materializeRemoteConnectionForCommand(options: {
     },
     runtime: nextRuntime,
     connection: buildRemoteConnectionRequestMetadata(nextState),
+    leaseDevice: nextState.leaseDevice,
   };
 }
 
@@ -925,18 +928,14 @@ async function allocateOrReuseLease(
     serial: flags.serial,
     iosSimulatorDeviceSet: flags.iosSimulatorDeviceSet,
     androidDeviceAllowlist: flags.androidDeviceAllowlist,
+    ...readLeaseDeviceSpec(flags),
     providerApp: initialApp ?? flags.providerApp,
     providerOsVersion: flags.providerOsVersion,
     providerDeviceType: flags.providerDeviceType,
     providerProject: flags.providerProject,
     providerBuild: flags.providerBuild,
     providerSessionName: flags.providerSessionName,
-    ...readCloudDeviceFeatureProfileFields(flags),
-    awsProjectArn: flags.awsProjectArn,
-    awsDeviceArn: flags.awsDeviceArn,
-    awsAppArn: flags.awsAppArn,
-    awsRegion: flags.awsRegion,
-    awsInteractionMode: flags.awsInteractionMode,
+    ...readHostedDeviceProfileFields(flags),
   });
   return { lease, acquired: true };
 }

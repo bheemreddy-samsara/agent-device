@@ -12,7 +12,13 @@ import {
   type ConnectionDeviceScope,
   type RemoteConnectionState,
 } from '@agent-device/remote/remote-connection-state';
-import { AppError } from '@agent-device/kernel/errors';
+import { AppError, errorMessage } from '@agent-device/kernel/errors';
+import {
+  deviceSpecUnsupportedError,
+  namedLeaseDeviceSpecKeys,
+  readLeaseDeviceSpec,
+} from '@agent-device/contracts/lease-scope';
+import type { LeaseDeviceSpec } from '@agent-device/contracts/client';
 import type { LeaseBackend } from '@agent-device/kernel/contracts';
 import type { CliFlags } from '@agent-device/contracts/command';
 import type { AgentDeviceClient, Lease } from '../../agent-device-client.ts';
@@ -52,12 +58,27 @@ export async function resolveProxyLeaseState(options: {
       'No active proxy device lease for this session; run open first.',
     );
   }
+  // A device spec is only for the backend behind the proxy to read, so the device is never picked
+  // here from an inventory that cannot answer it.
+  if (hasLeaseDeviceSpec(options.flags)) {
+    if (!options.leaseBackend) {
+      throw new AppError(
+        'INVALID_ARGS',
+        `${options.command} with --os, --image-tag or --physical requires --platform or --lease-backend so the proxy backend knows which device family to pick from.`,
+      );
+    }
+    return { state: options.state, allocateBySpec: true };
+  }
   // The service behind a proxy may create or choose the device only when it allocates, so without
   // an exact identity the request carries the selectors and the lease names the device.
   if (!options.flags.udid && !options.flags.serial && options.leaseBackend) {
     return { state: options.state, allocateBySpec: true };
   }
   return await resolveProxyLeaseStateLocally(options);
+}
+
+function hasLeaseDeviceSpec(flags: CliFlags): boolean {
+  return Object.keys(readLeaseDeviceSpec(flags)).length > 0;
 }
 
 async function resolveProxyLeaseStateLocally(options: {
@@ -87,6 +108,12 @@ async function resolveProxyLeaseStateLocally(options: {
  * lease unset, so that lease is released and the device is picked here and allocated by its key, as
  * before. Every lease this client allocates therefore names its device; a renewed lease that names
  * none was supplied from outside, so it is refused and never released.
+ *
+ * A request that names a device spec has no such fallback: a new lease that does not echo the
+ * granted device in `lease.device` came from a backend that ignored the spec, so it is released and
+ * the request fails with `device-spec-unsupported`. A renewed lease serves the request only when
+ * every spec key the request names equals the one the lease was allocated by. Once a lease is bound,
+ * the spec leaves the command flags: the device it chose is named by its identity instead.
  */
 export async function bindLeaseNamedDevice(options: {
   client: AgentDeviceClient;
@@ -98,34 +125,111 @@ export async function bindLeaseNamedDevice(options: {
 }): Promise<{ state: RemoteConnectionState; materialized: MaterializedLease }> {
   const { client, flags, materialized } = options;
   const { lease, acquired } = materialized;
+  const spec = readLeaseDeviceSpec(flags);
+  const specKeys = namedLeaseDeviceSpecKeys(spec);
   const leased = parseConnectionDeviceKey(lease.deviceKey);
+  if (acquired && specKeys.length > 0 && (!lease.device || !leased)) {
+    throw await releaseUnhonouredSpecLease(client, options.state, lease, specKeys);
+  }
   if (leased) {
-    if (!acquired) await assertLeasedDeviceMatchesRequest(client, options.state, flags, leased);
+    if (!acquired) {
+      assertLeaseSpecMatchesRequest(options.state, spec, leased);
+      await assertLeasedDeviceMatchesRequest(client, options.state, flags, leased);
+    }
     applyDeviceScopeSelector(flags, leased);
+    delete flags.osVersion;
+    delete flags.imageTag;
+    delete flags.physical;
     return {
       state: {
         ...options.state,
         deviceKey: buildConnectionDeviceKey(leased),
         platform: leased.platform,
         target: options.state.target ?? leased.target,
+        ...(acquired
+          ? {
+              deviceSpec: specKeys.length > 0 ? spec : undefined,
+              leaseDevice: lease.device,
+            }
+          : {}),
       },
       materialized,
     };
   }
   if (!acquired) throw unboundLeaseError(options.state, lease);
-  await client.leases.release({
-    tenant: options.state.tenant,
-    runId: options.state.runId,
-    leaseId: lease.leaseId,
-    leaseBackend: lease.backend,
-    ...mergeRemoteConnectionRequestMetadata(lease, options.state),
-    deviceKey: lease.deviceKey,
-  });
+  await releaseLease(client, options.state, lease);
   const resolved = await resolveProxyLeaseStateLocally(options);
   return {
     state: resolved.state,
     materialized: await options.allocateByDeviceKey(resolved.state, flags),
   };
+}
+
+async function releaseLease(
+  client: AgentDeviceClient,
+  state: RemoteConnectionState,
+  lease: Lease,
+): Promise<{ released: boolean }> {
+  return await client.leases.release({
+    tenant: state.tenant,
+    runId: state.runId,
+    leaseId: lease.leaseId,
+    leaseBackend: lease.backend,
+    ...mergeRemoteConnectionRequestMetadata(lease, state),
+    deviceKey: lease.deviceKey,
+  });
+}
+
+/**
+ * Releases a new lease whose backend did not confirm the device spec, and returns the refusal. A
+ * release that fails is reported in the refusal, which still names the lease, rather than raised in
+ * its place: the lease then lapses after its inactivity window.
+ */
+async function releaseUnhonouredSpecLease(
+  client: AgentDeviceClient,
+  state: RemoteConnectionState,
+  lease: Lease,
+  keys: readonly string[],
+): Promise<AppError> {
+  let release: Record<string, unknown>;
+  try {
+    release = { released: (await releaseLease(client, state, lease)).released };
+  } catch (error) {
+    release = { released: false, releaseError: errorMessage(error) };
+  }
+  return deviceSpecUnsupportedError(
+    keys,
+    'The proxy backend leased a device without confirming the requested device spec, so the lease was released.',
+    { session: state.session, leaseId: lease.leaseId, ...release },
+  );
+}
+
+/**
+ * A renewed lease serves a request only when every spec key the request names equals the one the
+ * lease was allocated by. A key the request leaves out keeps the lease's value.
+ */
+function assertLeaseSpecMatchesRequest(
+  state: RemoteConnectionState,
+  requested: LeaseDeviceSpec,
+  leased: ConnectionDeviceScope,
+): void {
+  const bound = state.deviceSpec ?? {};
+  const conflicting = namedLeaseDeviceSpecKeys(requested).filter(
+    (key) => requested[key] !== bound[key],
+  );
+  if (conflicting.length === 0) return;
+  throw new AppError(
+    'INVALID_ARGS',
+    'Active remote connection is already bound to a device leased by a different device spec. Re-run connect --force to replace it.',
+    {
+      session: state.session,
+      deviceKey: buildConnectionDeviceKey(leased),
+      keys: conflicting,
+      deviceSpec: bound,
+      requestedDeviceSpec: requested,
+      reason: 'CONNECTION_DEVICE_CONFLICT',
+    },
+  );
 }
 
 function unboundLeaseError(state: RemoteConnectionState, lease: Lease): AppError {
