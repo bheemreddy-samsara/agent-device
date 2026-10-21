@@ -292,14 +292,14 @@ The host sets the tenant, session isolation, and lease of that client on every r
 
 ## Device spec
 
-A proxy lease can name a device spec beside platform, target, and device: `osVersion`, `imageTag`, and `physical` on `agent_device.lease.allocate`.
+A proxy lease can name a device spec beside platform, target, and device: `osVersion` and `imageTag` on `agent_device.lease.allocate`.
 Only a backend in front of the daemon, such as simlock, can pick a device by these keys.
 A daemon cannot pick by them.
 If a daemon ignored them, a request would run on a device that it did not ask for.
-Thus, a daemon refuses every request that names any of the three keys, before admission and before a lease is recorded.
+Thus, a daemon refuses every request that names either key, before admission and before a lease is recorded.
 The refusal is `UNSUPPORTED_OPERATION` with `details.reason: 'device-spec-unsupported'` and `details.keys`.
 This applies to a local daemon and to a daemon behind `agent-device proxy`.
-The backend that honours the spec strips the keys before it forwards the allocation, and echoes the granted device on the lease as `lease.device` (`model`, `osVersion`, `imageTag?`, `physical`).
+The backend that honours the spec strips the keys before it forwards the allocation, and echoes the granted device on the lease as `lease.device` (`model`, `osVersion`, `imageTag?`).
 `deviceKey` stays the identity of the lease; `lease.device` is the proof that the spec was understood.
 A backend older than the spec returns a lease without `lease.device`.
 The client then releases that lease and fails with the same reason.

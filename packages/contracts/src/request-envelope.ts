@@ -68,7 +68,6 @@ export type InternalRequestOptions = AgentDeviceClientConfig &
     surface?: SessionSurface;
     osVersion?: string;
     imageTag?: string;
-    physical?: boolean;
     activity?: string;
     launchConsole?: string;
     launchArgs?: string[];

@@ -41,8 +41,8 @@ export type ResolvedLeaseState = {
 };
 
 /**
- * Decides which device a proxy lease is for. A request with an exact identity picks the device here
- * and points `flags` at it; any other allocating request is allocated by spec.
+ * Decides which device a proxy lease is for. A request with an exact identity and no device spec
+ * picks the device here and points `flags` at it; any other allocating request is allocated by spec.
  */
 export async function resolveProxyLeaseState(options: {
   command: string;
@@ -64,7 +64,7 @@ export async function resolveProxyLeaseState(options: {
     if (!options.leaseBackend) {
       throw new AppError(
         'INVALID_ARGS',
-        `${options.command} with --os, --image-tag or --physical requires --platform or --lease-backend so the proxy backend knows which device family to pick from.`,
+        `${options.command} with --os or --image-tag requires --platform or --lease-backend so the proxy backend knows which device family to pick from.`,
       );
     }
     return { state: options.state, allocateBySpec: true };
@@ -134,12 +134,12 @@ export async function bindLeaseNamedDevice(options: {
   if (leased) {
     if (!acquired) {
       assertLeaseSpecMatchesRequest(options.state, lease, spec, leased);
+      assertLeasedIdentityMatchesRequest(options.state, flags, leased);
       await assertLeasedDeviceMatchesRequest(client, options.state, flags, leased);
     }
     applyDeviceScopeSelector(flags, leased);
     delete flags.osVersion;
     delete flags.imageTag;
-    delete flags.physical;
     return {
       state: {
         ...options.state,
@@ -225,6 +225,26 @@ function assertLeaseSpecMatchesRequest(
       keys: conflicting,
       deviceSpec: bound,
       requestedDeviceSpec: requested,
+      reason: 'CONNECTION_DEVICE_CONFLICT',
+    },
+  );
+}
+
+/** A renewed lease serves a request naming `--udid` or `--serial` only when it leases that device. */
+function assertLeasedIdentityMatchesRequest(
+  state: RemoteConnectionState,
+  flags: CliFlags,
+  leased: ConnectionDeviceScope,
+): void {
+  const requested = flags.udid ?? flags.serial;
+  if (requested === undefined || requested === leased.id) return;
+  throw new AppError(
+    'INVALID_ARGS',
+    'Active remote connection is already bound to a different device. Re-run connect --force to replace it.',
+    {
+      session: state.session,
+      deviceKey: buildConnectionDeviceKey(leased),
+      requestedDevice: requested,
       reason: 'CONNECTION_DEVICE_CONFLICT',
     },
   );

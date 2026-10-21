@@ -42,7 +42,11 @@ export async function runGenericClientBackedCommand({
   // they serialize the default shape and drop the digest fields. Emit the leveled
   // payload verbatim instead.
   if (isNonDefaultResponseLevel(flags.responseLevel)) {
-    await writeCommandOutput(flags, result, () => JSON.stringify(result, null, 2));
+    const leveled =
+      command === 'open' && leaseDevice && isRecord(result)
+        ? { ...result, lease: { device: leaseDevice } }
+        : result;
+    await writeCommandOutput(flags, leveled, () => JSON.stringify(leveled, null, 2));
     return true;
   }
   if (cliOutput) {
@@ -95,12 +99,9 @@ async function writeGenericCliOutput(
 /** Adds the device a proxy backend granted for the lease's device spec to the `open` output. */
 function withLeaseDevice(output: CliOutput, device: LeaseDevice): CliOutput {
   const lease = { lease: { device } };
-  const facts = [
-    device.model,
-    device.osVersion,
-    device.imageTag,
-    device.physical ? 'physical' : 'virtual',
-  ].filter((fact): fact is string => Boolean(fact));
+  const facts = [device.model, device.osVersion, device.imageTag].filter((fact): fact is string =>
+    Boolean(fact),
+  );
   const leasedLine = `Leased device: ${facts.join(', ')}`;
   return {
     ...output,

@@ -65,7 +65,6 @@ export type CliFlags = CloudProviderProfileFields &
     // that names any of them (`LEASE_DEVICE_SPEC_KEYS`).
     osVersion?: string;
     imageTag?: string;
-    physical?: boolean;
     stale?: boolean;
     iosSimulatorDeviceSet?: string;
     iosXctestrunFile?: string;

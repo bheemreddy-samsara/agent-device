@@ -273,13 +273,12 @@ type LeaseAllocateProviderFlagKey = (typeof LEASE_ALLOCATE_PROVIDER_FLAG_KEYS)[n
 export const LEASE_DEVICE_SPEC_KEYS = [
   'osVersion',
   'imageTag',
-  'physical',
 ] as const satisfies readonly (keyof CommandFlags & keyof LeaseDeviceSpec)[];
 
 type LeaseDeviceSpecKey = (typeof LEASE_DEVICE_SPEC_KEYS)[number];
 
 /** The typed reason a request naming a device spec is refused with. */
-export const DEVICE_SPEC_UNSUPPORTED_REASON = 'device-spec-unsupported';
+const DEVICE_SPEC_UNSUPPORTED_REASON = 'device-spec-unsupported';
 
 // A Cloud provider profile field added without joining the projection would be dropped from the
 // envelope and fail `prepareSession` on the remote daemon — this makes that omission fail to build.
@@ -319,19 +318,14 @@ export function namedLeaseDeviceSpecKeys(
   return LEASE_DEVICE_SPEC_KEYS.filter((key) => source?.[key] !== undefined);
 }
 
-/**
- * The device spec a CLI flags bag or profile asks for. An empty string names no version or tag,
- * and only `physical: true` asks for a physical device.
- */
+/** The device spec a CLI flags bag or profile asks for. An empty string names no version or tag. */
 export function readLeaseDeviceSpec(source: {
   osVersion?: unknown;
   imageTag?: unknown;
-  physical?: unknown;
 }): LeaseDeviceSpec {
   return stripUndefined({
     osVersion: nonEmptyString(source.osVersion),
     imageTag: nonEmptyString(source.imageTag),
-    physical: source.physical === true ? true : undefined,
   });
 }
 
@@ -341,27 +335,26 @@ export function readLeaseDevice(value: unknown): LeaseDevice | undefined {
   const record = value as Record<string, unknown>;
   const model = nonEmptyString(record.model);
   const osVersion = nonEmptyString(record.osVersion);
-  if (!model || !osVersion || typeof record.physical !== 'boolean') return undefined;
+  if (!model || !osVersion) return undefined;
   const imageTag = nonEmptyString(record.imageTag);
   return {
     model,
     osVersion,
     ...(imageTag ? { imageTag } : {}),
-    physical: record.physical,
   };
 }
 
 /** The refusal for a request whose device spec nothing on its path can honour. */
 export function deviceSpecUnsupportedError(
   keys: readonly string[],
-  message = 'This daemon cannot pick a device by OS version, image tag, or physical/virtual class.',
+  message = 'This daemon cannot pick a device by OS version or image tag.',
   details: Record<string, unknown> = {},
 ): AppError {
   return new AppError('UNSUPPORTED_OPERATION', message, {
     ...details,
     reason: DEVICE_SPEC_UNSUPPORTED_REASON,
     keys: [...keys],
-    hint: 'Drop --os, --image-tag and --physical, or connect through a proxy whose backend picks devices by spec.',
+    hint: 'Drop --os and --image-tag, or connect through a proxy whose backend picks devices by spec.',
   });
 }
 

@@ -123,7 +123,7 @@ test('open --json prints the device a proxy backend granted under lease.device',
       },
     },
   );
-  const device = { model: 'Pixel 9', osVersion: '34', imageTag: 'google_apis', physical: false };
+  const device = { model: 'Pixel 9', osVersion: '34', imageTag: 'google_apis' };
 
   const json = await withCapturedStdoutAsync(() =>
     runGenericClientBackedCommand({
@@ -149,5 +149,25 @@ test('open --json prints the device a proxy backend granted under lease.device',
       leaseDevice: device,
     }),
   );
-  assert.match(human, /Leased device: Pixel 9, 34, google_apis, virtual/);
+  assert.match(human, /Leased device: Pixel 9, 34, google_apis/);
+});
+
+test('open --json at a non-default response level still prints lease.device', async () => {
+  const client = createAgentDeviceClient(
+    { session: 'qa', responseLevel: 'digest' },
+    { transport: async (): Promise<DaemonResponse> => ({ ok: true, data: { session: 'qa' } }) },
+  );
+  const device = { model: 'iPhone 17 Pro', osVersion: '26.1' };
+
+  const json = await withCapturedStdoutAsync(() =>
+    runGenericClientBackedCommand({
+      host: createTestHostEnvironment(),
+      command: 'open' as ClientBackedCliCommandName,
+      positionals: ['MyApp'],
+      flags: { json: true, responseLevel: 'digest' } as CliFlags,
+      client,
+      leaseDevice: device,
+    }),
+  );
+  assert.deepEqual((JSON.parse(json) as { data: Record<string, unknown> }).data.lease, { device });
 });

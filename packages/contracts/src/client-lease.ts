@@ -36,8 +36,6 @@ export type LeaseDeviceSpec = {
   osVersion?: string;
   /** Android system image tag, for example `google_apis_playstore`. */
   imageTag?: string;
-  /** `true` asks for a physical device instead of a simulator or emulator. */
-  physical?: boolean;
 };
 
 /** The device facts the backend granted for a {@link LeaseDeviceSpec}. */
@@ -46,7 +44,6 @@ export type LeaseDevice = {
   /** The exact OS version granted. */
   osVersion: string;
   imageTag?: string;
-  physical: boolean;
 };
 
 /**

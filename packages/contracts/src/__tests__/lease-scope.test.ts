@@ -253,34 +253,30 @@ test('readLeaseAllocateProviderFlags carries every device-spec key a request nam
       platform: 'android',
       osVersion: '34',
       imageTag: 'google_apis_playstore',
-      physical: true,
     }),
-    { platform: 'android', osVersion: '34', imageTag: 'google_apis_playstore', physical: true },
+    { platform: 'android', osVersion: '34', imageTag: 'google_apis_playstore' },
   );
   // A malformed key still reaches the daemon, which refuses it rather than never seeing it.
-  assert.deepEqual(readLeaseAllocateProviderFlags({ osVersion: 26, physical: false }), {
+  assert.deepEqual(readLeaseAllocateProviderFlags({ osVersion: 26, imageTag: false }), {
     osVersion: 26,
-    physical: false,
+    imageTag: false,
   });
 });
 
-test('readLeaseDeviceSpec names only a non-empty version or tag and physical: true', () => {
-  const padded = { osVersion: ' >=26 ', imageTag: '', physical: false };
+test('readLeaseDeviceSpec names only a non-empty version or tag', () => {
+  const padded = { osVersion: ' >=26 ', imageTag: '' };
   assert.deepEqual(readLeaseDeviceSpec(padded), { osVersion: '>=26' });
-  assert.deepEqual(readLeaseDeviceSpec({ imageTag: 'google_apis', physical: true }), {
-    imageTag: 'google_apis',
-    physical: true,
-  });
+  assert.deepEqual(readLeaseDeviceSpec({ imageTag: 'google_apis' }), { imageTag: 'google_apis' });
   assert.deepEqual(readLeaseDeviceSpec({}), {});
 });
 
 test('readLeaseDevice reads the granted facts and rejects an echo missing one', () => {
-  const pixel = { model: 'Pixel 9', osVersion: '34', imageTag: 'google_apis', physical: false };
+  const pixel = { model: 'Pixel 9', osVersion: '34', imageTag: 'google_apis' };
   assert.deepEqual(readLeaseDevice(pixel), pixel);
-  const iphone = { model: 'iPhone 17 Pro', osVersion: '26.0', physical: true };
+  const iphone = { model: 'iPhone 17 Pro', osVersion: '26.0' };
   assert.deepEqual(readLeaseDevice(iphone), iphone);
-  assert.equal(readLeaseDevice({ model: 'iPhone 17 Pro', osVersion: '26.0' }), undefined);
-  assert.equal(readLeaseDevice({ osVersion: '26.0', physical: true }), undefined);
+  assert.equal(readLeaseDevice({ model: 'iPhone 17 Pro' }), undefined);
+  assert.equal(readLeaseDevice({ osVersion: '26.0' }), undefined);
   assert.equal(readLeaseDevice(undefined), undefined);
 });
 
