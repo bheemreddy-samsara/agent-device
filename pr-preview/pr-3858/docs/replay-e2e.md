@@ -4,8 +4,9 @@ Record a session as an `.ad` script, then run it again with `replay` or run a fo
 
 `replay` has a 60-second wall-clock budget. Use `replay workflow.ad --timeout 300000` to allow
 five minutes. The client allows another 30 seconds for the result. If the operation budget
-expires, replay stops with `COMMAND_FAILED` and `details.reason: daemon_request_timeout`.
-The daemon and its sessions stay available.
+expires, a failed replay includes `details.reason: daemon_request_timeout` and `details.timeoutMs`.
+The daemon and its sessions stay available. A failed replay keeps the failing script path and line.
+A replay that completes every step returns success even if it settles after the deadline.
 
 To run Maestro YAML flows or export `.ad` scripts to Maestro YAML, see [Run Maestro flows](/agent-device/pr-preview/pr-3858/docs/run-maestro-flows.md).
 

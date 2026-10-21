@@ -5,7 +5,44 @@ the next sequence of actions.
 
 The whole batch has a 60-second wall-clock budget. If it expires, the batch stops with
 `COMMAND_FAILED` and `details.reason: daemon_request_timeout`. The daemon and its sessions stay
-available. Split longer sequences into separate requests.
+available. A failed batch keeps `details.executed`, `details.partialResults`, and its dispatch status,
+so you can continue from the failing step. A batch that completes every step returns success even
+if it settles after the deadline. Split longer sequences into separate requests.
+
+On Apple devices, an interrupted native action must finish or its runner must stop before another
+action can run. If the stop cannot be confirmed, `runnerNativeWorkStopped: false` reports the
+uncertainty and further actions fail with `runner_stop_unconfirmed`.
+
+If Android screenshot status-bar restoration fails or runs out of time, request diagnostics include
+`android_demo_restore_unconfirmed`. The primary command result is preserved. Check the device's
+status bar before another normalized capture; its original appearance may not have been restored.
+
+## Run resource operations separately
+
+Bounded `batch` and `replay` refuse operations that cannot settle within their response window.
+The error has `details.reason: bounded_composite_resource_unsupported`, names the operation in
+`details.shape`, and gives a standalone command in `details.standaloneCommand`. Run that command
+separately in its owning session with the same arguments and options. Completed batch steps and
+the failing replay source line remain in the response.
+
+Run heap snapshots, native perf capture start/stop/report, screen recording start/stop/export,
+log capture start/stop/restart, and host audio capture separately. Audio status also requires a
+standalone request when a host probe exists, because a completed probe can need cleanup.
+Opening or closing a session with existing capture resources or an owned Android test keyboard,
+stale-resource recovery, and expired lease cleanup can require the same refusal. Use standalone
+`close` to restore the keyboard. Existing resources keep their ownership and recovery files so you
+can finish them with a standalone request.
+
+Android `perf frames` and `perf memory sample` remain available through the built-in runtime.
+Apple and Harmony perf observations, provider-native perf/log operations, and web audio queries
+require standalone requests. Built-in log path, marker, clear, and doctor operations remain available;
+clearing an active stream still requires stopping it first. `trace start/stop` writes a local trace log
+and remains available. `record contact-sheet` works locally on an already exported file.
+
+Direct `test` runs keep their existing timeout behavior. A `test` inside a bounded batch inherits the
+batch deadline and resource restrictions. Its video recording and per-attempt timeouts, set by a
+flag or a script `context timeout=...` header, require a standalone `test` request. All supplied
+sources are checked before the first attempt starts.
 
 ## Run a batch from the CLI
 

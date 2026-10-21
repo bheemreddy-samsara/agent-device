@@ -83,7 +83,7 @@ Device claims and the daemon:
 - `device release --stale` settles the durable resources of an owner that provably can't release its claim (its process exited or a newer daemon replaced it), then clears the claim. Live, uncertain, PID-reused, corrupt, and deleted-state-directory claims are refused with the reason. See [Sessions](/agent-device/pr-preview/pr-3858/docs/sessions.md#release-a-device-another-session-or-workspace-holds).
 - A command that needs the shared local daemon starts it for its state directory when none runs; `device status` and `device release --stale` never contact one. When the running daemon comes from another version or build, the command replaces it only if it reports no work: no request in flight, no session, no repair session and no live lease. A resumable upload still streaming and a host human-control hold that names no lease are not counted, so a replacement can end them. Otherwise the command fails with `daemon-busy` and leaves the daemon alone. A daemon from a release that predates this check is never replaced, and fails with `daemon-incompatible`. End a busy or older daemon deliberately with `daemon stop`. Node.js clients choose this per client; see [Daemon lifecycle](/agent-device/pr-preview/pr-3858/docs/client-api.md#daemon-lifecycle).
 - `daemon stop --state-dir <path>` stops a detached local daemon with process signals after verifying its identity. `--clean` also removes the Apple runner processes and leases that daemon retained.
-- For a host-owned runtime, `daemon stop` sends an authenticated shutdown request over its registered local transport and waits for the close report without signaling the host. It can also ask a record with unrecognized ownership: an embedded runtime can close itself, but a detached answer fails with `details.reason: daemon-not-embedded` and a record-repair hint, without signaling. For these shutdown requests, a record without usable transport or token fails with `daemon-embedded-stop-unreachable`. An unconfirmed close, including after connection failure, fails with `daemon-shutdown-unconfirmed`. Without `--clean`, an unreadable `daemon.json` fails stop with `daemon-record-unreadable`. A retained close returns `stopped: true`, warnings and `cleanupConfidence: unknown` (exit 0): it stopped serving, but resource cleanup is unconfirmed. `--clean` requires proven detached ownership; host-owned, unrecognized and unreadable records fail with `daemon-clean-not-detached` because that cleanup walks the owner's whole process tree. `daemon status` shows `host-owned` or `owner-not-recognized`. See [Daemon lifecycle](/agent-device/pr-preview/pr-3858/docs/client-api.md#daemon-lifecycle).
+- `daemon stop` refuses a live embedded runtime with `details.reason: daemon-owner-embedded` and a hint naming the host PID. Close it in its host process with the handle returned by `startAgentDevice()`. Stop refuses live unrecognized ownership with `daemon-owner-unrecognized`. Neither refusal sends a request or signal. Stop retires an embedded or unrecognized registration when its recorded host lifetime has provably exited. Without `--clean`, an unreadable `daemon.json` fails with `daemon-record-unreadable`. `--clean` requires proven detached ownership; embedded, unrecognized and unreadable records fail with `daemon-clean-not-detached`. `daemon status` shows `host-owned` or `owner-not-recognized`. See [Daemon lifecycle](/agent-device/pr-preview/pr-3858/docs/client-api.md#daemon-lifecycle).
 - `daemon status [--state-dir <path>] [--json]` reads the daemon's record without contacting it. For a running daemon it lists every provider it registered, built in or installed, and the reason any plugin failed to register. See [provider plugins](/agent-device/pr-preview/pr-3858/docs/plugins.md).
 
 Open apps and links:
@@ -284,6 +284,9 @@ agent-device tv-remote press down --platform android --target tv
 agent-device tv-remote press select --platform android --target tv
 agent-device tv-remote longpress select --platform android --target tv
 agent-device tv-remote press select --duration-ms 900 --platform android --target tv
+agent-device tv-remote volume-down --platform android --target tv
+agent-device tv-remote media-play-pause --platform android --target tv
+agent-device tv-remote android-keycode:300 --platform android --target tv
 agent-device screenshot tv-focus.png --overlay-refs --platform android --target tv
 agent-device open Settings --platform ios --target tv
 agent-device screenshot apple-tv.png --platform ios --target tv
@@ -298,9 +301,13 @@ vega virtual-device stop
 
 - TV targets include Apple TV and Android TV simulators, emulators, and connected devices. Vega OS support is limited to the Vega Virtual Device (VVD).
 - TV targets are focus-first: move focus with `tv-remote` before selecting a control. Don't use raw `adb shell input keyevent` in command plans.
-- Android TV: app launch and app listing use `LEANBACK_LAUNCHER` activities. `tv-remote` sends ADB keyevents; `longpress <button>` is a 500ms hold, and any positive `--duration-ms` uses Android's longpress keyevent, which has no exact hold time.
+- `tv-remote` is TV-only. Android phones, iPhones, and WebDriver (Appium) sessions refuse it with `UNSUPPORTED_OPERATION`.
+- All three TV backends support `up`, `down`, `left`, `right`, `select`, `menu`, `home`, and `back`. Android TV also accepts `volume-up`, `volume-down`, `mute`, `power`, `sleep`, `wake`, `media-play-pause`, `media-next`, `media-previous`, `media-rewind`, `media-fast-forward`, `channel-up`, `channel-down`, `last-channel`, `guide`, `info`, `captions`, `tv-input`, `color-red`, `color-green`, `color-yellow`, and `color-blue`. tvOS and Vega OS refuse the additional buttons before dispatch.
+- For an Android TV remote button without a name, use `android-keycode:<n>` with a decimal code from 1 to 2147483647. Other TV backends refuse raw Android codes. An unknown name or invalid code fails with `INVALID_ARGS`.
+- `power` and `sleep` can turn the screen off. A successful response confirms that the button was sent; it does not verify playback, volume, or display state, and it does not wait for the app to settle.
+- Android TV: app launch and app listing use `LEANBACK_LAUNCHER` activities. `tv-remote` sends ADB keyevents; `longpress <button>` selects the long-press preset, and any positive `--duration-ms` uses Android's longpress keyevent, which has no exact hold time.
 - tvOS supports the same runner-driven commands as iOS (`snapshot`, `wait`, `press`, `fill`, `get`, `scroll`, `back`, `home`, `app-switcher`, `record`, and selector flows). `back` is the Siri Remote Menu button, `home` is Home, and the app switcher is a double Home press; `--duration-ms` is an exact hold. Helpers that are simulator-only on iOS, such as `settings` and `push`, are simulator-only on tvOS too. tvOS refuses multi-touch gestures such as `gesture pinch`.
-- Vega OS: use `--platform vega --target tv` with Vega component IDs such as `com.example.app.main`, and `--serial VirtualDevice` to select the VVD explicitly. Commands go through the SDK-matched Vega CLI and VDA. The VVD supports app open/close, `back`, `home`, and every shared `tv-remote` button, with exact holds.
+- Vega OS: use `--platform vega --target tv` with Vega component IDs such as `com.example.app.main`, and `--serial VirtualDevice` to select the VVD explicitly. Commands go through the SDK-matched Vega CLI and VDA. The VVD supports app open/close, `back`, `home`, and the eight navigation buttons listed above, with exact holds.
 - Vega OS doesn't support physical Fire TV, app inventory, snapshot, screenshot, selectors, install, touch/text/gesture, logs, or performance; those report unsupported. Use the VVD display as visual truth.
 - On Android TV and tvOS, use `screenshot --overlay-refs` for visual focus evidence, especially when focus metadata is missing or transient.
 
@@ -421,10 +428,10 @@ agent-device click @e1
 agent-device click @e1 --button secondary   # macOS secondary click / context menu
 agent-device focus @e2
 agent-device fill @e2 "text"          # Clear then type
-agent-device fill @e2 "search" --delay-ms 80
+agent-device fill @e2 "search" --delay-ms 100
 printf %s "$PASSWORD" | agent-device fill @e2 --text-stdin   # Text from stdin, kept out of argv
 agent-device type "text"              # Type into focused field without clearing
-agent-device type "query" --delay-ms 80
+agent-device type "query" --delay-ms 100
 agent-device press 300 500
 agent-device press 300 500 --count 12 --interval-ms 45
 agent-device press 300 500 --count 6 --hold-ms 120 --interval-ms 30 --jitter-px 2
@@ -466,10 +473,10 @@ Text-entry errors and what to do:
 - `NO_TEXT_INPUT_AT_POINT` (iOS `fill` under a degraded XCTest channel — coordinate, ref, selector, and replay fills all aim at a point): the runner identified no text input under that point, so it refused before dispatching anything (`error.details.reason` is `no_text_input_at_point`, `dispatched: no`) and no field changed. A ref or selector fill aims at the centre of the rect it resolved to, so an outer container or a non-input node can land outside the real field: run `snapshot -i`, pick the input node itself, and aim inside its rect.
 - `TEXT_INPUT_PROBE_UNAVAILABLE` (iOS `fill` under a degraded XCTest channel): the runner's input lookup for the point could not answer, so it refused before dispatching anything (`error.details.reason` is `text_input_probe_unavailable`, `dispatched: no`). Unlike the refusal above this does not mean the point has no input — retry the fill, or run `snapshot -i` once its capture reads back.
 - `TEXT_INPUT_SYNTHESIS_UNAVAILABLE` (iOS `type "\n"` with the software keyboard hidden): show the software keyboard, then retry.
-- `TEXT_INPUT_COMMIT_NOT_OBSERVED` (iOS `fill`): the runner could not confirm the text landed before its deadline, or the text equals the field's placeholder. The field may hold none, part, or all of it. Run `snapshot -i`; if it doesn't match, retry with the full text quoted and `fill --delay-ms 80`.
+- `TEXT_INPUT_COMMIT_NOT_OBSERVED` (iOS `fill`): the runner could not confirm the text landed before its deadline, or the text equals the field's placeholder. The field may hold none, part, or all of it. Run `snapshot -i`; if it doesn't match, retry `fill` with the full text quoted and `--delay-ms` set to the value in the error hint.
 - `TEXT_INPUT_CLEAR_NOT_OBSERVED` (iOS `fill`): the old text was not seen cleared, so nothing was typed. Inspect with `snapshot -i`, then retry `fill`.
 - `TEXT_INPUT_SYNTHESIS_BUDGET_EXCEEDED` (iOS `fill`): the text is too long to type in one runner command, and nothing was typed. Fill up to the character limit the hint names for your `--delay-ms`, then append the rest with `type`. `--delay-ms` lowers the limit; a longer timeout does not help.
-- `TEXT_ENTRY_MISMATCH` (iOS `fill`): the settled value contains only characters, in order, from the field's value after clearing plus your text. That covers dropped characters and an unchanged value. This can also reject legitimate filtering, trimming, or masks (`5` into `$0.00` may show `$0.05`). Retry `fill --delay-ms 80` only if inspection shows the field needs correction.
+- `TEXT_ENTRY_MISMATCH` (iOS `fill`): the settled value contains only characters, in order, from the field's value after clearing plus your text. That covers dropped characters and an unchanged value. This can also reject legitimate filtering, trimming, or masks (`5` into `$0.00` may show `$0.05`). Inspect the field and retry `fill` only if it needs correction, using the `--delay-ms` value from the error hint.
 
 Except for `TEXT_INPUT_SYNTHESIS_BUDGET_EXCEEDED`, where you append the rest with `type` after the shorter `fill`, recover from these with `fill`, never `type`, which appends to whatever the field already holds. iOS `fill` types the replacement once and does not clear and retype a mismatch on its own.
 
