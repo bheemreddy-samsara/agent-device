@@ -521,46 +521,17 @@ url: /agent-device/pr-preview/pr-3858/docs/batching.md
 Use `batch` to run several commands in one daemon request. It saves round trips when you already know
 the next sequence of actions.
 
-The whole batch has a 60-second wall-clock budget. If it expires, the batch stops with
-`COMMAND_FAILED` and `details.reason: daemon_request_timeout`. The daemon and its sessions stay
-available. A failed batch keeps `details.executed`, `details.partialResults`, and its dispatch status,
-so you can continue from the failing step. A batch that completes every step returns success even
-if it settles after the deadline. Split longer sequences into separate requests.
-
-On Apple devices, an interrupted native action must finish or its runner must stop before another
-action can run. If the stop cannot be confirmed, `runnerNativeWorkStopped: false` reports the
-uncertainty and further actions fail with `runner_stop_unconfirmed`.
-
-If Android screenshot status-bar restoration fails or runs out of time, request diagnostics include
-`android_demo_restore_unconfirmed`. The primary command result is preserved. Check the device's
-status bar before another normalized capture; its original appearance may not have been restored.
-
-## Run resource operations separately
-
-Bounded `batch` and `replay` refuse operations that cannot settle within their response window.
-The error has `details.reason: bounded_composite_resource_unsupported`, names the operation in
-`details.shape`, and gives a standalone command in `details.standaloneCommand`. Run that command
-separately in its owning session with the same arguments and options. Completed batch steps and
-the failing replay source line remain in the response.
-
-Run heap snapshots, native perf capture start/stop/report, screen recording start/stop/export,
-log capture start/stop/restart, and host audio capture separately. Audio status also requires a
-standalone request when a host probe exists, because a completed probe can need cleanup.
-Opening or closing a session with existing capture resources or an owned Android test keyboard,
-stale-resource recovery, and expired lease cleanup can require the same refusal. Use standalone
-`close` to restore the keyboard. Existing resources keep their ownership and recovery files so you
-can finish them with a standalone request.
-
-Android `perf frames` and `perf memory sample` remain available through the built-in runtime.
-Apple and Harmony perf observations, provider-native perf/log operations, and web audio queries
-require standalone requests. Built-in log path, marker, clear, and doctor operations remain available;
-clearing an active stream still requires stopping it first. `trace start/stop` writes a local trace log
-and remains available. `record contact-sheet` works locally on an already exported file.
-
-Direct `test` runs keep their existing timeout behavior. A `test` inside a bounded batch inherits the
-batch deadline and resource restrictions. Its video recording and per-attempt timeouts, set by a
-flag or a script `context timeout=...` header, require a standalone `test` request. All supplied
-sources are checked before the first attempt starts.
+The whole batch has a 60-second wall-clock budget within a 90-second client timeout. At the
+budget, the running step receives the same cancellation as a canceled request. When that step
+settles, a failed batch returns `COMMAND_FAILED` with `details.reason: daemon_request_timeout`.
+The daemon and other sessions stay available if it responds to the client. A `close` step may
+already have ended its session. A failed batch keeps
+`details.executed`, `details.partialResults`, and its dispatch status, so you can continue from
+the failing step. A batch that completes every step returns success even if it settles shortly
+after the deadline. Cancellation does not prove that native device work has stopped. If a step
+ignores cancellation beyond the remaining 30 seconds, the client may report a transport timeout.
+For a daemon that does not respond, the client's existing liveness check can reset it. Split
+longer sequences into separate requests.
 
 ## Run a batch from the CLI
 
@@ -1470,6 +1441,9 @@ await client.command.tvRemote({
 
 await client.command.appSwitcher();
 await client.command.actionButton();
+await client.command.hardwareButton({ button: 'volume-up' });
+await client.command.hardwareButton({ button: 'volume-down' });
+await client.command.hardwareButton({ button: 'power', platform: 'android' });
 await client.command.fold({ pose: 'open' });
 await client.command.telephony({ action: 'call', number: '5551234' });
 await client.command.telephony({ action: 'sms', number: '5551234', text: 'Your code is 1234' });
@@ -1484,6 +1458,8 @@ await client.command.fold({
 ```
 
 `fold` accepts either `pose` or `keyframes`. Keyframes use linear interpolation at roughly 60 updates per second; repeat an angle to hold it. Timestamps must start at zero and increase strictly, with 2–64 frames and a final timestamp no greater than 60,000ms. Angles must be finite and between 0° and 180°. The final timestamp bounds motion, excluding helper preparation and final hinge verification. A custom final angle is verified within 0.5°; interior angles must also settle. Cancellation stops the motion at its current angle. Re-snapshot afterwards, including after interrupted motion. Android emulators accept `pose` only.
+
+`hardwareButton` presses one phone hardware key once: `button` is `'volume-up'`, `'volume-down'`, or `'power'`. It takes no hold duration and activates no app; the result reports the dispatched press, not the OS reaction. Android presses all three on phones and tablets; a physical iPhone or iPad presses volume only; iOS Simulators, Android TV, and tvOS refuse (use `tvRemote` on TV targets).
 
 `press`, `click`, and `longpress` do not wait for a missing target to appear. When a screen is still loading, wait for its landmark before interacting:
 
@@ -1508,6 +1484,7 @@ Supported command methods:
 - `orientation`
 - `appSwitcher`
 - `actionButton`
+- `hardwareButton`
 - `fold`
 - `telephony`
 - `keyboard`
@@ -1720,6 +1697,9 @@ agent-device orientation landscape-left
 agent-device orientation auto
 agent-device app-switcher
 agent-device action-button
+agent-device hardware-button volume-up
+agent-device hardware-button volume-down
+agent-device hardware-button power
 agent-device fold closed
 agent-device fold half-open
 agent-device fold open
@@ -1784,6 +1764,9 @@ Back, orientation, and hardware buttons:
 - `orientation auto` hands rotation back to the sensor on ADB-backed Android, local or Limrun (`accelerometer_rotation=1`, `user_rotation` untouched), and reports `orientation: "auto"`. It does not wait for the display to rotate, because there is no target rotation: the sensor decides, and an emulator usually settles on portrait. Every other backend refuses `auto` with `UNSUPPORTED_OPERATION`.
 - `action-button` presses the iPhone or iPad Action Button once. It takes no arguments, no hold duration, and no `--settle`, and it doesn't activate the session app or drive Camera Control. Other platforms refuse it, and a model without the button (an iPhone SE, most iPad simulators) fails with `UNSUPPORTED_OPERATION`.
 - `action-button` reports that the press was dispatched, not what it triggered. Simulators run no Shortcuts or App Intents, so verify the outcome on a physical iPhone. Expect a press to take about five seconds on a Simulator.
+- `hardware-button volume-up|volume-down|power` presses one phone hardware key once, with no hold and no `--settle`, and it doesn't activate the session app. The response reports the dispatched press, not what the OS did with it: which audio stream a volume press moves and whether the HUD shows is device behavior the command does not claim.
+- Android presses all three keys on phones and tablets: the ADB-backed and helper paths send `input keyevent` 24/25/26, and an Appium-backed device presses the same keycodes through its `mobile: pressKey` route. A physical iPhone or iPad presses volume only, through the local runner or Appium's volume button press; no Apple leaf presses power. iOS Simulators refuse volume (`XCUIDevice` exposes no volume press there), and Android TV and tvOS targets refuse with a pointer to `tv-remote`.
+- A `power` press toggles the Android screen. After a press that turns it off, later commands may hit a locked screen; nothing in agent-device presses the key again to wake it.
 
 Fold a foldable device:
 
@@ -4515,11 +4498,17 @@ url: /agent-device/pr-preview/pr-3858/docs/replay-e2e.md
 
 Record a session as an `.ad` script, then run it again with `replay` or run a folder of scripts as an E2E suite with `test`.
 
-`replay` has a 60-second wall-clock budget. Use `replay workflow.ad --timeout 300000` to allow
-five minutes. The client allows another 30 seconds for the result. If the operation budget
-expires, a failed replay includes `details.reason: daemon_request_timeout` and `details.timeoutMs`.
-The daemon and its sessions stay available. A failed replay keeps the failing script path and line.
-A replay that completes every step returns success even if it settles after the deadline.
+`replay` has a 60-second wall-clock budget within a 90-second client timeout. Use
+`replay workflow.ad --timeout 300000` for a five-minute operation budget and a five-minute,
+30-second client timeout. At the budget, the running step receives the same cancellation as a
+canceled request. When it settles, a failed replay includes `details.reason: daemon_request_timeout`
+and `details.timeoutMs`. The daemon and other sessions stay available if it responds to the client. An
+authored `close` may already have ended its session. A failed replay keeps the failing script path
+and line. A replay that completes every step returns success even if it settles shortly after the
+deadline. Cancellation does not prove that native device work has stopped. If a step ignores
+cancellation beyond the remaining 30 seconds, the client may report a transport timeout. For a
+daemon that does not respond, the client's existing liveness check can reset it. Direct `test`
+runs keep their own timeout behavior.
 
 To run Maestro YAML flows or export `.ad` scripts to Maestro YAML, see [Run Maestro flows](/agent-device/pr-preview/pr-3858/docs/run-maestro-flows.md).
 
