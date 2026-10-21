@@ -140,3 +140,14 @@ test('a relaunching open asks the Android launch to terminate the running app', 
     expect.objectContaining({ terminateRunningApp: true }),
   );
 });
+
+test('an open hands the request signal to the Android launch', async () => {
+  const { signal } = new AbortController();
+  await createAndroidInteractor(device, undefined, { signal }).open('settings');
+
+  expect(openAndroidAppMock).toHaveBeenCalledWith(
+    device,
+    'settings',
+    expect.objectContaining({ signal }),
+  );
+});

@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { openAndroidApp } from '../app-lifecycle.ts';
 import { withAndroidAdbProvider } from '../adb-executor.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
-import { AppError } from '@agent-device/kernel/errors';
+import {
+  AppError,
+  createRequestCanceledError,
+  isRequestCanceledError,
+} from '@agent-device/kernel/errors';
 import { assertRejectsAppError } from './test-utils/app-error.ts';
 import { ANDROID_EMULATOR } from './test-utils/device-fixtures.ts';
 import { withFakeAdb, type FakeAdbResponse } from './test-utils/fake-adb.ts';
@@ -761,4 +765,33 @@ test('openAndroidApp fallback resolve-activity includes MAIN/LAUNCHER flags', as
 function androidOpenFakeAdb(args: readonly string[]): FakeAdbResponse | undefined {
   if (args[0] === 'shell' && args[1] === 'am' && args[2] === 'start') return 'Status: ok';
   return undefined;
+}
+
+for (const [route, app, options] of [
+  ['package', 'com.example.app', {}],
+  ['deep link', 'example://vrt?testID=cold', {}],
+  ['app-bound deep link', 'com.example.app', { url: 'example://vrt?testID=cold' }],
+] as const) {
+  test(`openAndroidApp stops a hung ${route} launch when its signal aborts`, async () => {
+    const controller = new AbortController();
+    const device: DeviceInfo = { ...ANDROID_EMULATOR, booted: true };
+    const launch = withAndroidAdbProvider(
+      {
+        exec: async (args, execOptions) => {
+          if (args.includes('pm'))
+            return { stdout: 'package:/data/app.apk', stderr: '', exitCode: 0 };
+          if (!args.includes('start')) return { stdout: '', stderr: '', exitCode: 0 };
+          return await new Promise((_resolve, reject) => {
+            execOptions?.signal?.addEventListener('abort', () =>
+              reject(createRequestCanceledError()),
+            );
+          });
+        },
+      },
+      { serial: device.id },
+      async () => await openAndroidApp(device, app, { ...options, signal: controller.signal }),
+    );
+    setTimeout(() => controller.abort(), 20);
+    await assert.rejects(launch, (error) => isRequestCanceledError(error));
+  });
 }

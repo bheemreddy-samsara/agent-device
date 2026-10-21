@@ -76,6 +76,7 @@ export function createAndroidInteractor(
         launchArgs: options?.launchArgs,
         terminateRunningApp: options?.terminateRunningApp,
         url: options?.url,
+        signal: runnerContext?.signal,
       }),
     }),
     openDevice: () => openAndroidDevice(device),
