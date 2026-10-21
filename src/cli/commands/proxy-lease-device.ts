@@ -18,7 +18,7 @@ import {
   namedLeaseDeviceSpecKeys,
   readLeaseDeviceSpec,
 } from '@agent-device/contracts/lease-scope';
-import type { LeaseDeviceSpec } from '@agent-device/contracts/client';
+import type { LeaseDevice, LeaseDeviceSpec } from '@agent-device/contracts/client';
 import type { LeaseBackend } from '@agent-device/kernel/contracts';
 import type { CliFlags } from '@agent-device/contracts/command';
 import type { AgentDeviceClient, Lease } from '../../agent-device-client.ts';
@@ -133,7 +133,7 @@ export async function bindLeaseNamedDevice(options: {
   }
   if (leased) {
     if (!acquired) {
-      assertLeaseSpecMatchesRequest(options.state, spec, leased);
+      assertLeaseSpecMatchesRequest(options.state, lease, spec, leased);
       await assertLeasedDeviceMatchesRequest(client, options.state, flags, leased);
     }
     applyDeviceScopeSelector(flags, leased);
@@ -147,10 +147,7 @@ export async function bindLeaseNamedDevice(options: {
         platform: leased.platform,
         target: options.state.target ?? leased.target,
         ...(acquired
-          ? {
-              deviceSpec: specKeys.length > 0 ? spec : undefined,
-              leaseDevice: lease.device,
-            }
+          ? { leaseDeviceSpec: { leaseId: lease.leaseId, spec, device: lease.device } }
           : {}),
       },
       materialized,
@@ -210,10 +207,11 @@ async function releaseUnhonouredSpecLease(
  */
 function assertLeaseSpecMatchesRequest(
   state: RemoteConnectionState,
+  lease: Lease,
   requested: LeaseDeviceSpec,
   leased: ConnectionDeviceScope,
 ): void {
-  const bound = state.deviceSpec ?? {};
+  const bound = recordedLeaseDeviceSpec(state, lease.leaseId)?.spec ?? {};
   const conflicting = namedLeaseDeviceSpecKeys(requested).filter(
     (key) => requested[key] !== bound[key],
   );
@@ -230,6 +228,18 @@ function assertLeaseSpecMatchesRequest(
       reason: 'CONNECTION_DEVICE_CONFLICT',
     },
   );
+}
+
+function recordedLeaseDeviceSpec(
+  state: RemoteConnectionState,
+  leaseId: string | undefined,
+): RemoteConnectionState['leaseDeviceSpec'] {
+  return leaseId && state.leaseDeviceSpec?.leaseId === leaseId ? state.leaseDeviceSpec : undefined;
+}
+
+/** The device a proxy backend granted for the lease the connection holds now, if it named one. */
+export function grantedLeaseDevice(state: RemoteConnectionState): LeaseDevice | undefined {
+  return recordedLeaseDeviceSpec(state, state.leaseId)?.device;
 }
 
 function unboundLeaseError(state: RemoteConnectionState, lease: Lease): AppError {

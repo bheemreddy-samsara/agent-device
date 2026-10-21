@@ -43,6 +43,7 @@ import { readHostedDeviceProfileFields } from '../connection/profile-fields.ts';
 import type { PreviousLeaseReleaseNotice } from './connection-presentation.ts';
 import {
   bindLeaseNamedDevice,
+  grantedLeaseDevice,
   resolveProxyLeaseState,
   type ResolvedLeaseState,
 } from './proxy-lease-device.ts';
@@ -73,7 +74,6 @@ export async function materializeRemoteConnectionForCommand(options: {
   flags: CliFlags;
   runtime?: SessionRuntimeHints;
   connection?: RemoteConnectionRequestMetadata;
-  /** The device the proxy backend granted for the lease's device spec, when it named one. */
   leaseDevice?: LeaseDevice;
 }> {
   const { command, flags, client, host } = options;
@@ -204,7 +204,7 @@ export async function materializeRemoteConnectionForCommand(options: {
     },
     runtime: nextRuntime,
     connection: buildRemoteConnectionRequestMetadata(nextState),
-    leaseDevice: nextState.leaseDevice,
+    leaseDevice: grantedLeaseDevice(nextState),
   };
 }
 

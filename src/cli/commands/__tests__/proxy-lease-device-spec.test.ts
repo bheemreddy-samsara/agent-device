@@ -11,20 +11,20 @@ import {
   type LeaseReleaseRequest,
   seedConnectionState,
   unexpectedCommandCall,
-} from './remote-connection.fixtures.ts';
+} from '../../../__tests__/remote-connection.fixtures.ts';
 
 vi.mock('@agent-device/react-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@agent-device/react-native')>()),
   stopMetroTunnel: vi.fn(),
 }));
 
-import { materializeRemoteConnectionForCommand } from '../cli/commands/connection-runtime.ts';
+import { materializeRemoteConnectionForCommand } from '../connection-runtime.ts';
 import {
   readActiveConnectionState,
   readRemoteConnectionState,
 } from '@agent-device/remote/remote-connection-state';
-import { connectCommand } from './test-utils/host-bound-commands.ts';
-import { withCapturedStdoutAsync } from './test-utils/stream-capture.ts';
+import { connectCommand } from '../../../__tests__/test-utils/host-bound-commands.ts';
+import { withCapturedStdoutAsync } from '../../../__tests__/test-utils/stream-capture.ts';
 
 bindTestCommandHost();
 
@@ -36,7 +36,11 @@ const GRANTED_DEVICE: LeaseDevice = {
 
 function proxyWorkspace(
   prefix: string,
-  seed: { leaseId?: string; deviceKey?: string; deviceSpec?: LeaseDeviceSpec } = {},
+  seed: {
+    leaseId?: string;
+    deviceKey?: string;
+    leaseDeviceSpec?: { leaseId: string; spec: LeaseDeviceSpec; device?: LeaseDevice };
+  } = {},
 ) {
   const workspace = connectionWorkspace(prefix);
   fs.writeFileSync(
@@ -57,7 +61,7 @@ function proxyWorkspace(
         ? { leaseId: seed.leaseId, leaseBackend: 'ios-instance', platform: 'ios' }
         : {}),
       ...(seed.deviceKey ? { deviceKey: seed.deviceKey } : {}),
-      ...(seed.deviceSpec ? { deviceSpec: seed.deviceSpec } : {}),
+      ...(seed.leaseDeviceSpec ? { leaseDeviceSpec: seed.leaseDeviceSpec } : {}),
     },
   });
   const flags = {
@@ -140,8 +144,11 @@ test('proxy open by device spec sends the spec on allocate without listing devic
   assert.equal(materialized.flags.physical, undefined);
   const state = readRemoteConnectionState({ stateDir, session: 'adc-proxy' });
   assert.equal(state?.leaseId, 'lease-1');
-  assert.deepEqual(state?.deviceSpec, { osVersion: '>=26', physical: true });
-  assert.deepEqual(state?.leaseDevice, GRANTED_DEVICE);
+  assert.deepEqual(state?.leaseDeviceSpec, {
+    leaseId: 'lease-1',
+    spec: { osVersion: '>=26', physical: true },
+    device: GRANTED_DEVICE,
+  });
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -210,7 +217,7 @@ test('a later open on a live spec lease is served when it names the same spec', 
   const { tempRoot, flags } = proxyWorkspace('agent-device-proxy-device-spec-same-', {
     leaseId: 'lease-1',
     deviceKey: 'ios:mobile:SIM-REMOTE',
-    deviceSpec: { osVersion: '>=26' },
+    leaseDeviceSpec: { leaseId: 'lease-1', spec: { osVersion: '>=26' }, device: GRANTED_DEVICE },
   });
   const heartbeats: string[] = [];
 
@@ -224,6 +231,7 @@ test('a later open on a live spec lease is served when it names the same spec', 
   assert.deepEqual(heartbeats, ['lease-1']);
   assert.equal(materialized.flags.udid, 'SIM-REMOTE');
   assert.equal(materialized.flags.osVersion, undefined);
+  assert.deepEqual(materialized.leaseDevice, GRANTED_DEVICE);
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -231,7 +239,7 @@ test('a later open naming a different --os on a live spec lease is refused with 
   const { tempRoot, stateDir, flags } = proxyWorkspace('agent-device-proxy-device-spec-conflict-', {
     leaseId: 'lease-1',
     deviceKey: 'ios:mobile:SIM-REMOTE',
-    deviceSpec: { osVersion: '>=26' },
+    leaseDeviceSpec: { leaseId: 'lease-1', spec: { osVersion: '>=26' } },
   });
 
   await assert.rejects(
@@ -249,7 +257,7 @@ test('a later open naming a different --os on a live spec lease is refused with 
   );
   const state = readRemoteConnectionState({ stateDir, session: 'adc-proxy' });
   assert.equal(state?.leaseId, 'lease-1');
-  assert.deepEqual(state?.deviceSpec, { osVersion: '>=26' });
+  assert.deepEqual(state?.leaseDeviceSpec?.spec, { osVersion: '>=26' });
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
@@ -270,6 +278,35 @@ test('a spec named on a live lease allocated without one is refused with CONNECT
       error.code === 'INVALID_ARGS' &&
       error.details?.reason === 'CONNECTION_DEVICE_CONFLICT' &&
       JSON.stringify(error.details?.keys) === '["physical"]',
+  );
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
+
+test('a spec recorded for an earlier lease neither serves nor describes the lease held now', async () => {
+  // lease-1 was allocated by spec and has ended; lease-2 was then allocated by --udid without one.
+  const { tempRoot, flags } = proxyWorkspace('agent-device-proxy-device-spec-stale-', {
+    leaseId: 'lease-2',
+    deviceKey: 'ios:mobile:SIM-REMOTE',
+    leaseDeviceSpec: { leaseId: 'lease-1', spec: { osVersion: '>=26' }, device: GRANTED_DEVICE },
+  });
+
+  const materialized = await materializeRemoteConnectionForCommand({
+    host: createTestHostEnvironment(),
+    command: 'open',
+    flags,
+    client: renewingClient([]),
+  });
+  assert.equal(materialized.leaseDevice, undefined);
+
+  await assert.rejects(
+    materializeRemoteConnectionForCommand({
+      host: createTestHostEnvironment(),
+      command: 'open',
+      flags: { ...flags, osVersion: '>=26' },
+      client: renewingClient([]),
+    }),
+    (error: AppError) =>
+      error.code === 'INVALID_ARGS' && error.details?.reason === 'CONNECTION_DEVICE_CONFLICT',
   );
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });

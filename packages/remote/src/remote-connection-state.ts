@@ -51,10 +51,11 @@ export type RemoteConnectionState = {
   clientId?: string;
   platform?: CliFlags['platform'];
   target?: CliFlags['target'];
-  /** The device spec the lease was allocated by; a later request naming another one conflicts. */
-  deviceSpec?: LeaseDeviceSpec;
-  /** The device facts the proxy backend granted for {@link deviceSpec}. */
-  leaseDevice?: LeaseDevice;
+  /**
+   * The device spec a proxy lease was allocated by and the device its backend granted. It describes
+   * only the lease `leaseId` names: once that lease ends or is replaced, it describes nothing.
+   */
+  leaseDeviceSpec?: { leaseId: string; spec: LeaseDeviceSpec; device?: LeaseDevice };
   runtime?: SessionRuntimeHints;
   metro?: {
     projectRoot: string;
@@ -504,8 +505,7 @@ function isRemoteConnectionState(value: unknown): value is RemoteConnectionState
       'clientId',
     ]) &&
     isOptionalRemoteConnectionDaemonState(record.daemon) &&
-    isOptionalRecord(record.deviceSpec) &&
-    isOptionalRecord(record.leaseDevice)
+    isOptionalRecord(record.leaseDeviceSpec)
   );
 }
 
