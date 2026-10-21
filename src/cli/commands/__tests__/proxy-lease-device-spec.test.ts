@@ -303,6 +303,67 @@ test('a later open naming another --udid beside the spec on a live spec lease is
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
+test('a new spec lease for another device than the requested --udid is released and refused', async () => {
+  const { tempRoot, stateDir, flags } = proxyWorkspace('agent-device-proxy-device-spec-udid-new-');
+  const releases: LeaseReleaseRequest[] = [];
+
+  await assert.rejects(
+    materializeRemoteConnectionForCommand({
+      host: createTestHostEnvironment(),
+      command: 'open',
+      flags: { ...flags, osVersion: '>=26', udid: 'SIM-OTHER' },
+      client: createTestClient({
+        listDevices: unexpectedCommandCall,
+        allocate: async (request) => grantedLease(request, { device: GRANTED_DEVICE }),
+        release: async (request) => {
+          releases.push(request);
+          return { released: true };
+        },
+      }),
+    }),
+    (error: AppError) =>
+      error.code === 'INVALID_ARGS' &&
+      error.details?.reason === 'CONNECTION_DEVICE_CONFLICT' &&
+      error.details?.requestedDevice === 'SIM-OTHER',
+  );
+  assert.deepEqual(
+    releases.map((release) => release.leaseId),
+    ['lease-1'],
+  );
+  assert.equal(readRemoteConnectionState({ stateDir, session: 'adc-proxy' })?.leaseId, undefined);
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
+
+test('a lease re-allocated by its stored device for a non-allocating command does not carry the spec', async () => {
+  const { tempRoot, flags } = proxyWorkspace('agent-device-proxy-device-spec-snapshot-', {
+    leaseId: 'lease-1',
+    deviceKey: 'ios:mobile:SIM-REMOTE',
+    leaseDeviceSpec: { leaseId: 'lease-1', spec: { osVersion: '>=26' }, device: GRANTED_DEVICE },
+  });
+  const requests: LeaseAllocateRequest[] = [];
+
+  await materializeRemoteConnectionForCommand({
+    host: createTestHostEnvironment(),
+    command: 'snapshot',
+    flags: { ...flags, osVersion: '>=26' },
+    client: createTestClient({
+      listDevices: unexpectedCommandCall,
+      heartbeat: async () => {
+        throw new AppError('UNAUTHORIZED', 'lease expired', { reason: 'LEASE_EXPIRED' });
+      },
+      allocate: async (request) => {
+        requests.push(request);
+        return grantedLease(request, { leaseId: 'lease-2' });
+      },
+    }),
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.deviceKey, 'ios:mobile:SIM-REMOTE');
+  assert.equal(requests[0]?.osVersion, undefined);
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
+
 test('a spec recorded for an earlier lease neither serves nor describes the lease held now', async () => {
   // lease-1 was allocated by spec and has ended; lease-2 was then allocated by --udid without one.
   const { tempRoot, flags } = proxyWorkspace('agent-device-proxy-device-spec-stale-', {

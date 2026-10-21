@@ -132,9 +132,13 @@ export async function bindLeaseNamedDevice(options: {
     throw await releaseUnhonouredSpecLease(client, options.state, lease, specKeys);
   }
   if (leased) {
+    const identityConflict = leasedIdentityConflict(options.state, flags, leased);
+    if (identityConflict && acquired) {
+      await releaseLease(client, options.state, lease).catch(() => undefined);
+    }
+    if (identityConflict) throw identityConflict;
     if (!acquired) {
       assertLeaseSpecMatchesRequest(options.state, lease, spec, leased);
-      assertLeasedIdentityMatchesRequest(options.state, flags, leased);
       await assertLeasedDeviceMatchesRequest(client, options.state, flags, leased);
     }
     applyDeviceScopeSelector(flags, leased);
@@ -230,15 +234,18 @@ function assertLeaseSpecMatchesRequest(
   );
 }
 
-/** A renewed lease serves a request naming `--udid` or `--serial` only when it leases that device. */
-function assertLeasedIdentityMatchesRequest(
+/**
+ * A lease serves a request naming `--udid` or `--serial` only when it leases that device; a new
+ * lease for another device is released by the caller.
+ */
+function leasedIdentityConflict(
   state: RemoteConnectionState,
   flags: CliFlags,
   leased: ConnectionDeviceScope,
-): void {
+): AppError | undefined {
   const requested = flags.udid ?? flags.serial;
-  if (requested === undefined || requested === leased.id) return;
-  throw new AppError(
+  if (requested === undefined || requested === leased.id) return undefined;
+  return new AppError(
     'INVALID_ARGS',
     'Active remote connection is already bound to a different device. Re-run connect --force to replace it.',
     {

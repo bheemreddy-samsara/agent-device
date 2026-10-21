@@ -928,7 +928,7 @@ async function allocateOrReuseLease(
     serial: flags.serial,
     iosSimulatorDeviceSet: flags.iosSimulatorDeviceSet,
     androidDeviceAllowlist: flags.androidDeviceAllowlist,
-    ...readLeaseDeviceSpec(flags),
+    ...(allocateBySpec ? readLeaseDeviceSpec(flags) : {}),
     providerApp: initialApp ?? flags.providerApp,
     providerOsVersion: flags.providerOsVersion,
     providerDeviceType: flags.providerDeviceType,
