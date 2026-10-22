@@ -3,6 +3,18 @@
 Use `batch` to run several commands in one daemon request. It saves round trips when you already know
 the next sequence of actions.
 
+The whole batch has a 60-second wall-clock budget within a 90-second client timeout. At the
+budget, the running step receives the same cancellation as a canceled request. When that step
+settles, a failed batch returns `COMMAND_FAILED` with `details.reason: daemon_request_timeout`.
+The daemon and other sessions stay available if it responds to the client. A `close` step may
+already have ended its session. A failed batch keeps
+`details.executed`, `details.partialResults`, and its dispatch status, so you can continue from
+the failing step. A batch that completes every step returns success even if it settles shortly
+after the deadline. Cancellation does not prove that native device work has stopped. If a step
+ignores cancellation beyond the remaining 30 seconds, the client may report a transport timeout.
+For a daemon that does not respond, the client's existing liveness check can reset it. Split
+longer sequences into separate requests.
+
 ## Run a batch from the CLI
 
 From a file:

@@ -521,6 +521,18 @@ url: /agent-device/pr-preview/pr-3865/docs/batching.md
 Use `batch` to run several commands in one daemon request. It saves round trips when you already know
 the next sequence of actions.
 
+The whole batch has a 60-second wall-clock budget within a 90-second client timeout. At the
+budget, the running step receives the same cancellation as a canceled request. When that step
+settles, a failed batch returns `COMMAND_FAILED` with `details.reason: daemon_request_timeout`.
+The daemon and other sessions stay available if it responds to the client. A `close` step may
+already have ended its session. A failed batch keeps
+`details.executed`, `details.partialResults`, and its dispatch status, so you can continue from
+the failing step. A batch that completes every step returns success even if it settles shortly
+after the deadline. Cancellation does not prove that native device work has stopped. If a step
+ignores cancellation beyond the remaining 30 seconds, the client may report a transport timeout.
+For a daemon that does not respond, the client's existing liveness check can reset it. Split
+longer sequences into separate requests.
+
 ## Run a batch from the CLI
 
 From a file:
@@ -1429,6 +1441,9 @@ await client.command.tvRemote({
 
 await client.command.appSwitcher();
 await client.command.actionButton();
+await client.command.hardwareButton({ button: 'volume-up' });
+await client.command.hardwareButton({ button: 'volume-down' });
+await client.command.hardwareButton({ button: 'power', platform: 'android' });
 await client.command.fold({ pose: 'open' });
 await client.command.telephony({ action: 'call', number: '5551234' });
 await client.command.telephony({ action: 'sms', number: '5551234', text: 'Your code is 1234' });
@@ -1443,6 +1458,8 @@ await client.command.fold({
 ```
 
 `fold` accepts either `pose` or `keyframes`. Keyframes use linear interpolation at roughly 60 updates per second; repeat an angle to hold it. Timestamps must start at zero and increase strictly, with 2–64 frames and a final timestamp no greater than 60,000ms. Angles must be finite and between 0° and 180°. The final timestamp bounds motion, excluding helper preparation and final hinge verification. A custom final angle is verified within 0.5°; interior angles must also settle. Cancellation stops the motion at its current angle. Re-snapshot afterwards, including after interrupted motion. Android emulators accept `pose` only.
+
+`hardwareButton` presses one phone hardware key once: `button` is `'volume-up'`, `'volume-down'`, `'power'`, `'mute'`, `'sleep'`, `'wake'`, `'media-play-pause'`, `'media-next'`, `'media-previous'`, `'media-rewind'`, or `'media-fast-forward'`. It takes no hold duration and activates no app; the result reports the dispatched press, not the OS reaction. Android presses all eleven on phones and tablets; a physical iPhone or iPad presses volume only; iOS Simulators, Android TV, and tvOS refuse (use `tvRemote` on TV targets). `sleep` and `wake` are the explicit Android events that turn the screen off or on; `power` toggles it.
 
 `press`, `click`, and `longpress` do not wait for a missing target to appear. When a screen is still loading, wait for its landmark before interacting:
 
@@ -1467,6 +1484,7 @@ Supported command methods:
 - `orientation`
 - `appSwitcher`
 - `actionButton`
+- `hardwareButton`
 - `fold`
 - `telephony`
 - `keyboard`
@@ -1679,6 +1697,9 @@ agent-device orientation landscape-left
 agent-device orientation auto
 agent-device app-switcher
 agent-device action-button
+agent-device hardware-button volume-up
+agent-device hardware-button volume-down
+agent-device hardware-button power
 agent-device fold closed
 agent-device fold half-open
 agent-device fold open
@@ -1715,7 +1736,7 @@ Device claims and the daemon:
 
 Open apps and links:
 
-- `open [app|url] [url]` boots and activates the selected target when needed. `open <url>` opens deep links on Android and iOS, and `open <app> <url>` opens a deep link in that app on iOS.
+- `open [app|url] [url]` boots the selected device when needed and opens the target in a session. `open <url>` opens deep links on Android and iOS, and `open <app> <url>` opens a deep link in that app on iOS. See [Desktop targets](#desktop-targets) for macOS activation behavior.
 - On iOS devices, `http(s)://` URLs open in Safari when no app is active. Custom-scheme URLs need an active app in the session.
 - `open <app> --wait <ms>` waits up to that budget for a device another session holds, then fails with `DEVICE_IN_USE`. The wait extends the command's timeout, so you don't need a longer `--timeout`. A claim held by another workspace's daemon is not waited for; `open` returns its recovery command at once. Device-mutating commands like `install` and `reinstall` never wait either: a claim held by another session fails them at once, and when the caller sends a workspace, another workspace's claim under the same session name fails too. See [Sessions](/agent-device/pr-preview/pr-3865/docs/sessions.md#wait-for-a-slow-or-busy-device).
 - `open <app> --launch-console <path>` captures launch-time stdout/stderr for iOS simulator app launches. It is not valid for URL opens or other targets.
@@ -1738,11 +1759,15 @@ iOS Simulator launch behavior:
 Back, orientation, and hardware buttons:
 
 - `back` uses app-owned back navigation: visible in-app back UI on Apple targets, and the back keyevent on Android. `--in-app` names this default explicitly.
+- On a single-screen iPhone, `back` can use a top-leading tap when the app tree is unreadable. It compares the screen before and after the tap. If the screen cannot be captured, the command reports an unknown outcome; inspect the screen before you retry.
 - `back --system` sends system back input: the Android back keyevent, the iOS back gesture, or the tvOS Siri Remote Menu button. macOS has no system back, so it reports unavailable.
 - `orientation portrait|portrait-upside-down|landscape-left|landscape-right` works on iOS and Android mobile targets only. On ADB-backed Android it turns auto-rotate off, and the lock persists after the session ends until something turns it back on.
 - `orientation auto` hands rotation back to the sensor on ADB-backed Android, local or Limrun (`accelerometer_rotation=1`, `user_rotation` untouched), and reports `orientation: "auto"`. It does not wait for the display to rotate, because there is no target rotation: the sensor decides, and an emulator usually settles on portrait. Every other backend refuses `auto` with `UNSUPPORTED_OPERATION`.
 - `action-button` presses the iPhone or iPad Action Button once. It takes no arguments, no hold duration, and no `--settle`, and it doesn't activate the session app or drive Camera Control. Other platforms refuse it, and a model without the button (an iPhone SE, most iPad simulators) fails with `UNSUPPORTED_OPERATION`.
 - `action-button` reports that the press was dispatched, not what it triggered. Simulators run no Shortcuts or App Intents, so verify the outcome on a physical iPhone. Expect a press to take about five seconds on a Simulator.
+- `hardware-button <button>` presses one phone hardware key once, with no hold and no `--settle`, and it doesn't activate the session app. The names are `volume-up`, `volume-down`, `power`, `mute`, `sleep`, `wake`, `media-play-pause`, `media-next`, `media-previous`, `media-rewind`, and `media-fast-forward`. The response reports the dispatched press, not what the OS did with it: which audio stream a volume press moves, which media session a media key reaches, and whether the HUD shows is device behavior the command does not claim.
+- Android presses all eleven keys on phones and tablets: the ADB-backed and helper paths send `input keyevent`, and an Appium-backed device presses the same keycodes through its `mobile: pressKey` route. A physical iPhone or iPad presses volume only, through the local runner or Appium's volume button press; no Apple leaf presses the other keys. iOS Simulators refuse volume (`XCUIDevice` exposes no volume press there), and Android TV and tvOS targets refuse with a pointer to `tv-remote`.
+- A `power` press toggles the Android screen. `sleep` turns it off and `wake` turns it on without toggling, so wake the screen with `hardware-button wake` after a press that turned it off. After a press that turns the screen off, later commands may hit a locked screen.
 
 Fold a foldable device:
 
@@ -1950,14 +1975,25 @@ agent-device snapshot -i --platform apple --target desktop
 - `--platform macos`, or `--platform apple --target desktop`, selects the host Mac as a `desktop` target.
 - Use an `app` session for normal app control: `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `back`, `screenshot`, `record`. In app sessions, `screenshot` captures the app window, not the whole desktop.
 - Use the other surfaces to inspect desktop-wide UI before choosing an app, mainly with `snapshot`, `get`, `is`, and `wait`: `frontmost-app` is the focused app, `desktop` is the visible windows across the desktop, and `menubar` is the active app's menu bar and system menu extras. To click or fill inside one app afterwards, open it in an `app` session.
-- `open <app> --platform macos` attaches to a copy of the app that is already running, including one you started yourself from a script or supervisor. If that copy has not finished registering with macOS, the open waits briefly for it before handing the URL over, so a copy that registers within that window keeps the arguments it was started with; a copy still unregistered after the wait gets the plain `open`, which can start a second instance.
+- `open <app> --platform macos` attaches to a copy of the app that is already running, including one you started yourself from a script or supervisor. It opens that copy by its own app path, so another build registered for the same bundle ID, such as an earlier dev build at another path, does not start beside it. If that copy has not finished registering with macOS, the open waits briefly for it before handing the URL over, so a copy that registers within that window keeps the arguments it was started with; a copy still unregistered after the wait, or copies running from more than one path, get the plain `open -b`, which can start a second instance.
 - `open <app> --platform macos --surface menubar` targets one app's menu bar extras. Prefer it for status-item apps, which often expose little through the `app` surface.
 - Prefer selectors and `@ref`s; window positions shift between runs, so raw x/y is less stable. Use `click --button secondary` for context menus, then run `snapshot -i` again.
 - On `frontmost-app` and `menubar`, `press` and `click` post synthetic mouse events (`desktop` is inspect-only). `--hold-ms` keeps the button down (at least 40 ms, default 60 ms), `--count` sends independent clicks, and `--double-tap` sends double-click pairs. Apps like Finder read two clicks at the default interval as one double-click; pass an `--interval-ms` longer than the system double-click time to keep them apart. Long schedules get the time they need, and a cancelled or interrupted click releases the button. `--jitter-px` is ignored on these surfaces.
 - macOS also supports `clipboard read|write`, `trigger-app-event`, `logs`, `network dump`, `audio probe`, `alert`, and part of `settings` (see [Settings helpers](#settings-helpers)). `audio probe` samples host system audio and needs Screen Recording permission; see [Debugging & Profiling](/agent-device/pr-preview/pr-3865/docs/debugging-profiling.md#audio-probes).
 - Mobile-only commands are unsupported on macOS: `boot`, `shutdown`, `home`, `orientation`, `app-switcher`, `action-button`, `fold`, `install`, `reinstall`, `uninstall`, `install-from-source`, and `push`.
 
+XCTest opens bring the named app to the front. `open --surface frontmost-app` takes no app target and opens the app that is already frontmost. `--foreground` requests an initial snapshot; it does not choose activation. Run `agent-device help macos` for the versioned contract.
+
 Set `AGENT_DEVICE_MACOS_APP_BACKEND=native` to run macOS app sessions without XCTest. There is no Automation Mode overlay, the app can stay behind other windows, and your pointer stays yours while a drawn pointer shows each action.
+
+With the native backend, each app you open on the `app` surface is a device of its own. Several agents can drive different apps of one Mac at the same time, in one daemon or in daemons that share a claims directory. Two sessions on the same app conflict. A `desktop`, `menubar`, or `frontmost-app` session holds the whole Mac, so it conflicts with every app session. `open --wait` waits for a conflicting session in the same daemon only; another daemon's session refuses the open at once. An app session:
+
+- Opens its app in the background, so the frontmost app stays in front.
+- Opens and closes only its own app. `open <url>` opens the link in that app. Use a new `--session` for another app or surface.
+- Refuses `clipboard`, `settings`, and `audio probe`, which act on the whole Mac, with `UNSUPPORTED_OPERATION` (`reason: unsupported-device-scope`). Use a `--surface desktop` session for them.
+- Cannot see UI that another process shows, such as a system permission prompt.
+
+Copies of one app need distinct bundle ids. Screenshots run one at a time across the Mac. Use one agent-device version per claims directory.
 
 - `click`, `press`, and `fill` use accessibility actions on the element at the target point, which must be inside one of the app's on-screen windows, not its menu bar. `type` inserts at the focused control or falls back to key events. `scroll` moves the scroll bar under the front window's center. Chromium-based apps expose their full tree. `screenshot` captures only the app's front window, even when it is covered. The front window is the app's frontmost visible, nonempty normal-level (layer-0) window on the current Space: floating palettes and app-modal alerts at window level 8 are skipped, and a sheet is captured as its own window. If that window cannot be captured, `screenshot` fails; it never captures another window.
 - `record`, `prepare`, `back`, `longpress`, `--hold-ms`, `--double-tap`, `--button secondary`, gestures, and clicks on an element with no accessibility action fail with `UNSUPPORTED_OPERATION` (`reason: unsupported-device-backend`). Use the default XCTest backend for those.
@@ -2630,7 +2666,9 @@ agent-device record stop                # Stop active recording
 **Screenshot diffs**
 
 - `diff screenshot` compares a live capture, or a saved `current.png` (no session needed), against `--baseline`. Inputs may be PNG or JPEG regardless of extension; HarmonyOS captures are JPEG. Output ranks changed regions with rectangles, changed-pixel counts, and share of the diff; `--out` writes a diff PNG with changed pixels tinted red. `ocr` and `nonTextDeltas` are never populated, so read the images yourself for qualitative review.
-- `--threshold <0-1>` sets the per-pixel RGB tolerance (default `0.1`). Image dimensions must match. Keep it above `0` when either input is JPEG.
+- `--threshold <0-1>` sets the per-pixel RGB tolerance (default `0.1`). Keep it above `0` when either input is JPEG.
+- The current image scales proportionally to the baseline width and aligns at the top left. Its scaled height rounds to the nearest pixel, with a minimum of one row. The comparison includes the full height of both images: extra or missing bottom rows count as differences, including blank or transparent rows, even at `--threshold 1`. Your original files stay unchanged. This does not crop system bars or move content into alignment.
+- When dimensions differ, JSON `normalization` reports `baseline`, `current`, `scaledCurrent`, and `compared` dimensions. `currentScale.x` and `.y` map original current pixels to comparison pixels; the height scale includes pixel rounding. Region rectangles and ref-match rectangles use comparison pixels, and normalized region rectangles use percentages of the compared canvas. The separate current-screen overlay keeps its original capture size.
 - `--overlay-refs` also writes a separate current-screen ref overlay and lists refs under changed regions. It needs a live capture, so it is unavailable with a saved `current.png`.
 - Live iOS simulator diffs normalize status-bar chrome by default.
 
@@ -2666,7 +2704,7 @@ agent-device network dump 25 --include headers --platform web # Browser requests
 ```
 
 - `logs` works on iOS simulators, iOS physical devices, Android, and macOS (app-scoped Unified Logging). On iOS, capture relies on Unified Logging (`os_log`); plain stdout/stderr may be limited.
-- `logs start` appends to `app.log` and rotates at 5 MB. Override with `AGENT_DEVICE_APP_LOG_MAX_BYTES` and `AGENT_DEVICE_APP_LOG_MAX_FILES`; set `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` to a comma-separated regex list for write-time redaction.
+- `logs start` appends to `app.log` and rotates at 5 MB. Override with `AGENT_DEVICE_APP_LOG_MAX_BYTES` and `AGENT_DEVICE_APP_LOG_MAX_FILES`; set `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` to a comma-separated regex list for write-time redaction. On Apple simulators, `logs start` returns once the simulator log stream is running, so lines that the app logs after that are captured. If the stream does not start within 10 s, `logs start` fails with `details.reason: "simulator-log-stream-launch-timeout"`.
 - `open` prints `Session state: <path>`; see [Sessions](/agent-device/pr-preview/pr-3865/docs/sessions.md#find-a-sessions-logs-and-artifacts) for the files it contains.
 - `events` reads the session timeline, which leaves out user-entered content; `--no-record` suppresses `action.recorded` entries. `events.ndjson` rotates at 5 MB (`AGENT_DEVICE_EVENT_LOG_MAX_BYTES`) and keeps one generation. Cursors stay valid across rotation; a cursor older than the retained window fails with `details.reason: "EVENT_LOG_CURSOR_EXPIRED"` and `details.earliestCursor`. If the retained files were edited or deleted, `events` fails with `details.reason: "EVENT_LOG_WINDOW_UNVERIFIED"`.
 - `network dump [limit] [summary|headers|body|all]` parses recent HTTP(s) entries from `app.log`, or from managed `agent-browser` request history on web; `network log` is an alias. Prefer `--include` over the positional detail level. It scans up to 4000 log lines, returns up to 200 entries, and truncates fields at 2048 characters. Web does not expose bodies.
@@ -3905,6 +3943,16 @@ agent-device plugins update @example/agent-device-provider
 agent-device plugins remove @example/agent-device-provider
 ```
 
+`agent-device help connect` and `agent-device help remote` identify known optional providers as
+`plugin, install separately` and show their installation commands, even before you install them.
+For example, TestMu AI requires `agent-device plugins add @agent-device/testmu`.
+
+If you run `agent-device connect testmu` without its plugin, the error gives that installation
+command and tells you to retry your original command. With `--json`, the error has
+`details.reason: plugin-not-installed`, `details.package`, and `details.installCommand`.
+If the plugin is selected but unavailable, the reason is `plugin-unavailable`; run
+`agent-device plugins list --json` to inspect it, then fix its configuration or update the package.
+
 Use a full npm package name, optionally with `@version` or `@tag`. `update` keeps valid version constraints and options, including when it repairs a damaged selection. To change a constraint, run `add <package>@<version-or-tag>`; to remove it, run `add <package>` without a suffix.
 
 Each installation lives in an npm project with a lockfile under `AGENT_DEVICE_HOME` (default `~/.agent-device`), and that directory's `config.json` records the selection. Plugin commands leave other settings in `config.json` unchanged. Project config and `--config` cannot select plugins. This home is independent of `--state-dir` and `AGENT_DEVICE_STATE_DIR`.
@@ -4253,21 +4301,25 @@ config, an explicit `--config` file, or protected CI environment variables.
 
 ## Lease by device spec
 
-A service in front of the daemon, such as simlock, can also pick the device by OS version and Android image tag. Pass `--os <version|range>` or `--image-tag <tag>` to `open`, `install`, `reinstall`, or `uninstall`, and the CLI sends them with `--platform`, `--target`, and `--device` on the lease request. `connect proxy` stores them as defaults like `--platform` and `--device`. agent-device does not check the values; the service does (for example, Android `--os` is an API level). `--target` stays the device class selector.
+A service in front of the daemon, such as simlock, can also pick the device by OS version, Android image tag, and physical or virtual class. Pass `--os <version|range>`, `--image-tag <tag>`, or `--physical` to `open`, `install`, `reinstall`, or `uninstall`, and the CLI sends them with `--platform`, `--target`, and `--device` on the lease request. `connect proxy` stores them as defaults like `--platform` and `--device`. agent-device does not check the values; the service does (for example, Android `--os` is an API level). `--target` stays the device class selector.
 
 ```bash
 agent-device open MyApp --platform ios --device "iPhone 17 Pro" --os ">=26"
 agent-device open MyApp --platform android --os 34 --image-tag google_apis_playstore
+agent-device open MyApp --platform ios --physical --os 18.6.2
 ```
 
 | Flag                    | Key on `agent_device.lease.allocate` | Type   |
 | ----------------------- | ------------------------------------ | ------ |
 | `--os <version\|range>` | `osVersion`                          | string |
 | `--image-tag <tag>`     | `imageTag`                           | string |
+| `--physical`            | `physical`                           | `true` |
 
-A service that honours the spec returns the granted device on the lease as `lease.device`: `model`, `osVersion` (the exact OS granted), and `imageTag` when one applies. `open --json` prints it under `lease.device`.
+With `--physical`, the service leases one of the real phones enrolled with it instead of a simulator or emulator.
 
-The daemon itself cannot pick a device by these keys, so it refuses them instead of ignoring them. A local daemon, or one behind a plain `agent-device proxy`, fails the request with `UNSUPPORTED_OPERATION`, `details.reason: "device-spec-unsupported"`, and `details.keys` naming the keys it got, and records no lease. When a service returns a lease without `lease.device`, it did not understand the spec: the CLI releases that lease and fails with the same reason. While a lease is active, a later command that names a different value for either key fails with reason `CONNECTION_DEVICE_CONFLICT`; a key the command leaves out keeps the lease's value. Run `connect --force` to lease by another spec.
+A service that honours the spec returns the granted device on the lease as `lease.device`: `model`, `osVersion` (the exact OS granted), `imageTag` when one applies, and `physical`. `open --json` prints it under `lease.device`.
+
+The daemon itself cannot pick a device by these keys, so it refuses them instead of ignoring them. A local daemon, or one behind a plain `agent-device proxy`, fails the request with `UNSUPPORTED_OPERATION`, `details.reason: "device-spec-unsupported"`, and `details.keys` naming the keys it got, and records no lease. When a service returns a lease without `lease.device`, it did not understand the spec: the CLI releases that lease and fails with the same reason. While a lease is active, a later command that names a different value for any of the three keys fails with reason `CONNECTION_DEVICE_CONFLICT`; a key the command leaves out keeps the lease's value. Run `connect --force` to lease by another spec.
 
 ## Human takeover
 
@@ -4432,7 +4484,10 @@ AGENT_DEVICE_DAEMON_POLICY=./policy.json agent-device proxy
 ```
 
 - `devices.allow` lists the only devices clients can see (`devices`) or use. Use `udid` for Apple
-  devices and `serial` for Android.
+  devices and `serial` for Android. With the native macOS backend, allowing the Mac also allows
+  each app on it. To allow one app only, list its app device id, for example
+  `host-macos-local:app:com.apple.textedit`. The Mac then appears in `devices`, but whole-Mac
+  sessions stay denied.
 - `commands` takes either `allow` or `deny`, not both. With `allow`, commands added in later releases
   stay denied. Some client-side tools reach the daemon through internal commands: allow `runtime` for
   Maestro flows, and `install-from-source` for remote installs.
@@ -4491,6 +4546,18 @@ url: /agent-device/pr-preview/pr-3865/docs/replay-e2e.md
 # Replay & E2E Testing
 
 Record a session as an `.ad` script, then run it again with `replay` or run a folder of scripts as an E2E suite with `test`.
+
+`replay` has a 60-second wall-clock budget within a 90-second client timeout. Use
+`replay workflow.ad --timeout 300000` for a five-minute operation budget and a five-minute,
+30-second client timeout. At the budget, the running step receives the same cancellation as a
+canceled request. When it settles, a failed replay includes `details.reason: daemon_request_timeout`
+and `details.timeoutMs`. The daemon and other sessions stay available if it responds to the client. An
+authored `close` may already have ended its session. A failed replay keeps the failing script path
+and line. A replay that completes every step returns success even if it settles shortly after the
+deadline. Cancellation does not prove that native device work has stopped. If a step ignores
+cancellation beyond the remaining 30 seconds, the client may report a transport timeout. For a
+daemon that does not respond, the client's existing liveness check can reset it. Direct `test`
+runs keep their own timeout behavior.
 
 To run Maestro YAML flows or export `.ad` scripts to Maestro YAML, see [Run Maestro flows](/agent-device/pr-preview/pr-3865/docs/run-maestro-flows.md).
 
