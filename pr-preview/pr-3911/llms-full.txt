@@ -537,12 +537,13 @@ Some resource operations cannot run as bounded steps. The failed step returns
 `details.reason: bounded_composite_resource_unsupported`, `details.shape`,
 `details.dispatched: no`, and `details.standaloneCommandName` for a known public command. The name
 is not a complete command. Affected commands include `perf`, `audio`, `record`, `trace`, and some
-`logs` operations. A `close` that would dispose an owned resource or release a provider lease, an
-`open` that would replace owned resources, and acquisition that would recover another session's
-durable resources can also be refused. A caller-authored `close` may be refused on an Android
-emulator with an active test IME, including after an ordinary `open`. Run the original step
-separately with its original arguments and options, the same `--session` value, and the same private
-CLI context. Inspect `details.partialResults` and
+`logs` operations. A `close` that would dispose an owned resource or release a provider lease, and
+acquisition that would recover another session's durable resources, can also be refused. Opening
+another app in the same session keeps its owned resource handles. An Android test IME alone is
+restored by ordinary `close`, including a bounded step. Restoration may settle after the remaining
+batch time. If it fails, the session retires and the device claim stays for recovery; inspect the
+device and claim before acting. Run a refused step separately with its original arguments and options, the same `--session` value, and
+the same private CLI context. Inspect `details.partialResults` and
 `details.dispatchedSteps` before retrying the batch: earlier steps may already have changed the app.
 The batch still authenticates and renews its own lease while it runs.
 
@@ -1772,6 +1773,7 @@ iOS Simulator launch behavior:
 Back, orientation, and hardware buttons:
 
 - `back` uses app-owned back navigation: visible in-app back UI on Apple targets, and the back keyevent on Android. `--in-app` names this default explicitly.
+- On a single-screen iPhone, `back` can use a top-leading tap when the app tree is unreadable. It compares the screen before and after the tap. If the screen cannot be captured, the command reports an unknown outcome; inspect the screen before you retry.
 - `back --system` sends system back input: the Android back keyevent, the iOS back gesture, or the tvOS Siri Remote Menu button. macOS has no system back, so it reports unavailable.
 - `orientation portrait|portrait-upside-down|landscape-left|landscape-right` works on iOS and Android mobile targets only. On ADB-backed Android it turns auto-rotate off, and the lock persists after the session ends until something turns it back on.
 - `orientation auto` hands rotation back to the sensor on ADB-backed Android, local or Limrun (`accelerometer_rotation=1`, `user_rotation` untouched), and reports `orientation: "auto"`. It does not wait for the display to rotate, because there is no target rotation: the sensor decides, and an emulator usually settles on portrait. Every other backend refuses `auto` with `UNSUPPORTED_OPERATION`.
@@ -2729,7 +2731,7 @@ agent-device network dump 25 --include headers --platform web # Browser requests
 ```
 
 - `logs` works on iOS simulators, iOS physical devices, Android, and macOS (app-scoped Unified Logging). On iOS, capture relies on Unified Logging (`os_log`); plain stdout/stderr may be limited.
-- `logs start` appends to `app.log` and rotates at 5 MB. Override with `AGENT_DEVICE_APP_LOG_MAX_BYTES` and `AGENT_DEVICE_APP_LOG_MAX_FILES`; set `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` to a comma-separated regex list for write-time redaction.
+- `logs start` appends to `app.log` and rotates at 5 MB. Override with `AGENT_DEVICE_APP_LOG_MAX_BYTES` and `AGENT_DEVICE_APP_LOG_MAX_FILES`; set `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` to a comma-separated regex list for write-time redaction. On Apple simulators, `logs start` returns once the simulator log stream is running, so lines that the app logs after that are captured. If the stream does not start within 10 s, `logs start` fails with `details.reason: "simulator-log-stream-launch-timeout"`.
 - `open` prints `Session state: <path>`; see [Sessions](/agent-device/pr-preview/pr-3911/docs/sessions.md#find-a-sessions-logs-and-artifacts) for the files it contains.
 - `events` reads the session timeline, which leaves out user-entered content; `--no-record` suppresses `action.recorded` entries. `events.ndjson` rotates at 5 MB (`AGENT_DEVICE_EVENT_LOG_MAX_BYTES`) and keeps one generation. Cursors stay valid across rotation; a cursor older than the retained window fails with `details.reason: "EVENT_LOG_CURSOR_EXPIRED"` and `details.earliestCursor`. If the retained files were edited or deleted, `events` fails with `details.reason: "EVENT_LOG_WINDOW_UNVERIFIED"`.
 - `network dump [limit] [summary|headers|body|all]` parses recent HTTP(s) entries from `app.log`, or from managed `agent-browser` request history on web; `network log` is an alias. Prefer `--include` over the positional detail level. It scans up to 4000 log lines, returns up to 200 entries, and truncates fields at 2048 characters. Web does not expose bodies.
@@ -4566,19 +4568,22 @@ If a resource step cannot run within replay's budget, the error includes
 `details.reason: bounded_composite_resource_unsupported`, `details.shape`,
 `details.dispatched: no` for that step, and `details.standaloneCommandName` for a known public
 command. This can affect `perf`, `audio`, `record`, `trace`, and some `logs` operations. It also
-affects `close` when it would dispose owned resources or release a provider lease, `open` when it
-would replace owned resources, and acquisition that would recover another session's durable
-resources. An active Android test IME can make an authored `close` one such step, including at the
-end of a replay. The name is not a complete command. Inspect the failed script path and line,
-then run that original operation separately with its original arguments and options, the same `--session`
-value, and the same private CLI context. If steps remain and the report offers
-`resume.alternateFrom`, use it with `planDigest` after completing the refused step directly.
+affects `close` when it would dispose owned resources or release a provider lease, and acquisition
+that would recover another session's durable resources. Opening another app in the same session
+keeps its owned resource handles. An Android test IME alone is restored by authored `close`, even
+when restoration settles after the remaining replay time. A failed restore retires the session and
+retains the device claim for recovery; inspect both before acting. The name is not a complete command. Inspect the failed
+script path and line, then run that original operation separately with its original arguments and
+options, the same `--session` value, and the same private CLI context. If steps remain and the
+report offers `resume.alternateFrom`, use it with `planDigest` after completing the refused step directly.
 `resume.from` retries the same bounded step and refuses it again. A final
 unrecorded `logs` or `audio` step leaves no replay tail to resume. Inspect completed steps before
 retrying; earlier steps may have changed the app. A nested `test` with an attempt timeout or
 `--record-video` is refused before its first attempt. Direct `test` retains its own timeout
-behavior. An authored `.ad` command without a resource classification fails closed with
-`details.shape: <command>:unclassified` and the same original-input guidance.
+behavior. If a nested test reaches a bounded resource refusal, it stops after that attempt even
+when you configured retries. Other test failures can still retry. An authored `.ad` command
+without a resource classification fails closed with `details.shape: <command>:unclassified`
+and the same original-input guidance.
 
 To run Maestro YAML flows or export `.ad` scripts to Maestro YAML, see [Run Maestro flows](/agent-device/pr-preview/pr-3911/docs/run-maestro-flows.md).
 
