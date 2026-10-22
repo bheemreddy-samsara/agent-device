@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.8e99a24f24.js"></script>
+<script defer src="/agent-device/static/js/index.1ee05967e9.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -481,11 +481,23 @@ restart; reconnect and take the hold again. See <a href="/agent-device/docs/remo
 <h2 class="rp-toc-include" id="retry-after-a-failed-command"><a href="#retry-after-a-failed-command" class="rp-header-anchor rp-link" aria-hidden="true">#</a>Retry after a failed command</h2>
 <p>When a command fails, read <code>error.details.dispatched</code> before you retry:</p>
 <ul>
-<li><code>no</code>: the action never reached the device. Retry it as it is.</li>
+<li><code>no</code>: the action never reached the device. Check <code>details.reason</code> before retrying; a bounded
+resource refusal must run as a separate command.</li>
 <li><code>unknown</code>: the action may have landed. Take a snapshot before you retry; a blind retry can tap, type, or navigate twice.</li>
 <li>Missing: no guarantee. Treat it as <code>unknown</code>.</li>
 </ul>
-<p>Read-only commands such as <code>get</code>, <code>snapshot</code>, and <code>wait</code> report <code>no</code>, and so do <code>record</code>, <code>trace</code>, and <code>perf</code>, whose controls the device refuses to repeat. On Android, dismissing a blocking system dialog or ANR prompt first does not count as a dispatched step. Once any step of a request reached the device, the failure is <code>unknown</code> and <code>error.details.dispatchedSteps</code> counts those steps; a <code>batch</code> or replay reports <code>no</code> only when none of its executed steps changed the app.</p>
+<p>For a failed <code>batch</code> or <code>replay</code>, inspect completed steps and <code>details.dispatchedSteps</code> first. A
+resource step refused with <code>details.reason: bounded_composite_resource_unsupported</code> has
+<code>details.dispatched: no</code> for that step. <code>details.standaloneCommandName</code> names a known public
+command; it is not a complete command. Run the original step separately with its original
+arguments and options, the same <code>--session</code> value, and the same private CLI context. Earlier
+steps may still have run.</p>
+<p>Read-only commands such as <code>get</code>, <code>snapshot</code>, and <code>wait</code> report <code>no</code>, and so do <code>record</code>, <code>trace</code>,
+and <code>perf</code>, whose controls the device refuses to repeat. On Android, dismissing a blocking system
+dialog or ANR prompt first does not count as a dispatched step. For other failures, once any step
+of a request reached the device, the failure is <code>unknown</code> and <code>error.details.dispatchedSteps</code>
+counts those steps. A bounded resource refusal reports <code>no</code> for its refused step even when earlier
+batch or replay steps changed the app; check <code>dispatchedSteps</code> before retrying.</p>
 <p>These refusals carry <code>dispatched: no</code> and a typed <code>error.details.reason</code>, so branch on the reason, not the message:</p>
 <ul>
 <li><code>session_or_device_selector_required</code>: the request had neither an active session nor a device selector. Open a session or pass <code>--platform</code>. Commands that require a session or a device selector before they read the request&#x27;s target (<code>boot</code>, <code>clipboard</code>, <code>push</code>, <code>apps</code>, and siblings) answer this even when the request named a session the daemon does not hold.</li>

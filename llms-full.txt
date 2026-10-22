@@ -533,6 +533,15 @@ ignores cancellation beyond the remaining 30 seconds, the client may report a tr
 For a daemon that does not respond, the client's existing liveness check can reset it. Split
 longer sequences into separate requests.
 
+Some resource operations cannot run as bounded steps. The failed step returns
+`details.reason: bounded_composite_resource_unsupported`, `details.shape`,
+`details.dispatched: no`, and `details.standaloneCommandName` for a known public command. The name
+is not a complete command. Affected commands include `perf`, `audio`, `record`, `trace`, and some
+`logs` operations. Run the original step separately with its original arguments and options, the
+same `--session` value, and the same private CLI context. Inspect `details.partialResults` and
+`details.dispatchedSteps` before retrying the batch: earlier steps may already have changed the app.
+The batch still authenticates and renews its own lease while it runs.
+
 ## Run a batch from the CLI
 
 From a file:
@@ -637,7 +646,7 @@ Failure:
 - Treat earlier refs and snapshots as stale after the UI changes.
 - Prefer `--steps-file` over inline JSON.
 - Keep batches to about 5-20 steps.
-- When a batch fails, use `details.step` and `details.partialResults` to replan from the failing step.
+- When a batch fails, inspect `details.step`, `details.partialResults`, and `details.dispatchedSteps` before retrying.
 
 ## Example recipes
 
@@ -2176,11 +2185,24 @@ agent-device wait 'id="field-phone" value="00 062 91 77"'
 
 When a command fails, read `error.details.dispatched` before you retry:
 
-- `no`: the action never reached the device. Retry it as it is.
+- `no`: the action never reached the device. Check `details.reason` before retrying; a bounded
+  resource refusal must run as a separate command.
 - `unknown`: the action may have landed. Take a snapshot before you retry; a blind retry can tap, type, or navigate twice.
 - Missing: no guarantee. Treat it as `unknown`.
 
-Read-only commands such as `get`, `snapshot`, and `wait` report `no`, and so do `record`, `trace`, and `perf`, whose controls the device refuses to repeat. On Android, dismissing a blocking system dialog or ANR prompt first does not count as a dispatched step. Once any step of a request reached the device, the failure is `unknown` and `error.details.dispatchedSteps` counts those steps; a `batch` or replay reports `no` only when none of its executed steps changed the app.
+For a failed `batch` or `replay`, inspect completed steps and `details.dispatchedSteps` first. A
+resource step refused with `details.reason: bounded_composite_resource_unsupported` has
+`details.dispatched: no` for that step. `details.standaloneCommandName` names a known public
+command; it is not a complete command. Run the original step separately with its original
+arguments and options, the same `--session` value, and the same private CLI context. Earlier
+steps may still have run.
+
+Read-only commands such as `get`, `snapshot`, and `wait` report `no`, and so do `record`, `trace`,
+and `perf`, whose controls the device refuses to repeat. On Android, dismissing a blocking system
+dialog or ANR prompt first does not count as a dispatched step. For other failures, once any step
+of a request reached the device, the failure is `unknown` and `error.details.dispatchedSteps`
+counts those steps. A bounded resource refusal reports `no` for its refused step even when earlier
+batch or replay steps changed the app; check `dispatchedSteps` before retrying.
 
 These refusals carry `dispatched: no` and a typed `error.details.reason`, so branch on the reason, not the message:
 
@@ -4536,6 +4558,23 @@ deadline. Cancellation does not prove that native device work has stopped. If a 
 cancellation beyond the remaining 30 seconds, the client may report a transport timeout. For a
 daemon that does not respond, the client's existing liveness check can reset it. Direct `test`
 runs keep their own timeout behavior.
+
+If a resource step cannot run within replay's budget, the error includes
+`details.reason: bounded_composite_resource_unsupported`, `details.shape`,
+`details.dispatched: no` for that step, and `details.standaloneCommandName` for a known public
+command. This can affect `perf`, `audio`, `record`, `trace`, and some `logs` operations. The name is
+not a complete command. Inspect the failed script path and line, then run that original operation
+separately with its original arguments and options, the same `--session`
+value, and the same private CLI context. If steps remain and the report offers
+`resume.alternateFrom`, use it with `planDigest` after completing the refused step directly.
+`resume.from` retries the same bounded step and refuses it again. A final
+unrecorded `logs` or `audio` step leaves no replay tail to resume. Inspect completed steps before
+retrying; earlier steps may have changed the app. A nested `test` with an attempt timeout or
+`--record-video` is refused before its first attempt. Direct `test` retains its own timeout
+behavior. If a nested test reaches a bounded resource refusal, it stops after that attempt even
+when you configured retries. Other test failures can still retry. An authored `.ad` command
+without a resource classification fails closed with `details.shape: <command>:unclassified`
+and the same original-input guidance.
 
 To run Maestro YAML flows or export `.ad` scripts to Maestro YAML, see [Run Maestro flows](/agent-device/docs/run-maestro-flows.md).
 
