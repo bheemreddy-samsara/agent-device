@@ -142,6 +142,7 @@ export type RemoteConfigProfile = RemoteConfigMetroOptions &
     serial?: string;
     osVersion?: string;
     imageTag?: string;
+    physical?: boolean;
     iosSimulatorDeviceSet?: string;
     androidDeviceAllowlist?: string;
     session?: string;

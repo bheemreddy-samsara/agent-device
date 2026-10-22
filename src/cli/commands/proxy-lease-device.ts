@@ -64,7 +64,7 @@ export async function resolveProxyLeaseState(options: {
     if (!options.leaseBackend) {
       throw new AppError(
         'INVALID_ARGS',
-        `${options.command} with --os or --image-tag requires --platform or --lease-backend so the proxy backend knows which device family to pick from.`,
+        `${options.command} with --os, --image-tag or --physical requires --platform or --lease-backend so the proxy backend knows which device family to pick from.`,
       );
     }
     return { state: options.state, allocateBySpec: true };
@@ -144,6 +144,7 @@ export async function bindLeaseNamedDevice(options: {
     applyDeviceScopeSelector(flags, leased);
     delete flags.osVersion;
     delete flags.imageTag;
+    delete flags.physical;
     return {
       state: {
         ...options.state,

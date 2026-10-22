@@ -77,6 +77,18 @@ export const TARGET_FLAG_DEFINITIONS: readonly FlagDefinition[] = [
     recorded: false,
   },
   {
+    key: 'physical',
+    names: ['--physical'],
+    type: 'boolean',
+    usageLabel: '--physical',
+    usageDescription:
+      'Proxy lease: ask the backend for a physical device instead of a simulator or emulator; refused without such a backend',
+    inputDescription:
+      'Ask a proxy backend to lease a physical device instead of a simulator or emulator. Only the CLI allocating a lease through connect proxy sends it to that backend; a daemon refuses every other request that names it, with reason device-spec-unsupported.',
+    projectConfig: false,
+    recorded: false,
+  },
+  {
     key: 'stale',
     names: ['--stale'],
     type: 'boolean',

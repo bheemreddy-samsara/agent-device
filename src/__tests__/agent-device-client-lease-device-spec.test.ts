@@ -52,9 +52,9 @@ test('a daemon refuses a lease allocate naming a device spec and records no leas
         leaseBackend: 'ios-instance',
         platform: 'ios',
         osVersion: '>=26',
-        imageTag: 'iphone',
+        physical: true,
       }),
-      isDeviceSpecRefusal(['osVersion', 'imageTag']),
+      isDeviceSpecRefusal(['osVersion', 'physical']),
     );
     await assertNoLeaseRecorded(client);
     // The same allocate without the spec is recorded, so the heartbeat above proves the refusal.

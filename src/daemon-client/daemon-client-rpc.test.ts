@@ -201,6 +201,7 @@ test('lease allocation carries the device spec a proxy backend picks by', () => 
         platform: 'android',
         osVersion: '>=34',
         imageTag: 'google_apis_playstore',
+        physical: true,
       },
       meta: { requestId: 'lease-req', tenantId: 'proxy', runId: 'proxy-run' },
     },
@@ -215,5 +216,6 @@ test('lease allocation carries the device spec a proxy backend picks by', () => 
     platform: 'android',
     osVersion: '>=34',
     imageTag: 'google_apis_playstore',
+    physical: true,
   });
 });

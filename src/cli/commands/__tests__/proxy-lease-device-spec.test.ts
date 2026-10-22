@@ -31,6 +31,7 @@ bindTestCommandHost();
 const GRANTED_DEVICE: LeaseDevice = {
   model: 'iPhone 17 Pro',
   osVersion: '26.1',
+  physical: false,
 };
 
 function proxyWorkspace(
@@ -118,7 +119,7 @@ test('proxy open by device spec sends the spec on allocate without listing devic
   const materialized = await materializeRemoteConnectionForCommand({
     host: createTestHostEnvironment(),
     command: 'open',
-    flags: { ...flags, device: 'iPhone 17 Pro', osVersion: '>=26', imageTag: 'iphone' },
+    flags: { ...flags, device: 'iPhone 17 Pro', osVersion: '>=26', physical: true },
     client: createTestClient({
       listDevices: unexpectedCommandCall,
       allocate: async (request) => {
@@ -134,17 +135,18 @@ test('proxy open by device spec sends the spec on allocate without listing devic
   assert.equal(requests[0]?.platform, 'ios');
   assert.equal(requests[0]?.device, 'iPhone 17 Pro');
   assert.equal(requests[0]?.osVersion, '>=26');
-  assert.equal(requests[0]?.imageTag, 'iphone');
+  assert.equal(requests[0]?.physical, true);
+  assert.equal(requests[0]?.imageTag, undefined);
   assert.deepEqual(materialized.leaseDevice, GRANTED_DEVICE);
   // The leased device is named by its identity from here on; the spec does not reach the command.
   assert.equal(materialized.flags.udid, 'SIM-REMOTE');
   assert.equal(materialized.flags.osVersion, undefined);
-  assert.equal(materialized.flags.imageTag, undefined);
+  assert.equal(materialized.flags.physical, undefined);
   const state = readRemoteConnectionState({ stateDir, session: 'adc-proxy' });
   assert.equal(state?.leaseId, 'lease-1');
   assert.deepEqual(state?.leaseDeviceSpec, {
     leaseId: 'lease-1',
-    spec: { osVersion: '>=26', imageTag: 'iphone' },
+    spec: { osVersion: '>=26', physical: true },
     device: GRANTED_DEVICE,
   });
   fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -192,7 +194,7 @@ test('a failed release of an unconfirmed spec lease still fails the command with
     materializeRemoteConnectionForCommand({
       host: createTestHostEnvironment(),
       command: 'open',
-      flags: { ...flags, imageTag: 'google_apis' },
+      flags: { ...flags, physical: true },
       client: createTestClient({
         listDevices: unexpectedCommandCall,
         allocate: async (request) => grantedLease(request),
@@ -269,13 +271,13 @@ test('a spec named on a live lease allocated without one is refused with CONNECT
     materializeRemoteConnectionForCommand({
       host: createTestHostEnvironment(),
       command: 'install',
-      flags: { ...flags, imageTag: 'google_apis' },
+      flags: { ...flags, physical: true },
       client: renewingClient([]),
     }),
     (error: AppError) =>
       error.code === 'INVALID_ARGS' &&
       error.details?.reason === 'CONNECTION_DEVICE_CONFLICT' &&
-      JSON.stringify(error.details?.keys) === '["imageTag"]',
+      JSON.stringify(error.details?.keys) === '["physical"]',
   );
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
@@ -408,6 +410,7 @@ test('connect proxy stores the device spec as profile defaults like platform and
         platform: 'android',
         osVersion: '34',
         imageTag: 'google_apis_playstore',
+        physical: true,
       },
       client: createTestClient(),
     });
@@ -422,5 +425,6 @@ test('connect proxy stores the device spec as profile defaults like platform and
   assert.equal(generated.platform, 'android');
   assert.equal(generated.osVersion, '34');
   assert.equal(generated.imageTag, 'google_apis_playstore');
+  assert.equal(generated.physical, true);
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
