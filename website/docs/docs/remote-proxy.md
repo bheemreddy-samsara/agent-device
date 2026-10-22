@@ -73,6 +73,8 @@ agent-device open MyApp --platform ios --physical --os 18.6.2
 | `--image-tag <tag>` | `imageTag` | string |
 | `--physical` | `physical` | `true` |
 
+With `--physical`, the service leases one of the real phones enrolled with it instead of a simulator or emulator.
+
 A service that honours the spec returns the granted device on the lease as `lease.device`: `model`, `osVersion` (the exact OS granted), `imageTag` when one applies, and `physical`. `open --json` prints it under `lease.device`.
 
 The daemon itself cannot pick a device by these keys, so it refuses them instead of ignoring them. A local daemon, or one behind a plain `agent-device proxy`, fails the request with `UNSUPPORTED_OPERATION`, `details.reason: "device-spec-unsupported"`, and `details.keys` naming the keys it got, and records no lease. When a service returns a lease without `lease.device`, it did not understand the spec: the CLI releases that lease and fails with the same reason. While a lease is active, a later command that names a different value for any of the three keys fails with reason `CONNECTION_DEVICE_CONFLICT`; a key the command leaves out keeps the lease's value. Run `connect --force` to lease by another spec.
