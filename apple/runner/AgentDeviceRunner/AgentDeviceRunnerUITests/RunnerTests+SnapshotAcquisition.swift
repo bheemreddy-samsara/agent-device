@@ -647,14 +647,17 @@ extension RunnerTests {
   func flatSnapshotNode(
     element: XCUIElement,
     index: Int,
-    parentIndex: Int?
+    parentIndex: Int?,
+    contentOffset: CGSize = .zero
   ) -> RawAXNode? {
     var node: RawAXNode?
     let exceptionMessage = RunnerObjCExceptionCatcher.catchException({
       if !element.exists { return }
       // Declared residue: a flat element query has no hierarchy for geometryless semantics to
       // attach to, so frameless elements are dropped at acquisition rather than presented.
-      let frame = element.frame
+      // The flat tier has no carrier box to declare a space, so this tier reads the window's offset
+      // itself and publishes each element frame in the space its viewport names (#3899).
+      let frame = RunnerLiveWindowGeometry.screenFrame(of: element.frame, contentOffset: contentOffset)
       if frame.isNull || frame.isEmpty { return }
       let label = element.label.trimmingCharacters(in: .whitespacesAndNewlines)
       let identifier = element.identifier.trimmingCharacters(in: .whitespacesAndNewlines)

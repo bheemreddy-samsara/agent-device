@@ -134,8 +134,12 @@ extension RunnerTests {
     let input = textInputAt(app: app, x: x, y: y)
     let target = input?.element
     let requestedPoint = CGPoint(x: x, y: y)
+    // The field's own frame read answers inside the app's reported box; the tap is dispatched in
+    // screen space, so the center has to cross the same vector the candidate test just used (#3899).
+    let contentOffset = liveContentOffset(app: app)
     if let frame = input?.attributes.frame, !frame.isEmpty {
-      _ = tapAt(app: app, x: frame.midX, y: frame.midY)
+      let center = RunnerLiveWindowGeometry.screenFrame(of: frame, contentOffset: contentOffset)
+      _ = tapAt(app: app, x: center.midX, y: center.midY)
     } else {
       _ = tapAt(app: app, x: x, y: y)
     }

@@ -180,6 +180,9 @@ extension RunnerTests {
     expectedPoint: CGPoint? = nil,
     rawMatchPolicy: DirectSelectorRawMatchPolicy = .rejectDistinctMatches
   ) -> SelectorElementMatch {
+    // An `expectedPoint` names the screen; a match's own frame read answers inside the app's
+    // reported box. Convert once per read for a windowed app; .zero elsewhere (#3899).
+    let contentOffset = expectedPoint == nil ? .zero : liveContentOffset(app: app)
     let value = selectorValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !value.isEmpty else {
       return SelectorElementMatch(element: nil, isAmbiguous: false, usedNonHittableFallback: false)
@@ -204,7 +207,9 @@ extension RunnerTests {
       SelectorCandidateFacts(
         isHittable: element.isHittable,
         hasTappableFrame: hasTappableFrame(app: app, element: element),
-        containsExpectedPoint: expectedPoint.map(element.frame.contains) ?? true
+        containsExpectedPoint: expectedPoint.map {
+          screenFrame(of: element, contentOffset: contentOffset).contains($0)
+        } ?? true
       )
     }
     switch classifyDirectSelectorCandidates(
@@ -282,6 +287,32 @@ extension RunnerTests {
     resolveRunnerWindow(app: app).frame
   }
 
+  /// The vector from the space a live element read answers in to the screen space a command point
+  /// names (#3899).
+  ///
+  /// An iPad window that does not fill the screen answers an element's own frame read — live or
+  /// snapshotted — inside the app's reported box, while the window holding that box reports its place
+  /// on the screen. Measured on iPad Pro 11-inch (M5, iOS 27.0) with a Calendar window at
+  /// `(324,307,386x682)`: `app.frame` is `(0,0,386,682)`, a search field inside it is
+  /// `(74,39,296,44)`, and `app.windows[0].frame` is `(324,307,386,682)`. Dispatch lands a command
+  /// point at that point on the screen, so an element frame that answers one has to cross this vector
+  /// once. A full-screen window, an iPhone, and each foldable panel of ADR 0025 read a zero vector, so
+  /// every live comparison there is unchanged.
+  ///
+  /// Both reads go through the same channels the snapshot and the tap path already use, and the
+  /// capture's own rule decides the vector, so the tree and the live reads cannot name two spaces.
+  func liveContentOffset(app: XCUIApplication) -> CGSize {
+    let windowScreenBox = onScreenWindowFrame(app: app)
+    return safely("LIVE_CONTENT_OFFSET", .zero) {
+      RunnerLiveWindowGeometry.contentOffset(appBox: app.frame, windowScreenBox: windowScreenBox)
+    }
+  }
+
+  /// `element.frame` in the space a command point names. Read once per element the caller already holds.
+  func screenFrame(of element: XCUIElement, contentOffset: CGSize) -> CGRect {
+    RunnerLiveWindowGeometry.screenFrame(of: element.frame, contentOffset: contentOffset)
+  }
+
   func queryElement(app: XCUIApplication, selectorKey: String, selectorValue: String) -> Response {
     // querySelector is a read — it backs get/is/wait and the offscreen-refusal
     // double-check, none of which mutate. The fail-closed raw-match rule exists
@@ -305,6 +336,9 @@ extension RunnerTests {
     let identifier = element.identifier.trimmingCharacters(in: .whitespacesAndNewlines)
     let valueText = String(describing: element.value ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    // A reader compares this rect with the ones a snapshot publishes, so it names the same space
+    // (#3899). The vector is .zero wherever a window fills its screen.
+    let rect = screenFrame(of: element, contentOffset: liveContentOffset(app: app))
     let node = SnapshotPresentation.singleElementRead(
       RawAXNode(
         index: 0,
@@ -352,6 +386,9 @@ extension RunnerTests {
 
   func readTextAt(app: XCUIApplication, x: Double, y: Double) -> String? {
     let point = CGPoint(x: x, y: y)
+    // The point names the screen; each candidate's frame read answers inside the app's reported box
+    // (#3899). The text-input probe already converted its own comparison.
+    let contentOffset = liveContentOffset(app: app)
     let textInputCandidates = textInputCandidatesAt(app: app, point: point).map(\.element)
     for element in textInputCandidates where prefersExpandedTextRead(element) {
       if let text = readableText(for: element) {
@@ -361,7 +398,9 @@ extension RunnerTests {
 
     let candidates = app.descendants(matching: .any).allElementsBoundByIndex
       .filter { element in
-        element.exists && !element.frame.isEmpty && element.frame.contains(point)
+        element.exists
+          && !element.frame.isEmpty
+          && screenFrame(of: element, contentOffset: contentOffset).contains(point)
       }
       .sorted { smallestElementFirst($0, $1) }
 

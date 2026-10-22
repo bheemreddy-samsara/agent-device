@@ -475,6 +475,9 @@ extension RunnerTests {
     }
 
     let viewport = safeSnapshotViewport(app: app, readingOrientation: false)
+    // The sweep reads each element's own frame, which answers inside the app's reported box; its
+    // viewport names the screen. One vector, decided once for the tier, puts both in one space (#3899).
+    let contentOffset = liveContentOffset(app: app)
     var seen = Set<String>()
     var candidates: [RawAXNode] = []
     let flatElements = flatInteractiveElements(app: app, deadline: deadline)
@@ -485,7 +488,12 @@ extension RunnerTests {
         outcome = .deadlineExhausted
         break
       }
-      guard let node = flatSnapshotNode(element: element, index: 0, parentIndex: 0) else {
+      guard let node = flatSnapshotNode(
+        element: element,
+        index: 0,
+        parentIndex: 0,
+        contentOffset: contentOffset
+      ) else {
         continue
       }
       let key = "\(node.type)-\(node.label ?? "")-\(node.identifier ?? "")-\(node.value ?? "")-\(node.rect.x)-\(node.rect.y)-\(node.rect.width)-\(node.rect.height)"

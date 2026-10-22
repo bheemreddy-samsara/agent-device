@@ -152,6 +152,10 @@ extension RunnerTests {
     point: CGPoint,
     shouldStop: () -> Bool
   ) -> [ResolvedTextEntryInput] {
+    // The point a caller passes names the screen; an input's own frame read answers inside the app's
+    // reported box. One vector per probe keeps the candidate test honest for a windowed app (#3899)
+    // and reads .zero on a full-screen window, an iPhone, and each foldable panel.
+    let contentOffset = liveContentOffset(app: app)
     var inputs: [ResolvedTextEntryInput] = []
     for query in [app.textFields, app.secureTextFields, app.searchFields, app.textViews] {
       if shouldStop() { break }
@@ -168,7 +172,8 @@ extension RunnerTests {
         if shouldStop() { break }
         guard let candidate = ResolvedTextEntryInput(readingListed: element) else { continue }
         let attributes = candidate.attributes
-        if isCoordinateTextInputCandidate(enabled: attributes.isEnabled, frame: attributes.frame, point: point) {
+        let frame = RunnerLiveWindowGeometry.screenFrame(of: attributes.frame, contentOffset: contentOffset)
+        if isCoordinateTextInputCandidate(enabled: attributes.isEnabled, frame: frame, point: point) {
           inputs.append(candidate)
         }
       }

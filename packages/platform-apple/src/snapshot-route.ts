@@ -512,7 +512,7 @@ function captureScopedFallbackWarning(code: string, consequence: CaptureScopedCo
     case 'foreground-ownership':
       return `${thisCapture}, while another surface owned the foreground.`;
     case 'window-not-full-screen':
-      return `${thisCapture}, while the app window did not fill the screen; XCTest geometry for a windowed app can also be offset from the screen.`;
+      return `${thisCapture}, while the app window did not fill the screen; XCTest publishes a windowed app's geometry in screen space (#3899).`;
     case 'coordinate-space-unresolved':
       return `${thisCapture}, which reports captured geometry in the app's own orientation space.`;
   }

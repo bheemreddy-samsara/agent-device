@@ -46,7 +46,11 @@ extension RunnerTests {
           return Response(ok: false, error: ErrorPayload(code: "AMBIGUOUS_MATCH", message: "selector matched multiple elements"))
         }
         if let element = match.element {
-          let frame = element.frame
+          // The match's own frame read answers inside the app's reported box, while the tap is
+          // dispatched at a screen-space point and the window frame is measured there. One vector
+          // puts all three in one space; it reads .zero on a full-screen window and an iPhone (#3899).
+          let contentOffset = liveContentOffset(app: activeApp)
+          let frame = screenFrame(of: element, contentOffset: contentOffset)
           // XCTest reports closed-drawer/off-viewport items as hittable, then
           // "taps" coordinates outside the visible window as a silent no-op.
           // Refuse instead; the daemon falls back to tree-based resolution,
