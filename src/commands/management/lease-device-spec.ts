@@ -10,11 +10,12 @@ import { optionField } from '../command-input.ts';
 export const leaseDeviceSpecFields = {
   osVersion: optionField('osVersion'),
   imageTag: optionField('imageTag'),
+  physical: optionField('physical'),
 };
 
-/** The spec keys the flags name; an empty version or tag names none. */
+/** The spec keys the flags name; an empty version or tag and `physical: false` name none. */
 export function leaseDeviceSpecInputFromFlags(
   flags: CliFlags,
-): Pick<CliFlags, 'osVersion' | 'imageTag'> {
+): Pick<CliFlags, 'osVersion' | 'imageTag' | 'physical'> {
   return readLeaseDeviceSpec(flags);
 }

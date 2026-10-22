@@ -265,7 +265,7 @@ test('MCP open, install, reinstall and uninstall advertise the proxy lease devic
     const tool = listCommandTools().find((candidate) => candidate.name === name);
     assert.ok(tool, `expected an MCP tool named ${name}`);
     const properties = tool.inputSchema.properties ?? {};
-    for (const key of ['osVersion', 'imageTag']) {
+    for (const key of ['osVersion', 'imageTag', 'physical']) {
       assert.equal(key in properties, true, `${name} does not advertise ${key}`);
     }
   }

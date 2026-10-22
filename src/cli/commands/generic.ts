@@ -99,9 +99,12 @@ async function writeGenericCliOutput(
 /** Adds the device a proxy backend granted for the lease's device spec to the `open` output. */
 function withLeaseDevice(output: CliOutput, device: LeaseDevice): CliOutput {
   const lease = { lease: { device } };
-  const facts = [device.model, device.osVersion, device.imageTag].filter((fact): fact is string =>
-    Boolean(fact),
-  );
+  const facts = [
+    device.model,
+    device.osVersion,
+    device.imageTag,
+    device.physical ? 'physical' : 'virtual',
+  ].filter((fact): fact is string => Boolean(fact));
   const leasedLine = `Leased device: ${facts.join(', ')}`;
   return {
     ...output,
