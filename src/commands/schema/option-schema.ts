@@ -33,6 +33,9 @@ const ENV_EXCLUDED_FLAG_KEYS = new Set<FlagKey>([
   'appsFilter',
   'iosSimulatorDeviceSet',
   'textStdin',
+  // The proxy lease device spec comes from a flag or `connect proxy`, never ambient environment.
+  'osVersion',
+  'imageTag',
 ]);
 
 const optionSpecs = buildOptionSpecs();

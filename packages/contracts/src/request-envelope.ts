@@ -66,6 +66,8 @@ export type InternalRequestOptions = AgentDeviceClientConfig &
     runtime?: SessionRuntimeHints;
     overlayRefs?: boolean;
     surface?: SessionSurface;
+    osVersion?: string;
+    imageTag?: string;
     activity?: string;
     launchConsole?: string;
     launchArgs?: string[];

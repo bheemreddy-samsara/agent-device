@@ -57,6 +57,8 @@ function buildFlags(options: InternalRequestOptions): CommandFlags {
     iosXctestDerivedDataPath: options.iosXctestDerivedDataPath,
     iosXctestEnvDir: options.iosXctestEnvDir,
     androidDeviceAllowlist: options.androidDeviceAllowlist,
+    osVersion: options.osVersion,
+    imageTag: options.imageTag,
     surface: options.surface,
     activity: options.activity,
     launchConsole: options.launchConsole,

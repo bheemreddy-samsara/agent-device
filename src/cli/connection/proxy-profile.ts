@@ -36,6 +36,8 @@ export function resolveProxyConnectProfile(options: {
     device: options.flags.device,
     udid: options.flags.udid,
     serial: options.flags.serial,
+    osVersion: options.flags.osVersion,
+    imageTag: options.flags.imageTag,
     iosSimulatorDeviceSet: options.flags.iosSimulatorDeviceSet,
     androidDeviceAllowlist: options.flags.androidDeviceAllowlist,
     session: options.flags.session,

@@ -61,6 +61,10 @@ export type CliFlags = CloudProviderProfileFields &
     device?: string;
     udid?: string;
     serial?: string;
+    // The device spec only a backend in front of the daemon honours; a daemon refuses a request
+    // that names any of them (`LEASE_DEVICE_SPEC_KEYS`).
+    osVersion?: string;
+    imageTag?: string;
     stale?: boolean;
     iosSimulatorDeviceSet?: string;
     iosXctestrunFile?: string;

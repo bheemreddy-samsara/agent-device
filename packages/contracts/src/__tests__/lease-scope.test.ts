@@ -14,6 +14,8 @@ import {
   leaseScopeToRequestMeta,
   parseLeaseDeviceKey,
   readLeaseAllocateProviderFlags,
+  readLeaseDevice,
+  readLeaseDeviceSpec,
 } from '../lease-scope.ts';
 
 test('leaseScopeFromOptions normalizes public aliases and projects request meta', () => {
@@ -243,6 +245,39 @@ test('readLeaseAllocateProviderFlags carries the provider-allocation flags and d
     { providerApp: 'bs://abc' },
   );
   assert.deepEqual(readLeaseAllocateProviderFlags(undefined), {});
+});
+
+test('readLeaseAllocateProviderFlags carries every device-spec key a request names, whatever its value', () => {
+  assert.deepEqual(
+    readLeaseAllocateProviderFlags({
+      platform: 'android',
+      osVersion: '34',
+      imageTag: 'google_apis_playstore',
+    }),
+    { platform: 'android', osVersion: '34', imageTag: 'google_apis_playstore' },
+  );
+  // A malformed key still reaches the daemon, which refuses it rather than never seeing it.
+  assert.deepEqual(readLeaseAllocateProviderFlags({ osVersion: 26, imageTag: false }), {
+    osVersion: 26,
+    imageTag: false,
+  });
+});
+
+test('readLeaseDeviceSpec names only a non-empty version or tag', () => {
+  const padded = { osVersion: ' >=26 ', imageTag: '' };
+  assert.deepEqual(readLeaseDeviceSpec(padded), { osVersion: '>=26' });
+  assert.deepEqual(readLeaseDeviceSpec({ imageTag: 'google_apis' }), { imageTag: 'google_apis' });
+  assert.deepEqual(readLeaseDeviceSpec({}), {});
+});
+
+test('readLeaseDevice reads the granted facts and rejects an echo missing one', () => {
+  const pixel = { model: 'Pixel 9', osVersion: '34', imageTag: 'google_apis' };
+  assert.deepEqual(readLeaseDevice(pixel), pixel);
+  const iphone = { model: 'iPhone 17 Pro', osVersion: '26.0' };
+  assert.deepEqual(readLeaseDevice(iphone), iphone);
+  assert.equal(readLeaseDevice({ model: 'iPhone 17 Pro' }), undefined);
+  assert.equal(readLeaseDevice({ osVersion: '26.0' }), undefined);
+  assert.equal(readLeaseDevice(undefined), undefined);
 });
 
 test('isInactiveLeaseError recognizes the lease being gone, and refuses a request mismatch', () => {
