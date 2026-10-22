@@ -260,6 +260,7 @@ export async function createRequestExecutionScope(params: {
     const requestExecutionLocks = createRequestExecutionLocks({
       locks: executionLocks,
       initialKeys: lockPlan.keys,
+      scope: params.platformRequestScope,
     });
     const dispatchLedger = requestDispatchLedger(scopedReq);
     const { claimAdmission, runtimeBindings } = createRequestDeviceAccess({
@@ -310,7 +311,7 @@ export async function createRequestExecutionScope(params: {
       bindDevice: runtimeBindings?.bindDevice ?? gatewayMissing,
       inspectFacts: runtimeBindings?.inspectFacts ?? gatewayMissing,
       bindExactDevice: runtimeBindings?.bindExactDevice ?? gatewayMissing,
-      platformServices: params.platformServices,
+      platformServices: { ...params.platformServices },
       dispatchLedger,
       throwIfCanceled: () => throwIfRequestCanceled(scopedReq.meta?.requestId),
       runAdmitted: async (task) => {

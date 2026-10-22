@@ -12,11 +12,6 @@ import { annotateDiffRegions } from './screenshot-diff-region-overlay.ts';
 import { summarizeDiffRegions, type ScreenshotDiffRegion } from './screenshot-diff-regions.ts';
 import type { ImageDimensions } from '@agent-device/kernel/screenshot-geometry';
 
-export type ScreenshotDimensionMismatch = {
-  expected: ImageDimensions;
-  actual: ImageDimensions;
-};
-
 type ScreenshotOcrSummary = {
   provider: 'tesseract';
   baselineBlocks: number;
@@ -45,13 +40,24 @@ type ScreenshotNonTextDelta = {
   nearestText?: string;
 };
 
+export type ScreenshotDiffNormalization = {
+  baseline: ImageDimensions;
+  current: ImageDimensions;
+  scaledCurrent: ImageDimensions;
+  compared: ImageDimensions;
+  currentScale: { x: number; y: number };
+  alignment: 'top-left';
+  coordinateSpace: 'comparison-pixels';
+};
+
 export type ScreenshotDiffResult = {
   diffPath?: string;
   totalPixels: number;
   differentPixels: number;
   mismatchPercentage: number;
   match: boolean;
-  dimensionMismatch?: ScreenshotDimensionMismatch;
+  /** Present when input dimensions differ. Regions and their ref rectangles use comparison pixels. */
+  normalization?: ScreenshotDiffNormalization;
   regions?: ScreenshotDiffRegion[];
   currentOverlayPath?: string;
   currentOverlayRefCount?: number;
@@ -96,39 +102,36 @@ export async function compareScreenshots(
   ]);
 
   const [baseline, current] = await Promise.all([
-    decodeScreenshotImageAsync(baselineBuffer, 'baseline screenshot'),
-    decodeScreenshotImageAsync(currentBuffer, 'current screenshot'),
+    decodeScreenshotImageAsync(baselineBuffer, 'baseline screenshot', options.maxPixels),
+    decodeScreenshotImageAsync(currentBuffer, 'current screenshot', options.maxPixels),
   ]);
-  validateMaxPixels(baseline.width, baseline.height, 'baseline screenshot', options.maxPixels);
-  validateMaxPixels(current.width, current.height, 'current screenshot', options.maxPixels);
-
-  const threshold = options.threshold ?? 0.1;
-
-  // Handle dimension mismatch — no diff image can be generated for different-sized images
-  if (baseline.width !== current.width || baseline.height !== current.height) {
-    const totalPixels = baseline.width * baseline.height;
-    await removeStaleDiffOutput(options.outputPath);
-    return {
-      match: false,
-      mismatchPercentage: 100,
-      totalPixels,
-      differentPixels: totalPixels,
-      dimensionMismatch: {
-        expected: { width: baseline.width, height: baseline.height },
-        actual: { width: current.width, height: current.height },
-      },
-    };
+  const normalization = screenshotDiffNormalization(baseline, current);
+  const compared = normalization?.compared ?? baseline;
+  const { validateScreenshotPixels } = await import('./screenshot-image-size.ts');
+  validateScreenshotPixels(compared.width, compared.height, 'comparison canvas', options.maxPixels);
+  let scaledCurrent = current;
+  if (normalization && current.width !== baseline.width) {
+    const { resizePngBox } = await import('./png-resize.ts');
+    scaledCurrent = resizePngBox(
+      current,
+      normalization.scaledCurrent.width,
+      normalization.scaledCurrent.height,
+    );
   }
-
-  const totalPixels = baseline.width * baseline.height;
+  const alignedBaseline = padScreenshotHeight(baseline, compared.height);
+  const alignedCurrent = padScreenshotHeight(scaledCurrent, compared.height);
+  const overlapHeight = Math.min(baseline.height, scaledCurrent.height);
+  const threshold = options.threshold ?? 0.1;
+  const totalPixels = compared.width * compared.height;
   const maxColorDistance = threshold * COLOR_DISTANCE_SCALE;
   // Per-pixel comparison is CPU-heavy for full-resolution screenshots, so it
   // runs on the PNG worker thread (with an in-process synchronous fallback).
   const { diffData, diffMask, differentPixels } = await computeScreenshotDiffPixelsAsync({
-    baselineData: baseline.data,
-    currentData: current.data,
-    width: baseline.width,
-    height: baseline.height,
+    baselineData: alignedBaseline.data,
+    currentData: alignedCurrent.data,
+    width: compared.width,
+    height: compared.height,
+    overlapHeight,
     maxColorDistance,
   });
 
@@ -136,15 +139,15 @@ export async function compareScreenshots(
     differentPixels > 0
       ? summarizeDiffRegions({
           diffMask,
-          baseline,
-          current,
+          baseline: alignedBaseline,
+          current: alignedCurrent,
           totalPixels,
           differentPixels,
         })
       : [];
 
   if (differentPixels > 0 && diffOutputPath) {
-    const diff = new PNG({ width: baseline.width, height: baseline.height });
+    const diff = new PNG({ width: compared.width, height: compared.height });
     diff.data = diffData;
     annotateDiffRegions(diff, regions);
     await fs.mkdir(path.dirname(diffOutputPath), { recursive: true });
@@ -161,6 +164,7 @@ export async function compareScreenshots(
   return {
     ...(differentPixels > 0 && diffOutputPath ? { diffPath: diffOutputPath } : {}),
     ...(regions.length > 0 ? { regions } : {}),
+    ...(normalization ? { normalization } : {}),
     totalPixels,
     differentPixels,
     mismatchPercentage,
@@ -176,19 +180,28 @@ async function validateFileExists(filePath: string, errorMessage: string): Promi
   }
 }
 
-function validateMaxPixels(
-  width: number,
-  height: number,
-  label: string,
-  maxPixels: number | undefined,
-): void {
-  if (maxPixels == null || maxPixels <= 0) return;
-  const totalPixels = width * height;
-  if (totalPixels <= maxPixels) return;
-  throw new AppError(
-    'INVALID_ARGS',
-    `${label} is ${totalPixels} pixels, which exceeds the configured maxImagePixels limit of ${maxPixels}`,
-  );
+function screenshotDiffNormalization(
+  baseline: PNG,
+  current: PNG,
+): ScreenshotDiffNormalization | undefined {
+  if (baseline.width === current.width && baseline.height === current.height) return undefined;
+  const scaledHeight = Math.max(1, Math.round(current.height * (baseline.width / current.width)));
+  return {
+    baseline: { width: baseline.width, height: baseline.height },
+    current: { width: current.width, height: current.height },
+    scaledCurrent: { width: baseline.width, height: scaledHeight },
+    compared: { width: baseline.width, height: Math.max(baseline.height, scaledHeight) },
+    currentScale: { x: baseline.width / current.width, y: scaledHeight / current.height },
+    alignment: 'top-left',
+    coordinateSpace: 'comparison-pixels',
+  };
+}
+
+function padScreenshotHeight(image: PNG, height: number): PNG {
+  if (image.height === height) return image;
+  const padded = new PNG({ width: image.width, height });
+  image.data.copy(padded.data);
+  return padded;
 }
 
 async function removeStaleDiffOutput(outputPath: string | undefined): Promise<void> {

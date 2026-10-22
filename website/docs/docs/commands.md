@@ -56,6 +56,9 @@ agent-device orientation landscape-left
 agent-device orientation auto
 agent-device app-switcher
 agent-device action-button
+agent-device hardware-button volume-up
+agent-device hardware-button volume-down
+agent-device hardware-button power
 agent-device fold closed
 agent-device fold half-open
 agent-device fold open
@@ -92,7 +95,7 @@ Device claims and the daemon:
 
 Open apps and links:
 
-- `open [app|url] [url]` boots and activates the selected target when needed. `open <url>` opens deep links on Android and iOS, and `open <app> <url>` opens a deep link in that app on iOS.
+- `open [app|url] [url]` boots the selected device when needed and opens the target in a session. `open <url>` opens deep links on Android and iOS, and `open <app> <url>` opens a deep link in that app on iOS. See [Desktop targets](#desktop-targets) for macOS activation behavior.
 - On iOS devices, `http(s)://` URLs open in Safari when no app is active. Custom-scheme URLs need an active app in the session.
 - `open <app> --wait <ms>` waits up to that budget for a device another session holds, then fails with `DEVICE_IN_USE`. The wait extends the command's timeout, so you don't need a longer `--timeout`. A claim held by another workspace's daemon is not waited for; `open` returns its recovery command at once. Device-mutating commands like `install` and `reinstall` never wait either: a claim held by another session fails them at once, and when the caller sends a workspace, another workspace's claim under the same session name fails too. See [Sessions](/docs/sessions#wait-for-a-slow-or-busy-device).
 - `open <app> --launch-console <path>` captures launch-time stdout/stderr for iOS simulator app launches. It is not valid for URL opens or other targets.
@@ -120,6 +123,9 @@ Back, orientation, and hardware buttons:
 - `orientation auto` hands rotation back to the sensor on ADB-backed Android, local or Limrun (`accelerometer_rotation=1`, `user_rotation` untouched), and reports `orientation: "auto"`. It does not wait for the display to rotate, because there is no target rotation: the sensor decides, and an emulator usually settles on portrait. Every other backend refuses `auto` with `UNSUPPORTED_OPERATION`.
 - `action-button` presses the iPhone or iPad Action Button once. It takes no arguments, no hold duration, and no `--settle`, and it doesn't activate the session app or drive Camera Control. Other platforms refuse it, and a model without the button (an iPhone SE, most iPad simulators) fails with `UNSUPPORTED_OPERATION`.
 - `action-button` reports that the press was dispatched, not what it triggered. Simulators run no Shortcuts or App Intents, so verify the outcome on a physical iPhone. Expect a press to take about five seconds on a Simulator.
+- `hardware-button <button>` presses one phone hardware key once, with no hold and no `--settle`, and it doesn't activate the session app. The names are `volume-up`, `volume-down`, `power`, `mute`, `sleep`, `wake`, `media-play-pause`, `media-next`, `media-previous`, `media-rewind`, and `media-fast-forward`. The response reports the dispatched press, not what the OS did with it: which audio stream a volume press moves, which media session a media key reaches, and whether the HUD shows is device behavior the command does not claim.
+- Android presses all eleven keys on phones and tablets: the ADB-backed and helper paths send `input keyevent`, and an Appium-backed device presses the same keycodes through its `mobile: pressKey` route. A physical iPhone or iPad presses volume only, through the local runner or Appium's volume button press; no Apple leaf presses the other keys. iOS Simulators refuse volume (`XCUIDevice` exposes no volume press there), and Android TV and tvOS targets refuse with a pointer to `tv-remote`.
+- A `power` press toggles the Android screen. `sleep` turns it off and `wake` turns it on without toggling, so wake the screen with `hardware-button wake` after a press that turned it off. After a press that turns the screen off, later commands may hit a locked screen.
 
 Fold a foldable device:
 
@@ -327,14 +333,25 @@ agent-device snapshot -i --platform apple --target desktop
 - `--platform macos`, or `--platform apple --target desktop`, selects the host Mac as a `desktop` target.
 - Use an `app` session for normal app control: `open`, `snapshot`, `click`, `fill`, `press`, `scroll`, `back`, `screenshot`, `record`. In app sessions, `screenshot` captures the app window, not the whole desktop.
 - Use the other surfaces to inspect desktop-wide UI before choosing an app, mainly with `snapshot`, `get`, `is`, and `wait`: `frontmost-app` is the focused app, `desktop` is the visible windows across the desktop, and `menubar` is the active app's menu bar and system menu extras. To click or fill inside one app afterwards, open it in an `app` session.
-- `open <app> --platform macos` attaches to a copy of the app that is already running, including one you started yourself from a script or supervisor. If that copy has not finished registering with macOS, the open waits briefly for it before handing the URL over, so a copy that registers within that window keeps the arguments it was started with; a copy still unregistered after the wait gets the plain `open`, which can start a second instance.
+- `open <app> --platform macos` attaches to a copy of the app that is already running, including one you started yourself from a script or supervisor. It opens that copy by its own app path, so another build registered for the same bundle ID, such as an earlier dev build at another path, does not start beside it. If that copy has not finished registering with macOS, the open waits briefly for it before handing the URL over, so a copy that registers within that window keeps the arguments it was started with; a copy still unregistered after the wait, or copies running from more than one path, get the plain `open -b`, which can start a second instance.
 - `open <app> --platform macos --surface menubar` targets one app's menu bar extras. Prefer it for status-item apps, which often expose little through the `app` surface.
 - Prefer selectors and `@ref`s; window positions shift between runs, so raw x/y is less stable. Use `click --button secondary` for context menus, then run `snapshot -i` again.
 - On `frontmost-app` and `menubar`, `press` and `click` post synthetic mouse events (`desktop` is inspect-only). `--hold-ms` keeps the button down (at least 40 ms, default 60 ms), `--count` sends independent clicks, and `--double-tap` sends double-click pairs. Apps like Finder read two clicks at the default interval as one double-click; pass an `--interval-ms` longer than the system double-click time to keep them apart. Long schedules get the time they need, and a cancelled or interrupted click releases the button. `--jitter-px` is ignored on these surfaces.
 - macOS also supports `clipboard read|write`, `trigger-app-event`, `logs`, `network dump`, `audio probe`, `alert`, and part of `settings` (see [Settings helpers](#settings-helpers)). `audio probe` samples host system audio and needs Screen Recording permission; see [Debugging & Profiling](/docs/debugging-profiling#audio-probes).
 - Mobile-only commands are unsupported on macOS: `boot`, `shutdown`, `home`, `orientation`, `app-switcher`, `action-button`, `fold`, `install`, `reinstall`, `uninstall`, `install-from-source`, and `push`.
 
+XCTest opens bring the named app to the front. `open --surface frontmost-app` takes no app target and opens the app that is already frontmost. `--foreground` requests an initial snapshot; it does not choose activation. Run `agent-device help macos` for the versioned contract.
+
 Set `AGENT_DEVICE_MACOS_APP_BACKEND=native` to run macOS app sessions without XCTest. There is no Automation Mode overlay, the app can stay behind other windows, and your pointer stays yours while a drawn pointer shows each action.
+
+With the native backend, each app you open on the `app` surface is a device of its own. Several agents can drive different apps of one Mac at the same time, in one daemon or in daemons that share a claims directory. Two sessions on the same app conflict. A `desktop`, `menubar`, or `frontmost-app` session holds the whole Mac, so it conflicts with every app session. `open --wait` waits for a conflicting session in the same daemon only; another daemon's session refuses the open at once. An app session:
+
+- Opens its app in the background, so the frontmost app stays in front.
+- Opens and closes only its own app. `open <url>` opens the link in that app. Use a new `--session` for another app or surface.
+- Refuses `clipboard`, `settings`, and `audio probe`, which act on the whole Mac, with `UNSUPPORTED_OPERATION` (`reason: unsupported-device-scope`). Use a `--surface desktop` session for them.
+- Cannot see UI that another process shows, such as a system permission prompt.
+
+Copies of one app need distinct bundle ids. Screenshots run one at a time across the Mac. Use one agent-device version per claims directory.
 
 - `click`, `press`, and `fill` use accessibility actions on the element at the target point, which must be inside one of the app's on-screen windows, not its menu bar. `type` inserts at the focused control or falls back to key events. `scroll` moves the scroll bar under the front window's center. Chromium-based apps expose their full tree. `screenshot` captures only the app's front window, even when it is covered. The front window is the app's frontmost visible, nonempty normal-level (layer-0) window on the current Space: floating palettes and app-modal alerts at window level 8 are skipped, and a sheet is captured as its own window. If that window cannot be captured, `screenshot` fails; it never captures another window.
 - `record`, `prepare`, `back`, `longpress`, `--hold-ms`, `--double-tap`, `--button secondary`, gestures, and clicks on an element with no accessibility action fail with `UNSUPPORTED_OPERATION` (`reason: unsupported-device-backend`). Use the default XCTest backend for those.
@@ -1007,7 +1024,9 @@ agent-device record stop                # Stop active recording
 **Screenshot diffs**
 
 - `diff screenshot` compares a live capture, or a saved `current.png` (no session needed), against `--baseline`. Inputs may be PNG or JPEG regardless of extension; HarmonyOS captures are JPEG. Output ranks changed regions with rectangles, changed-pixel counts, and share of the diff; `--out` writes a diff PNG with changed pixels tinted red. `ocr` and `nonTextDeltas` are never populated, so read the images yourself for qualitative review.
-- `--threshold <0-1>` sets the per-pixel RGB tolerance (default `0.1`). Image dimensions must match. Keep it above `0` when either input is JPEG.
+- `--threshold <0-1>` sets the per-pixel RGB tolerance (default `0.1`). Keep it above `0` when either input is JPEG.
+- The current image scales proportionally to the baseline width and aligns at the top left. Its scaled height rounds to the nearest pixel, with a minimum of one row. The comparison includes the full height of both images: extra or missing bottom rows count as differences, including blank or transparent rows, even at `--threshold 1`. Your original files stay unchanged. This does not crop system bars or move content into alignment.
+- When dimensions differ, JSON `normalization` reports `baseline`, `current`, `scaledCurrent`, and `compared` dimensions. `currentScale.x` and `.y` map original current pixels to comparison pixels; the height scale includes pixel rounding. Region rectangles and ref-match rectangles use comparison pixels, and normalized region rectangles use percentages of the compared canvas. The separate current-screen overlay keeps its original capture size.
 - `--overlay-refs` also writes a separate current-screen ref overlay and lists refs under changed regions. It needs a live capture, so it is unavailable with a saved `current.png`.
 - Live iOS simulator diffs normalize status-bar chrome by default.
 
@@ -1043,7 +1062,7 @@ agent-device network dump 25 --include headers --platform web # Browser requests
 ```
 
 - `logs` works on iOS simulators, iOS physical devices, Android, and macOS (app-scoped Unified Logging). On iOS, capture relies on Unified Logging (`os_log`); plain stdout/stderr may be limited.
-- `logs start` appends to `app.log` and rotates at 5 MB. Override with `AGENT_DEVICE_APP_LOG_MAX_BYTES` and `AGENT_DEVICE_APP_LOG_MAX_FILES`; set `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` to a comma-separated regex list for write-time redaction.
+- `logs start` appends to `app.log` and rotates at 5 MB. Override with `AGENT_DEVICE_APP_LOG_MAX_BYTES` and `AGENT_DEVICE_APP_LOG_MAX_FILES`; set `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` to a comma-separated regex list for write-time redaction. On Apple simulators, `logs start` returns once the simulator log stream is running, so lines that the app logs after that are captured. If the stream does not start within 10 s, `logs start` fails with `details.reason: "simulator-log-stream-launch-timeout"`.
 - `open` prints `Session state: <path>`; see [Sessions](/docs/sessions#find-a-sessions-logs-and-artifacts) for the files it contains.
 - `events` reads the session timeline, which leaves out user-entered content; `--no-record` suppresses `action.recorded` entries. `events.ndjson` rotates at 5 MB (`AGENT_DEVICE_EVENT_LOG_MAX_BYTES`) and keeps one generation. Cursors stay valid across rotation; a cursor older than the retained window fails with `details.reason: "EVENT_LOG_CURSOR_EXPIRED"` and `details.earliestCursor`. If the retained files were edited or deleted, `events` fails with `details.reason: "EVENT_LOG_WINDOW_UNVERIFIED"`.
 - `network dump [limit] [summary|headers|body|all]` parses recent HTTP(s) entries from `app.log`, or from managed `agent-browser` request history on web; `network log` is an alias. Prefer `--include` over the positional detail level. It scans up to 4000 log lines, returns up to 200 entries, and truncates fields at 2048 characters. Web does not expose bodies.

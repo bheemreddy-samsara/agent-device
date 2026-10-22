@@ -20,6 +20,17 @@ export type CloudWebDriverOperation =
   | 'orientation'
   | 'appSwitcher'
   | 'tvRemote'
+  | 'volumeUp'
+  | 'volumeDown'
+  | 'power'
+  | 'mute'
+  | 'sleep'
+  | 'wake'
+  | 'mediaPlayPause'
+  | 'mediaNext'
+  | 'mediaPrevious'
+  | 'mediaRewind'
+  | 'mediaFastForward'
   | 'clipboard.read'
   | 'clipboard.write'
   | 'settings'
@@ -60,6 +71,10 @@ export type CloudWebDriverCapabilityOverrides = Partial<
 
 const supported: CloudWebDriverOperationCapability = { support: 'supported' };
 const unsupported: CloudWebDriverOperationCapability = { support: 'unsupported' };
+const androidHardwareButton: CloudWebDriverOperationCapability = {
+  support: 'partial',
+  note: 'Uses provider/Appium mobile pressKey support where available.',
+};
 
 const BASE_WEBDRIVER_CAPABILITIES: CloudWebDriverCapabilityMap = {
   lease: supported,
@@ -103,6 +118,23 @@ const BASE_WEBDRIVER_CAPABILITIES: CloudWebDriverCapabilityMap = {
     support: 'partial',
     note: 'Uses provider/Appium mobile pressButton support where available.',
   },
+  volumeUp: {
+    support: 'partial',
+    note: 'Uses provider/Appium mobile pressButton volumeup support where available; real devices only.',
+  },
+  volumeDown: {
+    support: 'partial',
+    note: 'Uses provider/Appium mobile pressButton volumedown support where available; real devices only.',
+  },
+  power: unsupported,
+  mute: unsupported,
+  sleep: unsupported,
+  wake: unsupported,
+  mediaPlayPause: unsupported,
+  mediaNext: unsupported,
+  mediaPrevious: unsupported,
+  mediaRewind: unsupported,
+  mediaFastForward: unsupported,
   tvRemote: unsupported,
   'clipboard.read': {
     support: 'partial',
@@ -133,12 +165,29 @@ export function createCloudWebDriverCapabilities(options: {
   platform: CloudWebDriverPlatform;
   overrides?: CloudWebDriverCapabilityOverrides;
 }): CloudWebDriverProviderCapabilities {
+  const base: CloudWebDriverCapabilityMap =
+    options.platform === 'android'
+      ? {
+          ...BASE_WEBDRIVER_CAPABILITIES,
+          volumeUp: androidHardwareButton,
+          volumeDown: androidHardwareButton,
+          power: androidHardwareButton,
+          mute: androidHardwareButton,
+          sleep: androidHardwareButton,
+          wake: androidHardwareButton,
+          mediaPlayPause: androidHardwareButton,
+          mediaNext: androidHardwareButton,
+          mediaPrevious: androidHardwareButton,
+          mediaRewind: androidHardwareButton,
+          mediaFastForward: androidHardwareButton,
+        }
+      : BASE_WEBDRIVER_CAPABILITIES;
   return {
     provider: options.provider,
     platform: options.platform,
     snapshotBackend: options.platform === 'ios' ? 'xctest' : 'android',
     snapshotSource: 'appium-page-source',
-    operations: applyCapabilityOverrides(BASE_WEBDRIVER_CAPABILITIES, options.overrides),
+    operations: applyCapabilityOverrides(base, options.overrides),
   };
 }
 

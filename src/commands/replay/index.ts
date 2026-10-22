@@ -66,7 +66,9 @@ export const replayCommandMetadata = defineFieldCommandMetadata(
     keepSession: booleanField(
       'Leave the session active by suppressing exactly an authored terminal close in native .ad.',
     ),
-    timeoutMs: integerField('Maximum wall-clock duration for the replay request.'),
+    timeoutMs: integerField(
+      'Operation wall-clock budget in milliseconds (default 60000). The client allows another 30000 milliseconds for the daemon result.',
+    ),
     // ADR 0012 decision 6, R1/R6: arms agent-supervised re-record repair
     // from the first replay attempt; optional string value is the healed
     // script's output path.
@@ -297,7 +299,7 @@ export const replayCommandFacet = defineCommandFacet({
   text: {
     summary: 'Replay a recorded session or Maestro flow',
     cliDetail:
-      'For Maestro YAML compatibility flows, use replay <flow.yaml> --maestro and keep the target binding such as --platform ios on the replay command. A script with no terminal close leaves its session (and daemon) running until you close it or it idle-reaps — no different from a session opened interactively. For native .ad scripts, --keep-session suppresses exactly an authored terminal close so you can continue interactively. replay export <file.ad> converts compatible actions to Maestro YAML locally, including app switches with explicit launchApp.appId targets, deep links (including tel: and mailto:) as openLink, and home as pressKey: Home.',
+      'Replay has a 60-second work budget inside a 90-second client timeout; --timeout <ms> sets a work budget of X and client timeout of X + 30000 ms. The running step receives ordinary request cancellation at the budget. When it settles, failure returns details.reason daemon_request_timeout and details.timeoutMs, preserving the failing script path and line. The daemon and other sessions stay available if it responds; an authored close may already have ended its session. A completed replay returns success even if it settles just after the deadline. Cancellation does not prove native device work stopped. A step that ignores cancellation beyond the 30-second margin may cause a transport timeout; an unresponsive daemon retains the client liveness-based reset. Direct test keeps its own timeout behavior. For Maestro YAML compatibility flows, use replay <flow.yaml> --maestro and keep the target binding such as --platform ios on the replay command. A script with no terminal close leaves its session (and daemon) running until you close it or it idle-reaps — no different from a session opened interactively. For native .ad scripts, --keep-session suppresses exactly an authored terminal close so you can continue interactively. replay export <file.ad> converts compatible actions to Maestro YAML locally, including app switches with explicit launchApp.appId targets, deep links (including tel: and mailto:) as openLink, and home as pressKey: Home.',
   },
   metadata: replayCommandMetadata,
   run: (client, input) => client.replay.run(withCommandRuntimeHints(input)),

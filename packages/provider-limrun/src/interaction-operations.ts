@@ -21,7 +21,10 @@ import { settingsRuntimeOperationFacts } from '@agent-device/contracts/settings-
 import type { AndroidSetting } from '@agent-device/platform-android/mechanics';
 import type { LimrunIosSetting } from './ios-settings.ts';
 import { alertRuntimeOperationFacts } from '@agent-device/contracts/alert-runtime';
-import { systemButtonRuntimeOperationFacts } from '@agent-device/contracts/system-button-runtime';
+import {
+  androidHardwareButtonFacts,
+  systemButtonRuntimeOperationFacts,
+} from '@agent-device/contracts/system-button-runtime';
 import { clipboardRuntimeOperationFacts } from '@agent-device/contracts/clipboard-runtime';
 import { keyboardRuntimeOperationFacts } from '@agent-device/contracts/keyboard-runtime';
 import { orientationRuntimeOperationFacts } from '@agent-device/contracts/orientation-runtime';
@@ -136,6 +139,9 @@ const systemButtonUnavailable = unavailableFact(
   'unsupported-provider-mode',
   'No Limrun session exposes this system button.',
 );
+// The hardware-button cells use the shared Android admission rule, so a Limrun-managed phone
+// and a local adb phone state the same verdict. On a leased phone or tablet the Android leg's
+// `createAndroidInteractor` carries these presses.
 
 /**
  * The interactor-backed interaction cells a live Limrun session serves: everything here rides
@@ -289,9 +295,9 @@ export function limrunAlertOperationFacts(
 }
 
 /**
- * The Android leg rides the local family's own interactor factory for `home` and `appSwitcher`.
- * The iOS direct session presses `home` through Limrun's button actions and refuses
- * `appSwitcher`. No Limrun session exposes the action button.
+ * The Android leg rides the local family's own interactor factory for `home`, `appSwitcher` and
+ * the hardware-button presses. The iOS direct session presses `home` through Limrun's button
+ * actions and refuses `appSwitcher`. No Limrun session exposes the action button.
  */
 export function limrunSystemButtonOperationFacts(
   device: DeviceInfo,
@@ -305,6 +311,7 @@ export function limrunSystemButtonOperationFacts(
       unsupported: systemButtonUnavailable,
       home: available,
       appSwitcher: available,
+      ...androidHardwareButtonFacts(device),
     });
   }
   return systemButtonRuntimeOperationFacts({

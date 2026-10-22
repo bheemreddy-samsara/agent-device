@@ -141,6 +141,31 @@ extension RunnerTests {
 #endif
   }
 
+  /// Presses a physical volume key once, returning false when this target cannot express the press.
+  ///
+  /// `XCUIDevice.press(_:)` declares `.volumeUp` and `.volumeDown` unavailable to simulator
+  /// builds (`XCUI_SIMULATOR_UNAVAILABLE` in the XCUITest header), so the press compiles only for
+  /// a physical-device build; a simulator target refuses rather than pressing a control that
+  /// does not exist there. Every iPhone and iPad carries a volume key, so no per-model probe is
+  /// needed the way the Action Button needs `hasHardwareButton(.action)`.
+  @discardableResult
+  func pressVolumeButton(_ button: CommandType) -> Bool {
+#if os(iOS) && !targetEnvironment(simulator)
+    switch button {
+    case .volumeUp:
+      XCUIDevice.shared.press(.volumeUp)
+      return true
+    case .volumeDown:
+      XCUIDevice.shared.press(.volumeDown)
+      return true
+    default:
+      return false
+    }
+#else
+    return false
+#endif
+  }
+
   func findElement(app: XCUIApplication, text: String) -> XCUIElement? {
     let predicate = NSPredicate(format: "label CONTAINS[c] %@ OR identifier CONTAINS[c] %@ OR value CONTAINS[c] %@", text, text, text)
     let element = app.descendants(matching: .any).matching(predicate).firstMatch
@@ -234,13 +259,23 @@ extension RunnerTests {
   /// records, and the chosen window is read again on its way to a display ID
   /// (`RunnerResolveWindowDisplayID`).
   func resolveRunnerWindow(app: XCUIApplication) -> (window: XCUIElement?, frame: CGRect) {
+    guard let resolved = resolveRunnerWindowElement(app: app) else {
+      return (nil, app.frame)
+    }
+    return (resolved.window, resolved.frame)
+  }
+
+  /// The app's first window with a usable frame, or nil. Unlike `resolveRunnerWindow` it never falls
+  /// back to `app.frame`: when the windows query fails because XCTest cannot serialize the app's
+  /// tree, that read fails the same way after XCTest's own retries (about 2s on Bluesky's feed).
+  func resolveRunnerWindowElement(app: XCUIApplication) -> (window: XCUIElement, frame: CGRect)? {
     for window in app.windows.allElementsBoundByIndex where window.exists {
       let frame = window.frame
       if !frame.isEmpty {
         return (window, frame)
       }
     }
-    return (nil, app.frame)
+    return nil
   }
 
   func onScreenWindowFrame(app: XCUIApplication) -> CGRect {
@@ -300,7 +335,7 @@ extension RunnerTests {
 
   /// Shared ordering for point-hit candidates: smallest area wins, then top-to-bottom,
   /// left-to-right, then stable element-type order for ties.
-  func smallestElementFirst(_ left: XCUIElement, _ right: XCUIElement) -> Bool {
+  func smallestElementFirst(_ left: any XCUIElementAttributes, _ right: any XCUIElementAttributes) -> Bool {
     let leftArea = max(1, left.frame.width * left.frame.height)
     let rightArea = max(1, right.frame.width * right.frame.height)
     if leftArea != rightArea {
@@ -317,7 +352,7 @@ extension RunnerTests {
 
   func readTextAt(app: XCUIApplication, x: Double, y: Double) -> String? {
     let point = CGPoint(x: x, y: y)
-    let textInputCandidates = textInputCandidatesAt(app: app, point: point)
+    let textInputCandidates = textInputCandidatesAt(app: app, point: point).map(\.element)
     for element in textInputCandidates where prefersExpandedTextRead(element) {
       if let text = readableText(for: element) {
         return text
@@ -328,7 +363,7 @@ extension RunnerTests {
       .filter { element in
         element.exists && !element.frame.isEmpty && element.frame.contains(point)
       }
-      .sorted(by: smallestElementFirst)
+      .sorted { smallestElementFirst($0, $1) }
 
     for element in candidates where prefersExpandedTextRead(element) {
       if let text = readableText(for: element) {

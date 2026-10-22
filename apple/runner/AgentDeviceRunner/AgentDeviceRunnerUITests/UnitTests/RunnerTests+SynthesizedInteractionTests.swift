@@ -3,6 +3,54 @@ import AgentDeviceSnapshotPresentation
 
 #if AGENT_DEVICE_RUNNER_UNIT_TESTS
 extension RunnerTests {
+  func testSoleScreenReferenceFrameLaysTheScreenInTheAppsOrientation() {
+    let portrait = CGSize(width: 402, height: 874)
+    for orientation in [RunnerInterfaceOrientation.portrait, RunnerInterfaceOrientation.portraitUpsideDown] {
+      XCTAssertEqual(
+        Self.soleScreenReferenceFrame(nativePortraitSize: portrait, interfaceOrientation: orientation),
+        CGRect(x: 0, y: 0, width: 402, height: 874)
+      )
+    }
+    for orientation in [RunnerInterfaceOrientation.landscapeLeft, RunnerInterfaceOrientation.landscapeRight] {
+      XCTAssertEqual(
+        Self.soleScreenReferenceFrame(nativePortraitSize: portrait, interfaceOrientation: orientation),
+        CGRect(x: 0, y: 0, width: 874, height: 402)
+      )
+    }
+  }
+
+#if os(iOS)
+  /// The sole-screen route is the boundary every window-less gesture crosses, so it decides the device
+  /// rule itself: an iPhone with one screen names that screen, and an iPad refuses, because it can show
+  /// the app in part of its screen. Run on both device families to cover both answers.
+  func testSoleScreenDisplayIDIsNamedOnlyForAnIPhoneWithOneScreen() {
+    var displayID: UInt = 0
+    let refusal = RunnerResolveSoleScreenDisplayID(&displayID)
+    if UIDevice.current.userInterfaceIdiom == .phone, XCUIScreen.screens.count == 1 {
+      XCTAssertNil(refusal)
+      XCTAssertNotEqual(displayID, 0)
+    } else {
+      XCTAssertNotNil(refusal)
+      XCTAssertEqual(displayID, 0)
+    }
+  }
+#endif
+
+  func testSoleScreenReferenceFrameRefusesAnUnknownOrientationOrAnEmptyScreen() {
+    XCTAssertNil(
+      Self.soleScreenReferenceFrame(
+        nativePortraitSize: CGSize(width: 402, height: 874),
+        interfaceOrientation: RunnerInterfaceOrientation.unknown
+      )
+    )
+    XCTAssertNil(
+      Self.soleScreenReferenceFrame(
+        nativePortraitSize: .zero,
+        interfaceOrientation: RunnerInterfaceOrientation.portrait
+      )
+    )
+  }
+
   func testSynthesizedDispatchInvertsCaptureOnEveryInterfaceOrientation() {
     let frames = [
       CGRect(x: 0, y: 0, width: 430, height: 932),

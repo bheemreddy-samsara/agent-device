@@ -47,6 +47,20 @@ export const DEFAULT_TIMEOUT_POLICY: CommandTimeoutPolicy = {
   onTimeout: 'reset-daemon',
 };
 
+/** Composite work gets 60 seconds; its client envelope keeps 30 seconds for the result. */
+const COMPOSITE_TIMEOUT_POLICY: CommandTimeoutPolicy = {
+  ...DEFAULT_TIMEOUT_POLICY,
+  daemonDeadlineMs: 60_000,
+};
+
+export const COMPOSITE_TIMEOUT_POLICIES = {
+  batch: COMPOSITE_TIMEOUT_POLICY,
+  replay: {
+    ...COMPOSITE_TIMEOUT_POLICY,
+    budget: { source: 'flag', envelope: 'margin' },
+  },
+} satisfies Record<'batch' | 'replay', CommandTimeoutPolicy>;
+
 /**
  * Covers the fold route's worst-case ledger (display inventory, fold-helper preparation, HID
  * dispatch, hinge settle reads, final display inventory) plus the daemon-result margin. Proven by
@@ -77,12 +91,25 @@ export function resolveCommandRequestTimeoutMs(
   input: RequestTimeoutInput,
 ): number | undefined {
   if (policy.envelopeMs === 'unbounded') return undefined;
+  const daemonBudgetMs = resolveCommandDaemonTimeoutMs(policy, input);
+  if (daemonBudgetMs !== undefined) return daemonBudgetMs + REQUEST_TIMEOUT_BUDGET_MARGIN_MS;
   const boundedPolicy: BoundedTimeoutPolicy = { ...policy, envelopeMs: policy.envelopeMs };
   return (
     resolvePositionalBudgetTimeoutMs(boundedPolicy, input.positionals ?? []) ??
     resolveFlagBudgetTimeoutMs(boundedPolicy, input.flags) ??
     boundedPolicy.envelopeMs
   );
+}
+
+/** Resolves an enforced daemon request deadline, when the command declares one. */
+export function resolveCommandDaemonTimeoutMs(
+  policy: CommandTimeoutPolicy,
+  input: RequestTimeoutInput,
+): number | undefined {
+  if (policy.daemonDeadlineMs === undefined) return undefined;
+  return policy.budget.source === 'flag' && typeof input.flags?.timeoutMs === 'number'
+    ? input.flags.timeoutMs
+    : policy.daemonDeadlineMs;
 }
 
 function resolvePositionalBudgetTimeoutMs(

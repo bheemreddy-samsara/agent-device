@@ -1,11 +1,14 @@
 import { daemonPlatformServicesFixture } from '../../__tests__/support/platform-services-fixture.ts';
 import { test, expect, vi, beforeEach } from 'vitest';
 import type { SessionState } from '../../core/session-state.ts';
+import { hostAppDevice, type DeviceInfo } from '@agent-device/kernel/device';
 
 import {
   requireSessionOrExplicitSelector,
   resolveCommandDevice,
   refreshSessionDeviceIfNeeded,
+  pinSessionDeviceSelection,
+  resolvePowerCommandDevice,
   selectorTargetsSessionDevice,
 } from '../session-device-resolution.ts';
 import { resolveTargetDevice } from '@agent-device/device-selection/dispatch-resolve';
@@ -78,11 +81,17 @@ test('refreshSessionDeviceIfNeeded keeps iOS simulator session device on non-mac
 });
 
 test('resolveCommandDevice keeps an existing session for a platform-only filter', async () => {
+  const requestServices = daemonPlatformServicesFixture({
+    appleSessionObservation: {
+      observeRunnerSession: mockObserveRunnerSession,
+      resolveSoleForegroundApp: async () => undefined,
+    },
+  });
   const device = await withMockedPlatform(
     'linux',
     async () =>
       await resolveCommandDevice({
-        platformServices: platformServices,
+        platformServices: requestServices,
         session: iosSimulatorSession,
         flags: { platform: 'ios' },
         env: process.env,
@@ -106,6 +115,66 @@ test('resolveCommandDevice does not prepare a sessionless device', async () => {
 
   expect(mockResolveTargetDevice).toHaveBeenCalledOnce();
   expect(mockEnsureDeviceReady).not.toHaveBeenCalled();
+});
+
+test('power command selection includes a stopped Android AVD', async () => {
+  const stopped: DeviceInfo = {
+    platform: 'android',
+    id: 'emulator-5554',
+    name: 'Pixel_9',
+    kind: 'emulator',
+    booted: false,
+  };
+  mockResolveTargetDevice.mockResolvedValue(stopped);
+  const selected = await resolvePowerCommandDevice({
+    session: undefined,
+    flags: { platform: 'android', device: 'Pixel_9' },
+    env: process.env,
+    platformServices,
+  });
+  expect(selected).toBe(stopped);
+  expect(mockResolveTargetDevice).toHaveBeenCalledWith(
+    { platform: 'android', device: 'Pixel_9' },
+    { env: process.env, androidAvdSelection: 'include-stopped' },
+  );
+});
+
+test('a request-scoped selected session device is reused by its later handler', async () => {
+  const requestServices = daemonPlatformServicesFixture();
+  const selected = { ...iosSimulatorSession.device, name: 'renamed', booted: true };
+  pinSessionDeviceSelection(requestServices, iosSimulatorSession.device, selected);
+  const resolved = await withMockedPlatform('darwin', async () =>
+    refreshSessionDeviceIfNeeded(iosSimulatorSession.device, requestServices, process.env),
+  );
+  expect(resolved).toBe(selected);
+  expect(mockResolveTargetDevice).not.toHaveBeenCalled();
+});
+
+test('the first normal session resolution pins the device for repeated work in one request', async () => {
+  const requestServices = daemonPlatformServicesFixture({
+    appleSessionObservation: {
+      observeRunnerSession: mockObserveRunnerSession,
+      resolveSoleForegroundApp: async () => undefined,
+    },
+  });
+  mockObserveRunnerSession.mockResolvedValueOnce({ sessionId: 'sim-1:1234:1', alive: true });
+  const [first, second] = await withMockedPlatform('darwin', async () => [
+    await resolveCommandDevice({
+      session: iosSimulatorSession,
+      flags: undefined,
+      env: process.env,
+      platformServices: requestServices,
+    }),
+    await resolveCommandDevice({
+      session: iosSimulatorSession,
+      flags: undefined,
+      env: process.env,
+      platformServices: requestServices,
+    }),
+  ]);
+  expect(second).toBe(first);
+  expect(mockObserveRunnerSession).toHaveBeenCalledOnce();
+  expect(mockResolveTargetDevice).not.toHaveBeenCalled();
 });
 
 test('refreshSessionDeviceIfNeeded keeps provider-owned iOS simulators out of local refresh', async () => {
@@ -191,3 +260,30 @@ for (const [label, session, flags] of [
     expect(requireSessionOrExplicitSelector('clipboard', session, flags)).toBeNull();
   });
 }
+
+test('resolveCommandDevice keeps an app device session on its app when a selector names the Mac', async () => {
+  const mac: DeviceInfo = {
+    platform: 'apple',
+    appleOs: 'macos',
+    id: 'host-mac',
+    name: 'Mac',
+    kind: 'device',
+    target: 'desktop',
+  };
+  const session: SessionState = {
+    name: 'text-edit',
+    createdAt: Date.now(),
+    device: hostAppDevice(mac, 'com.apple.textedit'),
+    actions: [],
+  };
+  mockResolveTargetDevice.mockResolvedValue(mac);
+
+  const device = await resolveCommandDevice({
+    platformServices,
+    session,
+    flags: { platform: 'macos', device: 'Mac' },
+    env: process.env,
+  });
+
+  expect(device).toBe(session.device);
+});

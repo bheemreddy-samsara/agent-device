@@ -326,7 +326,7 @@ async function handleOpenCommand(params: SessionOpenCommandInput): Promise<Sessi
 
   const selection = await resolveTargetDeviceSelection(
     req.flags ?? {},
-    buildOpenTargetDeviceResolutionOptions(openTarget, params.host.env),
+    buildOpenTargetDeviceResolutionOptions(openTarget, params.host.env, req.flags?.surface),
   );
   const device = selection.device;
   await req.internal?.retainDeviceExecutionLock?.(device.id);
@@ -360,9 +360,11 @@ async function handleOpenCommand(params: SessionOpenCommandInput): Promise<Sessi
     return { type: 'response', response: runtimePlanAdmission.response };
   const { admission, runtimeHintPlan } = runtimePlanAdmission;
 
+  // Keyed by the host: the session check and publication of first opens on one host run one at a
+  // time, so a whole-host open and an app device open never both pass the check (ADR 0035).
   return await withKeyedLock(
     firstSessionOpenLocks(sessionStore),
-    device.id,
+    device.hostApp?.hostDeviceId ?? device.id,
     async () =>
       await openNewSessionWithDeviceClaim({
         host: params.host,

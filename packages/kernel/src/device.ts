@@ -64,7 +64,76 @@ export type DeviceInfo = {
   // Internal physical-iOS execution backend selected during discovery.
   // Public device projections strip this field.
   iosPhysicalDeviceBackend?: 'coredevice' | 'xctest';
+  /**
+   * Set when this device is one app of a host device rather than the host itself (ADR 0035). Its
+   * id is {@link hostAppDeviceId} of the two, so every per-device lock, claim, and session check
+   * treats the app as a device of its own; only {@link devicesOverlap} relates it to its host.
+   */
+  hostApp?: { hostDeviceId: string; bundleId: string };
 };
+
+const HOST_APP_DEVICE_ID_INFIX = ':app:';
+
+const MACOS_BUNDLE_ID_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
+
+/** A macOS bundle id in reverse-DNS form such as com.apple.TextEdit; any segment may be mixed-case. */
+export function isMacOsBundleId(value: string): boolean {
+  return MACOS_BUNDLE_ID_PATTERN.test(value);
+}
+
+/** Bundle ids match without regard to case, as LaunchServices matches them. */
+export function hostAppDeviceId(hostDeviceId: string, bundleId: string): string {
+  return `${hostDeviceIdPrefix(hostDeviceId)}${bundleId.toLowerCase()}`;
+}
+
+/** The host of an app device id, or the id itself for any other device. */
+export function hostDeviceIdOf(deviceId: string): string {
+  const infix = deviceId.indexOf(HOST_APP_DEVICE_ID_INFIX);
+  return infix < 0 ? deviceId : deviceId.slice(0, infix);
+}
+
+/** A device id as devices carry it: the bundle part of an app device id is lowercase. */
+export function canonicalDeviceId(deviceId: string): string {
+  const hostDeviceId = hostDeviceIdOf(deviceId);
+  if (hostDeviceId === deviceId) return deviceId;
+  return hostAppDeviceId(hostDeviceId, deviceId.slice(hostDeviceIdPrefix(hostDeviceId).length));
+}
+
+/** The id prefix every app device of `hostDeviceId` shares. */
+export function hostDeviceIdPrefix(hostDeviceId: string): string {
+  return `${hostDeviceId}${HOST_APP_DEVICE_ID_INFIX}`;
+}
+
+/** One app of `host`, held as a device of its own. */
+export function hostAppDevice(host: DeviceInfo, bundleId: string): DeviceInfo {
+  return {
+    ...host,
+    id: hostAppDeviceId(host.id, bundleId),
+    hostApp: { hostDeviceId: host.id, bundleId },
+  };
+}
+
+/** The host of an app device, then the device itself; any other device alone. */
+export function hostAndDeviceIds(device: DeviceInfo): string[] {
+  return device.hostApp ? [device.hostApp.hostDeviceId, device.id] : [device.id];
+}
+
+/** Only the macOS host holds apps as devices of their own. */
+export function canHostAppDevices(device: Pick<DeviceInfo, 'platform' | 'appleOs'>): boolean {
+  return isMacOs(device);
+}
+
+/**
+ * Whether two devices cannot be held by two sessions at once: the same device, or a host and one
+ * of its app devices. Two app devices of one host do not overlap.
+ */
+export function devicesOverlap(leftId: string, rightId: string): boolean {
+  return (
+    leftId === rightId ||
+    leftId.startsWith(hostDeviceIdPrefix(rightId)) ||
+    rightId.startsWith(hostDeviceIdPrefix(leftId))
+  );
+}
 
 export type DeviceSelector = {
   platform?: PlatformSelector;

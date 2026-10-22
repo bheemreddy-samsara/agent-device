@@ -18,6 +18,7 @@ export const ANDROID_SNAPSHOT_HELPER_OUTPUT_FORMAT = 'uiautomator-xml';
 // Keep common snapshots biased toward post-microinteraction reliability. The
 // value is a max wait; callers that need immediate capture can explicitly pass 0.
 export const ANDROID_SNAPSHOT_HELPER_WAIT_FOR_IDLE_TIMEOUT_MS = 500;
+export const ANDROID_SNAPSHOT_HELPER_SHORT_IDLE_TIMEOUT_MS = 100;
 export const ANDROID_SNAPSHOT_HELPER_WAIT_FOR_IDLE_QUIET_MS = 100;
 export const ANDROID_SNAPSHOT_HELPER_COMMAND_OVERHEAD_MS = 5_000;
 export const ANDROID_SNAPSHOT_HELPER_CAPTURE_TIMEOUT_MS = 5_000;
@@ -78,7 +79,7 @@ export type AndroidSnapshotHelperCaptureOptions = {
   maxDepth?: number;
   maxNodes?: number;
   emitChunks?: boolean;
-  skipIdleWait?: boolean;
+  idleWait?: 'full' | 'short' | 'none';
 };
 
 export type AndroidSnapshotHelperMetadata = {

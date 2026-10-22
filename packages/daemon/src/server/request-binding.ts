@@ -1,11 +1,14 @@
 import { resolveTargetDevice } from '@agent-device/device-selection/dispatch-resolve';
 import type { EnvMap } from '@agent-device/kernel/source-value';
-import { hasDeviceSelectionInput } from '../core/device/device-selector-intent.ts';
+import {
+  hasDeviceSelectionInput,
+  normalizeFreshForegroundOpenSelection,
+} from '../core/device/device-selector-intent.ts';
 import { applyRequestLockPolicy } from './request-lock-policy.ts';
 import { buildOpenTargetDeviceResolutionOptions } from '@agent-device/device-selection/open-target';
 import { buildReplayTargetDeviceResolution } from './replay-device-selection.ts';
 import type { SessionStore } from '../core/session-store.ts';
-import type { DeviceInfo } from '@agent-device/kernel/device';
+import { hostAndDeviceIds, type DeviceInfo } from '@agent-device/kernel/device';
 import type { DaemonRequest } from '../core/daemon-request.ts';
 import type { SessionRef } from '../core/session-state.ts';
 
@@ -59,7 +62,12 @@ export async function resolveRequestExecutionLockPlan(params: {
 
   const keys = new Set<RequestExecutionLockKey>([sessionExecutionLockKey(sessionName)]);
   const device = await resolveFreshSessionDevice(req, sessionStore.host.env);
-  if (device) keys.add(deviceExecutionLockKey(device.id));
+  // A fresh app device `open` also locks its host (ADR 0035), before its own lock, so an
+  // `open --wait` looks at the host's sessions under a lock a whole-host open also takes. A replay
+  // or batch holds its locks for its whole run, so it locks only its device: the first-open lock
+  // keyed by host still serializes its opens. An open app session's commands lock only the app.
+  const ids = !device ? [] : req.command === 'open' ? hostAndDeviceIds(device) : [device.id];
+  for (const id of ids) keys.add(deviceExecutionLockKey(id));
   return { keys: orderRequestExecutionLockKeys(keys), deviceId: device?.id };
 }
 
@@ -75,9 +83,9 @@ export function prepareLockedRequestBinding(params: {
 }
 
 function resolveFreshSessionBindingRequest(req: DaemonRequest): DaemonRequest {
-  if (!req.meta?.lockPolicy) return req;
+  if (!req.meta?.lockPolicy) return normalizeFreshForegroundOpenSelection(req);
   try {
-    return applyRequestLockPolicy(req);
+    return normalizeFreshForegroundOpenSelection(applyRequestLockPolicy(req));
   } catch {
     // The request will be rejected during locked binding preparation. Keep lock
     // selection best-effort so invalid selectors do not block unrelated work.
@@ -123,7 +131,11 @@ async function resolveFreshSessionDevice(
 }
 
 function resolveOpenDeviceLock(req: DaemonRequest, env: EnvMap) {
-  const options = buildOpenTargetDeviceResolutionOptions(req.positionals?.[0], env);
+  const options = buildOpenTargetDeviceResolutionOptions(
+    req.positionals?.[0],
+    env,
+    req.flags?.surface,
+  );
   return options ? { flags: req.flags ?? {}, options } : undefined;
 }
 

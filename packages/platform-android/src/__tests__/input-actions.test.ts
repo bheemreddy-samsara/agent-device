@@ -6,6 +6,7 @@ import {
   longPressAndroid,
   pressAndroid,
   pressAndroidEnter,
+  pressAndroidHardwareButton,
   pressAndroidTvRemote,
   probeAndroidDisplayRotation,
   scrollAndroid,
@@ -423,6 +424,33 @@ test('homeAndroid presses keyevent 3', async () => {
       assert.deepEqual(calls, [['shell', 'input', 'keyevent', '3']]);
     },
   );
+});
+
+test('pressAndroidHardwareButton presses each named key as its own one keyevent', async () => {
+  // The mapping this command promises: one `input keyevent` per named key, the exact Android
+  // keycode per name (#3848).
+  const keyevents = [
+    ['volumeUp', '24'],
+    ['volumeDown', '25'],
+    ['power', '26'],
+    ['mute', '164'],
+    ['sleep', '223'],
+    ['wake', '224'],
+    ['mediaPlayPause', '85'],
+    ['mediaNext', '87'],
+    ['mediaPrevious', '88'],
+    ['mediaRewind', '89'],
+    ['mediaFastForward', '90'],
+  ] as const;
+  for (const [button, keyCode] of keyevents) {
+    await withFakeAdb(
+      () => undefined,
+      async ({ calls, device }) => {
+        await pressAndroidHardwareButton(device, button);
+        assert.deepEqual(calls, [['shell', 'input', 'keyevent', keyCode]], button);
+      },
+    );
+  }
 });
 
 test('pressAndroidEnter presses the ENTER keyevent', async () => {

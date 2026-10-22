@@ -3,6 +3,7 @@ import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runti
 import { providerRuntimeOwner } from '@agent-device/contracts/platform-runtime';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import type { Interactor } from '@agent-device/contracts/interactor-types';
+import { HARDWARE_BUTTON_NAME_LABELS, type HardwareButton } from '@agent-device/contracts/device';
 import { createWebDriverPlatformRuntimeOwner } from './platform-runtime.ts';
 import {
   createCloudWebDriverCapabilities,
@@ -618,6 +619,88 @@ test('a reachable provider with no overrides still admits its declared operation
   for (const key of ['readClipboard', 'writeClipboard', 'appSwitcher', 'back', 'home'] as const) {
     expect(facts.operations[key].available).toBe(true);
   }
+});
+
+test('hardware-button facts follow the platform capability map', async () => {
+  const owner = (platform: CloudWebDriverPlatform) =>
+    createWebDriverPlatformRuntimeOwner({
+      host: host(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+      owner: providerRuntimeOwner('browserstack', platform),
+      ownsDevice: () => true,
+      capabilities: capabilities(platform),
+      getInteractor: () => ({}) as unknown as Interactor,
+    });
+
+  const android = await owner('android').inspectFacts(device);
+  for (const key of [
+    'volumeUp',
+    'volumeDown',
+    'power',
+    'mute',
+    'sleep',
+    'wake',
+    'mediaPlayPause',
+    'mediaNext',
+    'mediaPrevious',
+    'mediaRewind',
+    'mediaFastForward',
+  ] as const) {
+    expect(android.operations[key].available, key).toBe(true);
+  }
+
+  const iosDevice: DeviceInfo = { ...device, platform: 'apple', appleOs: 'ios' };
+  const ios = await owner('ios').inspectFacts(iosDevice);
+  expect(ios.operations.volumeUp.available).toBe(true);
+  expect(ios.operations.volumeDown.available).toBe(true);
+  for (const key of [
+    'power',
+    'mute',
+    'sleep',
+    'wake',
+    'mediaPlayPause',
+    'mediaNext',
+    'mediaPrevious',
+    'mediaRewind',
+    'mediaFastForward',
+  ] as const) {
+    expect(ios.operations[key], key).toMatchObject({
+      available: false,
+      reason: 'owner-capability-missing',
+    });
+  }
+});
+
+test('Android TV hardware buttons are refused before a WebDriver interactor is acquired', async () => {
+  const getInteractor = vi.fn(() => {
+    throw new Error('a TV hardware button must not acquire an interactor');
+  });
+  const owner = createWebDriverPlatformRuntimeOwner({
+    host: host(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+    owner: providerRuntimeOwner('browserstack', 'android'),
+    ownsDevice: () => true,
+    capabilities: capabilities('android'),
+    getInteractor,
+  });
+  const tv: DeviceInfo = { ...device, target: 'tv' };
+  const facts = await owner.inspectFacts(tv);
+  const binding = await owner.bind({
+    device: tv,
+    intent: { kind: 'ordinary' },
+    scope: {
+      signal: new AbortController().signal,
+      diagnostics: { emit: () => {} },
+      progress: { report: () => {} },
+    },
+  });
+
+  for (const button of Object.keys(HARDWARE_BUTTON_NAME_LABELS) as HardwareButton[]) {
+    expect(facts.operations[button], button).toMatchObject({
+      available: false,
+      reason: 'unsupported-provider-mode',
+    });
+    expect(binding.operations[button], button).toBeUndefined();
+  }
+  expect(getInteractor).not.toHaveBeenCalled();
 });
 
 test('an Apple WebDriver dump bounded to one entry reports unnamed traffic without its identities', async () => {

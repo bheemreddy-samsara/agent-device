@@ -8,6 +8,7 @@ import type { HostEnvironment } from '@agent-device/kernel/source-value';
 import path from 'node:path';
 import fs from 'node:fs';
 import { AppError } from '@agent-device/kernel/errors';
+import { devicesOverlap } from '@agent-device/kernel/device';
 import { emitDiagnostic } from '@agent-device/host-kit/diagnostics';
 import type { SessionRef, SessionRuntimeHints, SessionState } from './session-state.ts';
 import { recordActionEntry, type RecordActionEntry } from './session-action-recorder.ts';
@@ -168,10 +169,13 @@ export class SessionStore {
     return entry ? this.captureRef(address, entry) : undefined;
   }
 
-  /** The session currently bound to `deviceId`, with its address, or `undefined` if none is. */
+  /**
+   * The session currently bound to `deviceId` or to a device that overlaps it (a host and its app
+   * devices), with its address, or `undefined` if none is.
+   */
   findByDevice(deviceId: string): SessionRef | undefined {
     for (const [address, entry] of this.sessions) {
-      if (entry.current.device.id === deviceId) return this.captureRef(address, entry);
+      if (devicesOverlap(entry.current.device.id, deviceId)) return this.captureRef(address, entry);
     }
     return undefined;
   }

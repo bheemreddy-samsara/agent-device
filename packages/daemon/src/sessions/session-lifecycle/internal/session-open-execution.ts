@@ -114,8 +114,14 @@ function applyOrdinaryScriptRecordingOpenOutcome(params: {
   );
 }
 
-/** What the caller's `open` output says when a claim was taken over because its device rebooted. */
-function deviceClaimTakeoverWarning(tookOver: TakenOverDeviceClaim): string {
+/**
+ * What the caller's `open` output says when a claim was taken over because its device rebooted. A
+ * `macos-app` lease tenant is not told whose claim it was: that belongs to the host (ADR 0007).
+ */
+function deviceClaimTakeoverWarning(tookOver: TakenOverDeviceClaim, req: DaemonRequest): string {
+  if (req.internal?.admittedLease?.backend === 'macos-app') {
+    return 'Took the device over: it rebooted after its previous claim was taken, so the previous app was already gone.';
+  }
   return (
     `Took the device from session "${tookOver.session}" in workspace "${tookOver.workspace}": ` +
     'that device rebooted after its claim was taken, so its app and runner were already gone.'
@@ -355,7 +361,7 @@ export async function completeOpenCommand(params: {
     launchConfirmation: launchConfirmationReport(outcome),
   });
   if (tookOverDeviceClaim) {
-    appendResponseWarning(openResult, deviceClaimTakeoverWarning(tookOverDeviceClaim));
+    appendResponseWarning(openResult, deviceClaimTakeoverWarning(tookOverDeviceClaim, req));
   }
   if (outcome.launchConfirmation === 'unanswered') {
     appendResponseWarning(
@@ -431,17 +437,9 @@ async function prepareOpenDispatchSession(params: {
 }
 
 /**
- * A session admitted under a `macos-app` lease holds one app, not the host Mac (ADR 0007): other
- * app-leased sessions on the same Mac do not stand in its way.
- */
-function isMacOsAppLeaseOpen(req: DaemonRequest): boolean {
-  return req.internal?.admittedLease?.backend === 'macos-app';
-}
-
-/**
- * The refusal an open gets when another session already holds the device. The wait an expired
- * `--wait` budget spent is carried into the recovery text, because a caller that waited is not
- * helped by being told to wait.
+ * The refusal an open gets when another session already holds the device, or a device that
+ * overlaps it. The wait an expired `--wait` budget spent is carried into the recovery text, because
+ * a caller that waited is not helped by being told to wait.
  */
 function findNewSessionDeviceConflict(params: {
   req: DaemonRequest;
@@ -449,14 +447,7 @@ function findNewSessionDeviceConflict(params: {
   sessionStore: SessionStore;
 }): DaemonFailureResponse | undefined {
   const { req, device, sessionStore } = params;
-  const inUse = isMacOsAppLeaseOpen(req)
-    ? sessionStore
-        .listRefs()
-        .find(
-          (ref) =>
-            ref.session.device.id === device.id && ref.session.lease?.leaseBackend !== 'macos-app',
-        )
-    : sessionStore.findByDevice(device.id);
+  const inUse = sessionStore.findByDevice(device.id);
   if (!inUse) return undefined;
   // The wait the caller paid for belongs to `open` alone: an interaction that hits the same busy
   // device cannot wait for it, and would be sent off with a flag its own command rejects.
@@ -486,7 +477,7 @@ async function acquireDeviceClaimForOwner(params: {
     reconcileOrphanedDeviceClaim,
     platformServices,
   } = params;
-  switch (deviceClaimRuleForOwner(owner, req.internal?.admittedLease)) {
+  switch (deviceClaimRuleForOwner(owner)) {
     case 'none':
       return { status: 'not-required' };
     case 'ordinary':

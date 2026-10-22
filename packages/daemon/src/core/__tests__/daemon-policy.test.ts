@@ -6,10 +6,11 @@ import { fakeCreateCommandSurface } from '../../__tests__/support/command-surfac
 
 vi.mock('../device/device-ready.ts', () => ({ ensureDeviceReady: vi.fn(async () => {}) }));
 
-import type { DeviceInfo } from '@agent-device/kernel/device';
+import { hostAppDevice, type DeviceInfo } from '@agent-device/kernel/device';
 import {
   ANDROID_EMULATOR,
   IOS_SIMULATOR,
+  MACOS_DEVICE,
   mkdtempForTestSync,
   createTestHostEnvironment,
 } from '@agent-device/test-kit';
@@ -17,7 +18,11 @@ import { createTestDeviceInventoryGateways } from '@agent-device/device-selectio
 import { makeIosSession } from '../../__tests__/support/session-factories.ts';
 import { makeSessionStore } from '../../__tests__/support/store-factory.ts';
 import { parseDaemonPolicy } from '@agent-device/daemon-contracts/daemon-policy-file';
-import { assertDaemonPolicyAdmitsRequest } from '../daemon-policy.ts';
+import {
+  assertDaemonPolicyAdmitsRequest,
+  restrictDeviceInventoryToDaemonPolicy,
+} from '../daemon-policy.ts';
+import { AppError } from '@agent-device/kernel/errors';
 import type { DaemonRequest } from '../daemon-request.ts';
 import { LeaseRegistry } from '../../resources/lease-registry.ts';
 import { hostDiagnosticsFixture } from '../../__tests__/support/host-diagnostics-fixture.ts';
@@ -338,5 +343,104 @@ test('doctor counts only the devices the policy allows', async () => {
         }),
       ]),
     },
+  });
+});
+
+const TEXT_EDIT = hostAppDevice(MACOS_DEVICE, 'com.apple.TextEdit');
+const CALCULATOR = hostAppDevice(MACOS_DEVICE, 'com.apple.calculator');
+
+/** A fresh native open resolves the app device of the Mac selection found, as production does. */
+function openApp(device: DeviceInfo, flags: DaemonRequest['flags'] = {}) {
+  mockResolveTargetDevice.mockResolvedValue(device);
+  return request('open', {
+    session: `open-${device.id}`,
+    positionals: [device.hostApp?.bundleId ?? 'com.example.app'],
+    flags: { platform: 'macos', ...flags },
+  });
+}
+
+test('a policy id with `:app:` in it matches a device id spelled in another case', async () => {
+  const providerDevice: DeviceInfo = { ...IOS_SIMULATOR, id: 'pool:app:ABC' };
+  const { handler } = makeHandler(policy({ devices: { allow: [{ udid: 'pool:app:ABC' }] } }), {
+    inventory: [providerDevice],
+  });
+
+  expect(await handler(request('devices', { session: undefined }))).toMatchObject({
+    ok: true,
+    data: { devices: [expect.objectContaining({ id: 'pool:app:ABC' })] },
+  });
+});
+
+test('a policy that allows the Mac admits a native open of its app device', async () => {
+  const { handler, bind } = makeHandler(
+    policy({ devices: { allow: [{ udid: MACOS_DEVICE.id }] } }),
+  );
+
+  const response = await handler(openApp(TEXT_EDIT));
+
+  expect(response).toMatchObject({ ok: true });
+  expect(bind).toHaveBeenCalledWith(expect.objectContaining({ device: TEXT_EDIT }));
+});
+
+test('a policy that allows one app of the Mac admits that app only, never the whole Mac', async () => {
+  const { handler, bind } = makeHandler(policy({ devices: { allow: [{ udid: TEXT_EDIT.id }] } }), {
+    inventory: [MACOS_DEVICE, OTHER_SIMULATOR],
+  });
+
+  // Selection still finds the Mac, because it derives the allowed app device from it.
+  expect(await handler(request('devices', { session: undefined }))).toMatchObject({
+    ok: true,
+    data: { devices: [expect.objectContaining({ id: MACOS_DEVICE.id })] },
+  });
+  expect(await handler(openApp(TEXT_EDIT))).toMatchObject({ ok: true });
+
+  bind.mockClear();
+  for (const denied of [
+    openApp(CALCULATOR),
+    openApp(MACOS_DEVICE, { surface: 'desktop' }),
+    request('open', { session: 'by-udid', flags: { platform: 'macos', udid: MACOS_DEVICE.id } }),
+  ]) {
+    expectPolicyDenied(await handler(denied), 'device');
+  }
+  expect(bind).not.toHaveBeenCalled();
+});
+
+test('on a Mac the policy does not allow, app resolution reports nothing the Mac has installed', async () => {
+  const gateways = restrictDeviceInventoryToDaemonPolicy(
+    createTestDeviceInventoryGateways({
+      resolveAppDevice: async () => {
+        throw new AppError('AMBIGUOUS_MATCH', 'Multiple apps matched "Notes"', {
+          matches: ['com.apple.Notes', 'com.example.notes'],
+        });
+      },
+    }),
+    policy({ devices: { allow: [{ udid: TEXT_EDIT.id }] } }),
+  );
+  await expect(gateways.resolveAppDevice!(MACOS_DEVICE, 'Notes')).resolves.toBeUndefined();
+
+  // An installed app the policy does not allow answers like a missing one, so nothing is learned.
+  const resolving = restrictDeviceInventoryToDaemonPolicy(
+    createTestDeviceInventoryGateways({
+      resolveAppDevice: async (host, appTarget) => hostAppDevice(host, appTarget),
+    }),
+    policy({ devices: { allow: [{ udid: TEXT_EDIT.id }] } }),
+  );
+  await expect(
+    resolving.resolveAppDevice!(MACOS_DEVICE, 'com.apple.calculator'),
+  ).resolves.toBeUndefined();
+  await expect(resolving.resolveAppDevice!(MACOS_DEVICE, 'com.apple.TextEdit')).resolves.toEqual(
+    TEXT_EDIT,
+  );
+
+  const hostAllowed = restrictDeviceInventoryToDaemonPolicy(
+    createTestDeviceInventoryGateways({
+      resolveAppDevice: async () => {
+        throw new AppError('APP_NOT_INSTALLED', 'No app found matching "Notes"');
+      },
+    }),
+    policy({ devices: { allow: [{ udid: MACOS_DEVICE.id }] } }),
+  );
+  await expect(hostAllowed.resolveAppDevice!(MACOS_DEVICE, 'Notes')).rejects.toMatchObject({
+    code: 'APP_NOT_INSTALLED',
   });
 });

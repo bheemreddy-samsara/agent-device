@@ -7,9 +7,6 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { EventEmitter } from 'node:events';
-import net from 'node:net';
-import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 import './test-utils/android-host-test-setup.ts';
 import type { DeviceInfo } from '@agent-device/kernel/device';
@@ -19,16 +16,7 @@ import {
   DISPATCH_DISCLOSURE_TABLE_PATH,
   dispatchDisclosureRowsOwnedBy,
 } from '@agent-device/test-kit';
-import {
-  withAndroidAdbProvider,
-  type AndroidAdbProcess,
-  type AndroidAdbProvider,
-} from '../adb-executor.ts';
-import {
-  androidHelperRuntimeProbeResult,
-  isAndroidHelperRuntimeProbe,
-  type FakeAndroidHelperRuntimeRelease,
-} from './snapshot-helper-session.fixtures.ts';
+import { withAndroidAdbProvider } from '../adb-executor.ts';
 import { captureAndroidSnapshotWithHelperSession } from '../snapshot-helper-session.ts';
 import { resetAndroidSnapshotHelperSessions } from '../snapshot-helper-session-lifecycle.ts';
 import {
@@ -49,6 +37,12 @@ import {
   makeIsolatedDevice,
   outdatedVersionAdb,
 } from './touch-helper.fixtures.ts';
+import {
+  createFakeTouchHelperSessionProvider,
+  sessionHeaderResponse,
+  snapshotSessionResponse,
+  type TouchSessionCommandHandler,
+} from './touch-helper-session.fixtures.ts';
 
 vi.mock('../helper-package-install.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../helper-package-install.ts')>();
@@ -73,124 +67,6 @@ afterEach(async () => {
   delete process.env.AGENT_DEVICE_ANDROID_SNAPSHOT_HELPER_SESSION;
   await resetAndroidSnapshotHelperSessions();
 });
-
-class FakeAndroidProcess extends EventEmitter implements AndroidAdbProcess {
-  stdin = new PassThrough();
-  stdout = new PassThrough();
-  stderr = new PassThrough();
-  killed = false;
-  onKill: (() => void) | undefined;
-
-  kill(): boolean {
-    this.killed = true;
-    this.onKill?.();
-    return true;
-  }
-
-  emitExit(code: number | null, signal: NodeJS.Signals | null): void {
-    this.emit('exit', code, signal);
-    this.emit('close', code, signal);
-  }
-}
-
-type TouchSessionCommandHandler = (command: string, requestId: string) => string;
-
-function readSessionPort(args: readonly string[]): number {
-  const index = args.indexOf('sessionPort');
-  assert.notEqual(index, -1);
-  return Number(args[index + 1]);
-}
-
-function sessionHeaderResponse(headers: Record<string, string>): string {
-  return `${Object.entries(headers)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n')}\n\n`;
-}
-
-function snapshotSessionResponse(requestId: string): string {
-  const body = '<hierarchy><node text="touch-helper-session" /></hierarchy>';
-  const headers = {
-    agentDeviceProtocol: 'android-snapshot-helper-v1',
-    helperApiVersion: '1',
-    outputFormat: 'uiautomator-xml',
-    requestId,
-    ok: 'true',
-    byteLength: String(Buffer.byteLength(body, 'utf8')),
-  };
-  return `${Object.entries(headers)
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n')}\n\n${body}`;
-}
-
-function isTouchCleanupCommand(args: readonly string[]): boolean {
-  return (
-    (args[0] === 'forward' && args[1] === '--remove') ||
-    (args[0] === 'shell' && args[1] === 'am' && args[2] === 'force-stop')
-  );
-}
-
-function neverResolvingAfterAbort(signal: AbortSignal): Promise<never> {
-  return new Promise((_resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
-  });
-}
-
-function createFakeTouchHelperSessionProvider(
-  handleCommand: TouchSessionCommandHandler,
-  options: { stallCleanup?: boolean; runtimeRelease?: FakeAndroidHelperRuntimeRelease } = {},
-): AndroidAdbProvider {
-  return {
-    exec: async (args, execOptions) => {
-      const signal = execOptions?.signal;
-      if (options.stallCleanup && signal && isTouchCleanupCommand(args)) {
-        return await neverResolvingAfterAbort(signal);
-      }
-      if (isAndroidHelperRuntimeProbe(args)) {
-        return androidHelperRuntimeProbeResult(options.runtimeRelease);
-      }
-      return { exitCode: 0, stdout: '', stderr: '' };
-    },
-    spawn: (args) => {
-      const port = readSessionPort(args);
-      const process = new FakeAndroidProcess();
-      const server = net.createServer((socket) => {
-        socket.once('data', (chunk) => {
-          const command = chunk.toString('utf8').trim();
-          const [, requestId = ''] = command.split(/\s+/, 2);
-          if (command.startsWith('quit')) {
-            socket.end(
-              sessionHeaderResponse({
-                agentDeviceProtocol: 'android-snapshot-helper-v1',
-                requestId,
-                ok: 'true',
-              }),
-            );
-            server.close(() => process.emitExit(0, null));
-            return;
-          }
-          socket.end(handleCommand(command, requestId));
-        });
-      });
-      server.listen(port, '127.0.0.1', () => {
-        process.stdout.write(
-          [
-            'INSTRUMENTATION_STATUS: agentDeviceProtocol=android-snapshot-helper-v1',
-            'INSTRUMENTATION_STATUS: sessionCommands=input,screenshot,focus,snapshot-immediate',
-            'INSTRUMENTATION_STATUS: sessionReady=true',
-            'INSTRUMENTATION_STATUS_CODE: 2',
-            '',
-          ].join('\n'),
-        );
-      });
-      process.onKill = () => {
-        server.close(() => process.emitExit(0, null));
-      };
-      return process;
-    },
-  };
-}
 
 test('touch helper does not run one-shot while the device still runs the helper', async () => {
   const device = makeIsolatedDevice();

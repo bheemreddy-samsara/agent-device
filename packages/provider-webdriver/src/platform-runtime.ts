@@ -205,14 +205,25 @@ const appSwitcherUnavailable = unavailableFact(
 );
 
 /**
- * Unlike `home` and `appSwitcher` this is never a per-session capability question: no WebDriver
- * `mobile:` script presses hardware such as the iPhone Action Button, so the fact refuses
- * unconditionally. There is deliberately no capability key for it, which would advertise a button
- * this provider can never press.
+ * The Action Button is the one system button this family still denies outright: no WebDriver
+ * `mobile:` script presses hardware such as the iPhone Action Button, so there is deliberately no
+ * capability key for it, which would advertise a button this provider can never press. The
+ * hardware-button keys below are the family's declared-capability cells instead.
  */
 const systemButtonUnavailable = unavailableFact(
   'unsupported-provider-mode',
   'No WebDriver backend presses this system button.',
+);
+
+/**
+ * The hardware-button legs ride `mobile: pressButton` / `mobile: pressKey`, so the cell reads the
+ * seam the same way `home` does: a reachable interactor plus the provider's declaration. The
+ * declaration carries the platform split — the iOS capability map marks `power` and the extended
+ * keys unsupported, the Android map does not — so nothing here restates it as a device-kind rule.
+ */
+const hardwareButtonUnavailable = unavailableFact(
+  'unsupported-provider-mode',
+  'This WebDriver provider runtime does not expose hardware-button for this device.',
 );
 
 /** No WebDriver `mobile:` script poses a foldable hinge; the refusal is unconditional like the Action Button's. */
@@ -623,6 +634,20 @@ function webDriverFacts(
         unsupported: systemButtonUnavailable,
         home: declared('home', homeUnavailable),
         appSwitcher: declared('appSwitcher', appSwitcherUnavailable),
+        // Volume and power ride the backend's own hardware-key route and read the same
+        // declared-capability seam `home` uses; the iOS platform map declares power and the
+        // extended keys unsupported, so the declaration — not a device-kind guess — refuses them.
+        volumeUp: declared('volumeUp', hardwareButtonUnavailable),
+        volumeDown: declared('volumeDown', hardwareButtonUnavailable),
+        power: declared('power', hardwareButtonUnavailable),
+        mute: declared('mute', hardwareButtonUnavailable),
+        sleep: declared('sleep', hardwareButtonUnavailable),
+        wake: declared('wake', hardwareButtonUnavailable),
+        mediaPlayPause: declared('mediaPlayPause', hardwareButtonUnavailable),
+        mediaNext: declared('mediaNext', hardwareButtonUnavailable),
+        mediaPrevious: declared('mediaPrevious', hardwareButtonUnavailable),
+        mediaRewind: declared('mediaRewind', hardwareButtonUnavailable),
+        mediaFastForward: declared('mediaFastForward', hardwareButtonUnavailable),
       }),
       setFoldPose: foldUnavailable,
       sendTelephonyEvent: telephonyUnavailable,

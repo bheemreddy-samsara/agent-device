@@ -59,6 +59,8 @@ test('the device key names one bundle, optionally one process', () => {
     bundleId: 'com.example.app',
     pid: 4242,
   });
+  assert.deepEqual(parseMacOsAppLeaseKey('Foo.Bar@4242'), { bundleId: 'Foo.Bar', pid: 4242 });
+  assert.deepEqual(parseMacOsAppLeaseKey('com.apple.TextEdit'), { bundleId: 'com.apple.TextEdit' });
   for (const key of ['', 'example', 'com.example.app@', 'com.example.app@0', 'com.example app']) {
     assert.throws(() => parseMacOsAppLeaseKey(key), { code: 'INVALID_ARGS' });
   }
@@ -627,4 +629,37 @@ test('a failure under the lease drops its log locators and every host path and t
       },
     },
   });
+});
+
+test('a busy leased app is refused without naming who holds it, whatever host paths it has', () => {
+  const conflict = {
+    ok: false as const,
+    error: {
+      code: 'DEVICE_IN_USE',
+      message:
+        'macos device host:app:com.example.app is owned by session "s" in workspace "/srv/private-project".',
+      hint: 'Inspect the owner with: agent-device device status --platform macos --udid host:app:com.example.app',
+      retriable: false,
+      details: {
+        reason: 'DEVICE_CLAIM_LIVE_OWNER',
+        deviceKey: 'local:apple:macos:host:app:com.example.app',
+        owner: { session: 's', workspace: '/srv/private-project', stateDir: '/srv/daemon-state' },
+        recovery: { command: 'agent-device device status --platform macos --udid host' },
+      },
+    },
+  };
+
+  const redacted = redactMacOsAppLeaseResponse('open', conflict, host);
+
+  assert.deepEqual(redacted, {
+    ok: false,
+    error: {
+      code: 'DEVICE_IN_USE',
+      message: 'The leased app is in use by another session.',
+      hint: 'Retry once the other session ends.',
+      details: { reason: 'DEVICE_CLAIM_LIVE_OWNER' },
+      retriable: false,
+    },
+  });
+  assert.doesNotMatch(JSON.stringify(redacted), /\/srv\/|session "s"|device status/);
 });

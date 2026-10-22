@@ -1,4 +1,4 @@
-import type { DeviceRotation } from '@agent-device/contracts/device';
+import type { DeviceRotation, HardwareButton } from '@agent-device/contracts/device';
 import type { BackMode } from '@agent-device/contracts/back-mode';
 import type {
   CloudTextEntryReadiness,
@@ -418,6 +418,82 @@ class WebDriverInteractor implements Interactor {
   async appSwitcher(): Promise<void> {
     this.requireSupport('appSwitcher');
     await this.client.executeScript('mobile: pressButton', [{ name: 'appSwitch' }]);
+  }
+
+  /**
+   * The volume legs split by backend because the two drivers expose different routes: XCUITest
+   * answers `mobile: pressButton` with the `volumeup`/`volumedown` names (the only hardware-key
+   * route it exposes), while UiAutomator2 registers no pressButton at all and presses the
+   * KEYCODE_VOLUME_UP/DOWN keycodes through `mobile: pressKey` — the same keyevents the local
+   * Android owner sends. The press lands on the system, which is what the command claims.
+   */
+  async volumeUp(): Promise<void> {
+    await this.pressVolumeKey('volumeUp', 'volumeup');
+  }
+
+  async volumeDown(): Promise<void> {
+    await this.pressVolumeKey('volumeDown', 'volumedown');
+  }
+
+  private async pressVolumeKey(
+    button: 'volumeUp' | 'volumeDown',
+    xcuiButtonName: string,
+  ): Promise<void> {
+    if (this.backend === 'android') {
+      await this.pressAndroidHardwareKey(button);
+      return;
+    }
+    this.requireSupport(button);
+    await this.client.executeScript('mobile: pressButton', [{ name: xcuiButtonName }]);
+  }
+
+  /**
+   * Android presses KEYCODE_POWER through `mobile: pressKey`, the same keycode the local owner
+   * sends through `input keyevent`. iOS has no power press in any Appium route, and its
+   * capability map declares `power` unsupported, so the declaration refuses before this leg.
+   */
+  async power(): Promise<void> {
+    await this.pressAndroidHardwareKey('power');
+  }
+
+  private async pressAndroidHardwareKey(button: HardwareButton): Promise<void> {
+    this.requireSupport(button);
+    const { HARDWARE_BUTTON_NAME_LABELS } = await import('@agent-device/contracts/device');
+    const { toAndroidTvRemoteKeyevent } = await import('@agent-device/contracts/tv-remote');
+    const keycode = Number(toAndroidTvRemoteKeyevent(HARDWARE_BUTTON_NAME_LABELS[button]));
+    await this.client.executeScript('mobile: pressKey', [{ keycode }]);
+  }
+
+  async mute(): Promise<void> {
+    await this.pressAndroidHardwareKey('mute');
+  }
+
+  async sleep(): Promise<void> {
+    await this.pressAndroidHardwareKey('sleep');
+  }
+
+  async wake(): Promise<void> {
+    await this.pressAndroidHardwareKey('wake');
+  }
+
+  async mediaPlayPause(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaPlayPause');
+  }
+
+  async mediaNext(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaNext');
+  }
+
+  async mediaPrevious(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaPrevious');
+  }
+
+  async mediaRewind(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaRewind');
+  }
+
+  async mediaFastForward(): Promise<void> {
+    await this.pressAndroidHardwareKey('mediaFastForward');
   }
 
   async tvRemote(_button: TvRemoteButton, _durationMs?: number): Promise<void> {

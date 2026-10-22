@@ -1,12 +1,18 @@
 import { normalizeBatchCommandName } from '@agent-device/command-registry/batch-policy';
 import type {
+  AppDeviceResolver,
   ComposedDeviceInventoryGateways,
   DeviceInventoryGateway,
   ProviderAwareDeviceInventoryGateway,
 } from '@agent-device/contracts/platform-module';
 import type { DeviceLease } from '@agent-device/contracts/device';
-import type { DeviceInfo } from '@agent-device/kernel/device';
-import { AppError } from '@agent-device/kernel/errors';
+import {
+  canonicalDeviceId,
+  hostDeviceIdOf,
+  hostDeviceIdPrefix,
+  type DeviceInfo,
+} from '@agent-device/kernel/device';
+import { AppError, isRequestCanceledError } from '@agent-device/kernel/errors';
 import {
   resolveDaemonPolicyCommandName,
   type DaemonPolicy,
@@ -45,15 +51,36 @@ function assertInvocationAdmitted(
   if (!policy.deviceIds) return;
   for (const value of [fields.udid, fields.serial]) {
     const id = typeof value === 'string' ? value.trim() : '';
-    if (!id || policy.deviceIds.has(id)) continue;
+    if (!id || isDeviceIdAllowed(policy.deviceIds, id)) continue;
     throw policyDenied(policy, 'device', `Device ${id} is outside this daemon's policy.`, {
       deviceId: id,
     });
   }
 }
 
+/**
+ * A device the policy may bind: one it names, or an app device of a host it names (ADR 0035). An
+ * app device it names admits that app alone, never its host or the host's other apps.
+ */
+function isDeviceIdAllowed(deviceIds: ReadonlySet<string>, id: string): boolean {
+  // Policy ids load canonicalized, so the compared id is too.
+  const canonical = canonicalDeviceId(id);
+  return deviceIds.has(canonical) || deviceIds.has(hostDeviceIdOf(canonical));
+}
+
 function isDeviceAllowedByDaemonPolicy(policy: DaemonPolicy, device: DeviceInfo): boolean {
-  return !policy.deviceIds || policy.deviceIds.has(device.id);
+  return !policy.deviceIds || isDeviceIdAllowed(policy.deviceIds, device.id);
+}
+
+/**
+ * A device inventory lists: one the policy may bind, or a host one of whose app devices it may
+ * bind, because selection derives the app device from its host. Binding still admits only what
+ * {@link isDeviceAllowedByDaemonPolicy} does, so listing a host never authorizes the whole host.
+ */
+function isDeviceDiscoverableUnderDaemonPolicy(policy: DaemonPolicy, device: DeviceInfo): boolean {
+  if (!policy.deviceIds || isDeviceAllowedByDaemonPolicy(policy, device)) return true;
+  const appDevicePrefix = hostDeviceIdPrefix(device.id);
+  return [...policy.deviceIds].some((id) => id.startsWith(appDevicePrefix));
 }
 
 /** Refuses a resolved device the policy does not allow, before the request binds it. */
@@ -96,7 +123,7 @@ export function restrictDeviceInventoryToDaemonPolicy(
 ): ComposedDeviceInventoryGateways {
   if (!policy.deviceIds) return gateways;
   const allowed = (devices: readonly DeviceInfo[]) =>
-    devices.filter((device) => isDeviceAllowedByDaemonPolicy(policy, device));
+    devices.filter((device) => isDeviceDiscoverableUnderDaemonPolicy(policy, device));
   const localOnly: DeviceInventoryGateway = Object.freeze({
     discover: async (request, scope) => allowed(await gateways.localOnly.discover(request, scope)),
   });
@@ -114,7 +141,23 @@ export function restrictDeviceInventoryToDaemonPolicy(
     discover: async (request, scope) => (await discoverWithSource(request, scope)).devices,
     discoverWithSource,
   });
-  return Object.freeze({ ...gateways, localOnly, providerFirst });
+  const inner = gateways.resolveAppDevice;
+  // On a host the policy does not allow, resolving an app name must not report what the host has
+  // installed. Only an allowed app device is returned; a failed resolution and an app the policy
+  // does not allow both leave the host selected, which binding then refuses the same way.
+  const resolveAppDevice: AppDeviceResolver | undefined = inner
+    ? async (host, appTarget) => {
+        if (isDeviceAllowedByDaemonPolicy(policy, host)) return await inner(host, appTarget);
+        try {
+          const device = await inner(host, appTarget);
+          return device && isDeviceAllowedByDaemonPolicy(policy, device) ? device : undefined;
+        } catch (error) {
+          if (isRequestCanceledError(error)) throw error;
+          return undefined;
+        }
+      }
+    : undefined;
+  return Object.freeze({ ...gateways, localOnly, providerFirst, resolveAppDevice });
 }
 
 function assertCommandAdmitted(policy: DaemonPolicy, command: string): void {

@@ -31,6 +31,9 @@ import {
   type AdmittedRuntimePlan,
 } from './session-runtime-admission.ts';
 import { resolveSnapshotScope } from './snapshot-capture.ts';
+import { isOutdatedObservation } from './ref-frame.ts';
+import { getActiveAndroidSnapshotFreshness } from './session-snapshot-freshness.ts';
+import { isPostGestureStabilizationPending } from './deferred-interaction-outcome.ts';
 import { resolveSessionDevice } from './snapshot-session.ts';
 import {
   selectElementTextOperation,
@@ -145,6 +148,19 @@ export async function admitAndBindSnapshotCapture(
   });
 }
 
+const ANDROID_SNAPSHOT_IDLE_GAP_MS = 500;
+
+function canUseShortAndroidSnapshotIdleWait(session: SessionState | undefined): boolean {
+  return (
+    session?.device.platform === 'android' &&
+    session.snapshot !== undefined &&
+    !isOutdatedObservation(session.snapshot) &&
+    Date.now() - session.snapshot.createdAt >= ANDROID_SNAPSHOT_IDLE_GAP_MS &&
+    !getActiveAndroidSnapshotFreshness(session) &&
+    !isPostGestureStabilizationPending(session)
+  );
+}
+
 /** Resolves one plan, inspects its owner facts once, then returns one bound capture closure. */
 export async function resolveBoundSnapshotCaptureRuntime(
   params: SnapshotRuntimeRouteParams,
@@ -197,7 +213,15 @@ export async function resolveBoundSnapshotCaptureRuntime(
     session,
     device,
     snapshotScope: resolvedScope.scope,
-    captureSnapshot: async () => await bound.capture(captureInput),
+    captureSnapshot: async () =>
+      await bound.capture(
+        canUseShortAndroidSnapshotIdleWait(session)
+          ? {
+              ...captureInput,
+              options: { ...captureInput.options, captureBasis: 'unchanged-since-observation' },
+            }
+          : captureInput,
+      ),
   });
 }
 

@@ -4,6 +4,8 @@
  */
 import {
   DEVICE_ROTATION_SURFACE_INDEX,
+  HARDWARE_BUTTON_NAME_LABELS,
+  type HardwareButton,
   deviceRotationFromSurfaceIndex,
   type DeviceRotation,
 } from '@agent-device/contracts/device';
@@ -258,27 +260,47 @@ export async function appSwitcherAndroid(device: DeviceInfo): Promise<void> {
   await runAndroidShell(device, ['input', 'keyevent', '187']);
 }
 
+/** Presses one phone hardware key once. TV targets are gated by the runtime facts, not here. */
+export async function pressAndroidHardwareButton(
+  device: DeviceInfo,
+  button: HardwareButton,
+): Promise<void> {
+  const keyevent = toAndroidTvRemoteKeyevent(HARDWARE_BUTTON_NAME_LABELS[button]);
+  const keyCode = Number(keyevent);
+  const { runAndroidAutomationHelper } = await import('./automation-helper.ts');
+  if (
+    await runAndroidAutomationHelper(device, { action: 'input', input: { kind: 'key', keyCode } })
+  )
+    return;
+  await runAndroidShell(device, ['input', 'keyevent', keyevent]);
+}
+
 export async function longPressAndroid(
   device: DeviceInfo,
   x: number,
   y: number,
   durationMs = 800,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const point = { x, y };
-  return await executeAndroidTouchPlan(device, {
-    topology: 'single',
-    intent: 'longPress',
-    durationMs,
-    pointers: [
-      {
-        pointerId: 0,
-        samples: [
-          { offsetMs: 0, point },
-          { offsetMs: durationMs, point },
-        ],
-      },
-    ],
-  });
+  return await executeAndroidTouchPlan(
+    device,
+    {
+      topology: 'single',
+      intent: 'longPress',
+      durationMs,
+      pointers: [
+        {
+          pointerId: 0,
+          samples: [
+            { offsetMs: 0, point },
+            { offsetMs: durationMs, point },
+          ],
+        },
+      ],
+    },
+    signal,
+  );
 }
 
 export async function focusAndroid(device: DeviceInfo, x: number, y: number): Promise<void> {

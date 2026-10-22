@@ -191,6 +191,8 @@ export type SnapshotOptions = BaseSnapshotOptions & {
   surface?: SessionSurface;
   /** Internal capture purpose; action outcomes always require the full tree. */
   acquisitionIntent?: 'full' | 'surface-observation';
+  /** A stored observation remains current; action and settling captures do not supply this fact. */
+  captureBasis?: 'unchanged-since-observation';
   /**
    * A one-off read, such as an open's launch observation. It may use a capture host the session
    * already keeps warm, but it never installs one or leaves running one that it started. It starts
@@ -432,6 +434,51 @@ export type Interactor = {
    * absent member as a successful no-op.
    */
   actionButton?(): Promise<void>;
+  /**
+   * Optional (parity with `home`): presses the physical volume-up key once, a control phone
+   * owners with a volume button carry. An owner without it leaves it undefined; its fact refuses
+   * the press before binding, and the system-button binder fails closed rather than resolving an
+   * absent member as a silent no-op.
+   */
+  volumeUp?(): Promise<void>;
+  /**
+   * Optional (parity with `volumeUp`): presses the physical volume-down key once.
+   */
+  volumeDown?(): Promise<void>;
+  /**
+   * Optional (parity with `volumeUp`): presses the physical power key once, which toggles the
+   * screen on Android. Apple exposes no public power/lock button press, so no Apple leaf carries
+   * it; an owner without it leaves it undefined and its fact refuses before binding.
+   */
+  power?(): Promise<void>;
+  /**
+   * Optional (parity with `volumeUp`): presses the media mute key once. Android-only today:
+   * Apple exposes no public mute press, so no Apple leaf carries it.
+   */
+  mute?(): Promise<void>;
+  /**
+   * Optional (parity with `volumeUp`): sends the explicit Android sleep event (KEYCODE_SLEEP),
+   * which turns the screen off without toggling the way `power` does.
+   */
+  sleep?(): Promise<void>;
+  /**
+   * Optional (parity with `volumeUp`): sends the explicit Android wake event (KEYCODE_WAKEUP),
+   * which turns the screen on without toggling the way `power` does.
+   */
+  wake?(): Promise<void>;
+  /**
+   * Optional (parity with `volumeUp`): presses the media play/pause key once. The press goes to
+   * whatever media session the OS routes it to; it does not claim playback started.
+   */
+  mediaPlayPause?(): Promise<void>;
+  /** Optional (parity with `mediaPlayPause`): presses the media next key once. */
+  mediaNext?(): Promise<void>;
+  /** Optional (parity with `mediaPlayPause`): presses the media previous key once. */
+  mediaPrevious?(): Promise<void>;
+  /** Optional (parity with `mediaPlayPause`): presses the media rewind key once. */
+  mediaRewind?(): Promise<void>;
+  /** Optional (parity with `mediaPlayPause`): presses the media fast-forward key once. */
+  mediaFastForward?(): Promise<void>;
   /** Optional: only Android implements a live status read (see {@link KeyboardStatusResult}). */
   keyboardStatus?(): Promise<KeyboardStatusResult>;
   /** Optional: platforms with no keyboard-dismiss concept leave it undefined. */

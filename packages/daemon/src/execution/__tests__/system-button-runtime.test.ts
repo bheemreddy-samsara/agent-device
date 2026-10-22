@@ -14,8 +14,23 @@ import {
   actionButtonRuntimeUse,
   appSwitcherRuntimeUse,
   homeRuntimeUse,
+  mediaFastForwardRuntimeUse,
+  mediaNextRuntimeUse,
+  mediaPlayPauseRuntimeUse,
+  mediaPreviousRuntimeUse,
+  mediaRewindRuntimeUse,
+  muteRuntimeUse,
+  powerRuntimeUse,
+  sleepRuntimeUse,
+  volumeDownRuntimeUse,
+  volumeUpRuntimeUse,
+  wakeRuntimeUse,
   type PlatformRuntimeOperations,
 } from '@agent-device/contracts/platform-runtime-operations';
+import {
+  HARDWARE_BUTTON_NAMES,
+  parseHardwareButtonPositionals,
+} from '@agent-device/contracts/device';
 import type { SystemButton } from '@agent-device/contracts/system-button-runtime';
 import { deviceShape, type DeviceInfo } from '@agent-device/kernel/device';
 import { makeSession } from '../../__tests__/support/session-factories.ts';
@@ -29,9 +44,12 @@ import type {
 } from '../../core/request-runtime-binding.ts';
 import type { GenericPlatformExecutionParams } from '../../core/generic-leaf-execution.ts';
 import {
+  isSystemButtonRouteCommand,
+  resolveBoundHardwareButtonRuntime,
   resolveBoundSystemButtonRuntime,
   type SystemButtonCommand,
 } from '../system-button-runtime.ts';
+import { commandDescriptors } from '@agent-device/command-registry/registry';
 import {
   expectRefusesUnavailableExactOwnerFact,
   systemButtonCommands,
@@ -54,6 +72,14 @@ const iosSimulator = {
   platform: 'apple',
   appleOs: 'ios',
   kind: 'simulator',
+  target: 'mobile',
+  booted: true,
+} as const;
+const androidPhone = {
+  id: 'system-button-runtime-android-phone',
+  name: 'Pixel',
+  platform: 'android',
+  kind: 'emulator',
   target: 'mobile',
   booted: true,
 } as const;
@@ -87,6 +113,15 @@ const EXPECTED: Record<
 };
 
 test('the registry names exactly the commands the press route serves', () => {
+  // The denominator is the route's own predicate over the registry: the three argumentless
+  // presses plus the positional-selected `hardware-button`, so a press command joining (or
+  // leaving) the route without a row here or in the route set fails.
+  const routeCommands = commandDescriptors
+    .map((descriptor) => descriptor.name)
+    .filter(isSystemButtonRouteCommand);
+  expect([...routeCommands].sort()).toEqual([...Object.keys(EXPECTED), 'hardware-button'].sort());
+  // The conformance family stays the argumentless presses; hardware-button carries its own
+  // plan rows in the conformance table.
   expect([...systemButtonCommands].sort()).toEqual(Object.keys(EXPECTED).sort());
 });
 
@@ -107,18 +142,22 @@ function executionParams(
   };
 }
 
-function runtimeHarness(button: SystemButton, fact: RuntimeOperationFact = available) {
+function runtimeHarness(
+  button: SystemButton,
+  fact: RuntimeOperationFact = available,
+  device: DeviceInfo = iosSimulator,
+) {
   const press = vi.fn(async () => undefined);
   const facts: RuntimeFacts<PlatformRuntimeOperations> = {
-    device: { ...deviceShape(iosSimulator), providerMode: 'local' },
+    device: { ...deviceShape(device), providerMode: 'local' },
     operations: systemButtonRuntimeOperationFacts({
       unsupported: unavailable,
       [button]: fact,
     }) as RuntimeFacts<PlatformRuntimeOperations>['operations'],
   };
   const binding = {
-    device: iosSimulator,
-    owner: localRuntimeOwner('apple'),
+    device,
+    owner: localRuntimeOwner(device.platform),
     facts,
     operations: { [button]: press },
     [Symbol.asyncDispose]: async () => {},
@@ -204,4 +243,85 @@ test('request router joins home admission to execution, recording, and ref inval
   expect(harness.inspectFacts).toHaveBeenCalledTimes(1);
   expect(harness.bind).toHaveBeenCalledTimes(1);
   expect(harness.press).toHaveBeenCalledTimes(1);
+});
+
+// The hardware-button route selects exactly the named cell from the positional: one inspect, one
+// bind of that cell's use, one press, and a response that echoes the public button name. The use
+// is stated per name here, not read back from the row table, so a row that drifts fails (#3848).
+const HARDWARE_BUTTON_ROUTE_CASES = [
+  ['volume-up', volumeUpRuntimeUse],
+  ['volume-down', volumeDownRuntimeUse],
+  ['power', powerRuntimeUse],
+  ['mute', muteRuntimeUse],
+  ['sleep', sleepRuntimeUse],
+  ['wake', wakeRuntimeUse],
+  ['media-play-pause', mediaPlayPauseRuntimeUse],
+  ['media-next', mediaNextRuntimeUse],
+  ['media-previous', mediaPreviousRuntimeUse],
+  ['media-rewind', mediaRewindRuntimeUse],
+  ['media-fast-forward', mediaFastForwardRuntimeUse],
+] as const;
+
+test('the hardware-button route cases cover the whole command vocabulary', () => {
+  expect(HARDWARE_BUTTON_ROUTE_CASES.map(([name]) => name)).toEqual([...HARDWARE_BUTTON_NAMES]);
+});
+
+test.each(HARDWARE_BUTTON_ROUTE_CASES)(
+  'hardware-button %s binds its named cell and reports the public button name',
+  async (name, use) => {
+    const harness = runtimeHarness(parseHardwareButtonPositionals([name]), available, androidPhone);
+
+    const resolved = await resolveBoundHardwareButtonRuntime({
+      platformServices: daemonPlatformServicesFixture(),
+      device: androidPhone,
+      positionals: [name],
+      inspectFacts: harness.inspectFacts,
+      bindDevice: harness.bindDevice,
+    });
+
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(harness.inspectFacts).toHaveBeenCalledTimes(1);
+    expect(harness.bindDevice).toHaveBeenCalledWith(androidPhone, use);
+    const session = makeSession('system-button-runtime', { device: androidPhone });
+    expect(
+      await resolved.execute({
+        session,
+        sessionName: session.name,
+        logPath: '/tmp/daemon.log',
+        command: 'hardware-button',
+        request: {
+          command: 'hardware-button',
+          positionals: [name],
+          token: 't',
+          session: session.name,
+        },
+        positionals: [name],
+        out: undefined,
+        dispatchContext: {},
+      }),
+    ).toEqual({
+      action: 'hardware-button',
+      button: name,
+      message: `Pressed hardware button ${name}`,
+    });
+    expect(harness.press).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('hardware-button refuses an unknown or missing button before inspecting any device', async () => {
+  const harness = runtimeHarness('volumeUp');
+  for (const positionals of [[], ['vol'], ['volume-up', 'extra']] as const) {
+    await expect(
+      resolveBoundHardwareButtonRuntime({
+        platformServices: daemonPlatformServicesFixture(),
+        device: iosSimulator,
+        positionals,
+        inspectFacts: harness.inspectFacts,
+        bindDevice: harness.bindDevice,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_ARGS' });
+  }
+  expect(harness.inspectFacts).not.toHaveBeenCalled();
+  expect(harness.press).not.toHaveBeenCalled();
 });
