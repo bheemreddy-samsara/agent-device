@@ -48,11 +48,7 @@ const presentSurface = { kind: 'present', host: IOS_SYSTEM_SURFACE_HOSTS[0]! } a
 test('eligible simulator capture publishes bridge acquisition without touching XCTest', async () => {
   const acquired = bridgeAcquisition();
   const source = sourceReturning(acquired);
-  const presentIosAcquisition = vi.fn(async () => ({
-    backend: 'xctest' as const,
-    producer: 'simulator-ax-bridge' as const,
-    nodes: [{ index: 0, type: 'Application' }],
-  }));
+  const presentIosAcquisition = bridgePresenter();
   const fallback = vi.fn(async () => runnerResult());
   const route = createAppleSnapshotRoute(
     {
@@ -596,11 +592,7 @@ test('a slow app discovery yields to a live runner within its wait slice, then s
   const runCommand = vi.fn(async () => ({ stdout: 'start-a', stderr: '', exitCode: 0 }));
   const fallback = vi.fn(async () => runnerResult());
   const source = sourceReturning(bridgeAcquisition());
-  const presentIosAcquisition = vi.fn(async () => ({
-    backend: 'xctest' as const,
-    producer: 'simulator-ax-bridge' as const,
-    nodes: [{ index: 0, type: 'Application' }],
-  }));
+  const presentIosAcquisition = bridgePresenter();
   const baseHost = platformRuntimeHostFixture();
   const route = createAppleSnapshotRoute(
     {
@@ -662,11 +654,7 @@ test('an open waits out a slow app discovery, so the first capture after it star
   const runCommand = vi.fn(async () => ({ stdout: 'start-a', stderr: '', exitCode: 0 }));
   const fallback = vi.fn(async () => runnerResult());
   const source = sourceReturning(bridgeAcquisition());
-  const presentIosAcquisition = vi.fn(async () => ({
-    backend: 'xctest' as const,
-    producer: 'simulator-ax-bridge' as const,
-    nodes: [{ index: 0, type: 'Application' }],
-  }));
+  const presentIosAcquisition = bridgePresenter();
   const baseHost = platformRuntimeHostFixture();
   const route = createAppleSnapshotRoute(
     {
@@ -797,6 +785,14 @@ function sourceReturning(
   return { acquire: vi.fn(async () => outcome), close: vi.fn(async () => {}) };
 }
 
+function bridgePresenter() {
+  return vi.fn(async () => ({
+    backend: 'xctest' as const,
+    producer: 'simulator-ax-bridge' as const,
+    nodes: [{ index: 0, type: 'Application' }],
+  }));
+}
+
 function runnerResult() {
   return { backend: 'xctest' as const, producer: 'apple-runner' as const, nodes: [] };
 }
@@ -837,11 +833,7 @@ test('a slow app discovery keeps observation on the bridge while no runner can a
   const runCommand = vi.fn(async () => ({ stdout: 'start-a', stderr: '', exitCode: 0 }));
   const fallback = vi.fn(async () => runnerResult());
   const source = sourceReturning(bridgeAcquisition());
-  const presentIosAcquisition = vi.fn(async () => ({
-    backend: 'xctest' as const,
-    producer: 'simulator-ax-bridge' as const,
-    nodes: [{ index: 0, type: 'Application' }],
-  }));
+  const presentIosAcquisition = bridgePresenter();
   const hasLiveRunnerSession = vi.fn(async () => false);
   const baseHost = platformRuntimeHostFixture();
   const route = createAppleSnapshotRoute(
@@ -925,11 +917,7 @@ test.for(['rejects', 'exits'] as const)(
         },
         snapshot: {
           captureSurface: vi.fn(),
-          presentIosAcquisition: vi.fn(async () => ({
-            backend: 'xctest' as const,
-            producer: 'simulator-ax-bridge' as const,
-            nodes: [{ index: 0, type: 'Application' }],
-          })),
+          presentIosAcquisition: bridgePresenter(),
         },
       },
       {
