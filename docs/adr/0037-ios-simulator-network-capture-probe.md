@@ -10,13 +10,14 @@ Accepted (2026-10-23). Applies to iOS simulator app launches only.
    (built on demand, cached per content hash and toolchain) into the app process through
    `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`. Admission follows the owner that dispatches the open, not
    the device shape, and it happens before the lifecycle touches the device: `assertOpenAdmitted`
-   runs first in every `openApplication` entry, so an owner that cannot inject the probe is refused
-   with `UNSUPPORTED_OPERATION` and a typed `reason` before its relaunch close, runner stop, or
-   runtime-hint write — a refused open never kills a running app. Only the local Apple lifecycle on
-   an iOS simulator declares the capability, so a provider-backed iOS simulator (Limrun, TestMu)
-   refuses the flag instead of launching without capture. Every other platform and every URL open
-   refuse the flag. `--launch-console` admits the same way, and the same local-Simulator
-   declaration gates both.
+   runs first in every `openApplication` entry, enforcing both the owner capability and the
+   request shape of the launch-only options (the positional and URL-pair checks that need no
+   device), so an owner that cannot inject the probe, or a launch-only option on a request that
+   cannot carry one, is refused before its relaunch close, runner stop, or runtime-hint write — a
+   refused open never kills a running app. Only the local Apple lifecycle on an iOS simulator
+   declares the capability, so a provider-backed iOS simulator (Limrun, TestMu) refuses the flag
+   instead of launching without capture. Every other platform and every URL open refuse the flag.
+   `--launch-console` admits the same way, and the same local-Simulator declaration gates both.
 2. The probe method-swizzles `-[NSURLSessionTask resume]`, observes each task to completion, and
    appends one JSON line per completed HTTP(S) task to the file named by
    `AGENT_DEVICE_NETWORK_CAPTURE_PATH` — the session's `network.jsonl`, one per session, replaced on

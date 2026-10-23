@@ -37,7 +37,7 @@ const WEB_DEVICE: DeviceInfo = {
 
 function interactorWithOpen(
   open: Interactor['open'] = async () => undefined,
-  overrides: Partial<Pick<Interactor, 'close'>> = {},
+  overrides: Partial<Pick<Interactor, 'close' | 'setSetting'>> = {},
 ): Interactor {
   return {
     open,
@@ -155,6 +155,20 @@ test.each([
     message: /requires an app target, not a deep link/,
   },
   {
+    name: 'launch console with a deep-link app target',
+    device: IOS_SIMULATOR,
+    positionals: ['example://home'],
+    execution: { launchConsole: 'stdout' },
+    message: /direct app/i,
+  },
+  {
+    name: 'network capture with a deep-link app target',
+    device: IOS_SIMULATOR,
+    positionals: ['example://home'],
+    execution: { networkCapturePath: '/sessions/one/network.jsonl' },
+    message: /direct app launch/,
+  },
+  {
     name: 'network capture without an app',
     device: IOS_SIMULATOR,
     positionals: [],
@@ -249,6 +263,56 @@ for (const [name, execution, reason] of [
     expect((refusal as AppError).details?.reason).toBe(reason);
   });
 }
+
+test('a URL-pair relaunch carrying capture and clear-app-state is refused before any close', async () => {
+  // `open <bundle> <scheme://x> --relaunch --clear-app-state --capture-network`: the launch-only
+  // options cannot ride a URL pair, and admission answers that from positionals and execution
+  // alone — before the closeBeforeRelaunch owner closes the running app.
+  const calls: string[] = [];
+  const binding = bindLocalApplicationLifecycleInteractor({
+    device: IOS_SIMULATOR,
+    signal: new AbortController().signal,
+    resolveInteractor: async () =>
+      interactorWithOpen(
+        async () => {
+          calls.push('open');
+        },
+        {
+          close: async () => {
+            calls.push('close');
+          },
+          setSetting: async () => {
+            calls.push('setSetting');
+          },
+        },
+      ),
+  });
+  const lifecycle = bindDirectApplicationLifecycle({
+    binding,
+    owner: 'Local',
+    openTargetIdentity: 'bundle-id',
+    closeBeforeRelaunch: true,
+  });
+  const refusal = await lifecycle
+    .openApplication(
+      openInput({
+        relaunch: true,
+        positionals: ['com.example.app', 'example://deal'],
+        execution: {
+          clearAppState: true,
+          networkCapturePath: '/sessions/one/network.jsonl',
+        },
+      }),
+    )
+    .then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+  expect(refusal).toBeInstanceOf(AppError);
+  expect((refusal as AppError).code).toBe('INVALID_ARGS');
+  expect((refusal as AppError).message).toMatch(/direct app launch/);
+  expect(calls).toEqual([]);
+});
 
 test('passes the session capture file to the interactor on a capture launch', async () => {
   let seen: Parameters<Interactor['open']>[1];

@@ -150,17 +150,101 @@ const CAPTURE_NETWORK_UNADMITTED_MESSAGE =
   '--capture-network is supported only for a local iOS simulator app launch; this session owner cannot inject the capture probe';
 
 /**
- * One admission step for the launch-only open options, called by every `openApplication` entry
- * before the lifecycle touches the device. `--launch-console` and `--capture-network` need an owner
- * that declared it can read simctl's console PTY or inject the capture probe; every other owner —
- * any provider, any non-iOS-simulator device — is refused with `UNSUPPORTED_OPERATION` and a typed
- * reason before its relaunch close, runner stop, or runtime-hint write runs. This is the whole
- * admission rule for those options (ADR 0037): the canonical open keeps only positional, URL, and
- * argument-shape checks.
+ * The request-shape rule for the launch-only open options: what only `positionals` and `execution`
+ * can answer, checked once and enforced twice — by {@link assertOpenAdmitted} before the lifecycle
+ * touches the device, and by {@link invokeApplicationOpen} for its own folded and follow-up calls.
+ * One helper per positional shape: no app target, a URL pair, or a single deep-link app target.
+ * `--launch-console`, `--capture-network` and `--clear-app-state` act on the app the open launches,
+ * so they refuse every shape but a direct app target, before any close, clear, or launch runs.
+ */
+function assertOpenRequestShape(
+  positionals: readonly string[],
+  execution: ApplicationLifecycleExecution,
+): void {
+  if (positionals.length > 2) {
+    throw new AppError('INVALID_ARGS', 'open accepts at most two arguments: <app|url> [url]');
+  }
+  const app = positionals[0];
+  const url = positionals[1];
+  if (app === undefined) {
+    assertOpenDeviceOnlyRequest(execution);
+    return;
+  }
+  if (url !== undefined) {
+    assertOpenUrlPairRequest(app, url, execution);
+    return;
+  }
+  if (isDeepLinkTarget(app)) {
+    assertOpenDeepLinkAppRequest(execution);
+  }
+}
+
+function assertOpenDeviceOnlyRequest(execution: ApplicationLifecycleExecution): void {
+  if (execution.launchConsole) {
+    throw new AppError('INVALID_ARGS', '--launch-console requires an app target');
+  }
+  if (execution.networkCapturePath) {
+    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
+  }
+  if (execution.launchArgs && execution.launchArgs.length > 0) {
+    throw new AppError('INVALID_ARGS', '--launch-args requires an app target');
+  }
+}
+
+function assertOpenUrlPairRequest(
+  app: string,
+  url: string,
+  execution: ApplicationLifecycleExecution,
+): void {
+  if (isDeepLinkTarget(app)) {
+    throw new AppError(
+      'INVALID_ARGS',
+      'open <app> <url> requires an app target as the first argument',
+    );
+  }
+  if (!isDeepLinkTarget(url)) {
+    throw new AppError('INVALID_ARGS', 'open <app> <url> requires a valid URL target');
+  }
+  if (execution.launchConsole) {
+    throw new AppError('INVALID_ARGS', LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE);
+  }
+  if (execution.networkCapturePath) {
+    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
+  }
+}
+
+function assertOpenDeepLinkAppRequest(execution: ApplicationLifecycleExecution): void {
+  if (execution.launchConsole) {
+    throw new AppError('INVALID_ARGS', LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE);
+  }
+  if (execution.networkCapturePath) {
+    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
+  }
+  if (execution.clearAppState) {
+    throw new AppError(
+      'INVALID_ARGS',
+      'Clearing app state requires an app target, not a deep link.',
+    );
+  }
+}
+
+/**
+ * One admission step for the open command, called by every `openApplication` entry before the
+ * lifecycle touches the device. It enforces the owner capability and the request shape of the
+ * launch-only options: `--launch-console` and `--capture-network` need an owner that declared it
+ * can read simctl's console PTY or inject the capture probe, and every other owner — any provider,
+ * any non-iOS-simulator device — is refused with `UNSUPPORTED_OPERATION` and a typed reason; the
+ * positional and URL-pair checks in {@link assertOpenRequestShape} then refuse a launch-only option
+ * on a request that cannot carry one, with `INVALID_ARGS`. The owner answers first because where an
+ * option works at all is the more actionable refusal. So no refusal — of an owner that cannot honor
+ * an option or of a malformed launch-only request — ever follows a relaunch close, a runner stop,
+ * or a runtime-hint write (ADR 0037). The canonical open keeps the same shape rule for its own
+ * folded and follow-up dispatches, plus the one refusal that needs the platform itself.
  */
 export function assertOpenAdmitted(
   binding: Pick<ApplicationLifecycleInteractorBinding, 'device' | 'supportsLocalSimulatorLaunch'>,
   execution: ApplicationLifecycleExecution,
+  positionals: readonly string[],
 ): void {
   if (execution.launchConsole && !binding.supportsLocalSimulatorLaunch) {
     throw new AppError('UNSUPPORTED_OPERATION', LAUNCH_CONSOLE_UNADMITTED_MESSAGE, {
@@ -174,6 +258,7 @@ export function assertOpenAdmitted(
       deviceId: binding.device.id,
     });
   }
+  assertOpenRequestShape(positionals, execution);
 }
 
 /**
@@ -191,11 +276,11 @@ export async function invokeApplicationOpen(
   }>,
 ): Promise<ApplicationLaunchReport | void> {
   const { device, positionals, execution } = params;
-  assertOpenPositionals(positionals);
+  assertOpenRequestShape(positionals, execution);
   const app = positionals[0];
   const url = positionals[1];
   if (!app) {
-    await invokeDeviceOpen(params);
+    await params.interactor.openDevice();
     return;
   }
   assertOpenDeviceSupport(device, execution);
@@ -212,31 +297,12 @@ type DirectOpenParameters = Readonly<{
   terminateRunningApp?: boolean;
 }>;
 
-function assertOpenPositionals(positionals: readonly string[]): void {
-  if (positionals.length > 2) {
-    throw new AppError('INVALID_ARGS', 'open accepts at most two arguments: <app|url> [url]');
-  }
-}
-
-async function invokeDeviceOpen(params: DirectOpenParameters): Promise<void> {
-  if (params.execution.launchConsole) {
-    throw new AppError('INVALID_ARGS', '--launch-console requires an app target');
-  }
-  if (params.execution.networkCapturePath) {
-    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
-  }
-  if (params.execution.launchArgs && params.execution.launchArgs.length > 0) {
-    throw new AppError('INVALID_ARGS', '--launch-args requires an app target');
-  }
-  await params.interactor.openDevice();
-}
-
 function assertOpenDeviceSupport(
   device: DeviceInfo,
   execution: ApplicationLifecycleExecution,
 ): void {
-  // The launch-only options were admitted by owner before this point (assertOpenAdmitted); what
-  // remains here is what only the canonical open can see: the target shape of the request.
+  // The launch-only options were admitted by shape and by owner before this point
+  // (assertOpenAdmitted); what remains here is the one refusal that needs the platform itself.
   if (device.platform === 'linux' && execution.launchArgs && execution.launchArgs.length > 0) {
     throw new AppError('UNSUPPORTED_OPERATION', '--launch-args is not supported on Linux.');
   }
@@ -247,21 +313,6 @@ async function invokeApplicationUrlOpen(
   app: string,
   url: string,
 ): Promise<ApplicationLaunchReport | void> {
-  if (isDeepLinkTarget(app)) {
-    throw new AppError(
-      'INVALID_ARGS',
-      'open <app> <url> requires an app target as the first argument',
-    );
-  }
-  if (!isDeepLinkTarget(url)) {
-    throw new AppError('INVALID_ARGS', 'open <app> <url> requires a valid URL target');
-  }
-  if (params.execution.launchConsole) {
-    throw new AppError('INVALID_ARGS', LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE);
-  }
-  if (params.execution.networkCapturePath) {
-    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
-  }
   return await params.interactor.open(app, {
     activity: params.execution.activity,
     appBundleId: params.appBundleId,
@@ -276,16 +327,7 @@ async function invokeApplicationTargetOpen(
   app: string,
 ): Promise<ApplicationLaunchReport | void> {
   const { execution, interactor } = params;
-  if (execution.launchConsole && isDeepLinkTarget(app)) {
-    throw new AppError('INVALID_ARGS', LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE);
-  }
   if (execution.clearAppState) {
-    if (isDeepLinkTarget(app)) {
-      throw new AppError(
-        'INVALID_ARGS',
-        'Clearing app state requires an app target, not a deep link.',
-      );
-    }
     await interactor.setSetting('clear-app-state', 'clear', app);
   }
   return await interactor.open(app, {
@@ -355,7 +397,7 @@ async function openDirectApplication(
   input: OpenApplicationInput,
 ): Promise<OpenApplicationOutcome> {
   const { binding } = params;
-  assertOpenAdmitted(binding, input.execution);
+  assertOpenAdmitted(binding, input.execution, input.positionals);
   const interactor = await binding.resolveInteractor(input.execution, input.appBundleId);
   if (params.closeBeforeRelaunch && input.relaunch && input.target !== undefined) {
     await invokeApplicationClose({

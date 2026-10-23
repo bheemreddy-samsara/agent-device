@@ -109,7 +109,7 @@ async function openAndroidApplication(
   input: OpenApplicationInput,
 ): Promise<OpenApplicationOutcome> {
   const timing: MutableOpenTiming = {};
-  assertOpenAdmitted(binding, input.execution);
+  assertOpenAdmitted(binding, input.execution, input.positionals);
   const relaunching = input.relaunch && Boolean(input.target);
   const relaunchOwner = relaunching ? input.appBundleId : undefined;
   if (relaunchOwner) {

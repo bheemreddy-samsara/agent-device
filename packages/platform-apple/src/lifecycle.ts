@@ -123,7 +123,7 @@ async function openAppleApplication(
   observation: LaunchObservationPort | undefined,
 ): Promise<OpenApplicationOutcome> {
   const timing: MutableOpenTiming = {};
-  assertOpenAdmitted(binding, input.execution);
+  assertOpenAdmitted(binding, input.execution, input.positionals);
   const localIosSimulator = isIosSimulator(binding.device);
   const runner = createRunnerPrewarm(host, binding, input, timing);
   const policy = resolveRunnerPrewarmPolicy(binding.device, input, localIosSimulator);
