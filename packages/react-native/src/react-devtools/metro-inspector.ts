@@ -24,16 +24,24 @@ export function targetAppId(target: MetroInspectorTarget): string {
   return target.appId ?? target.description ?? target.title;
 }
 
-export async function listMetroInspectorTargets(serverUrl: URL): Promise<MetroInspectorTarget[]> {
+export async function listMetroInspectorTargets(
+  serverUrl: URL,
+  signal?: AbortSignal,
+): Promise<MetroInspectorTarget[]> {
   const listUrl = new URL('json/list', withTrailingSlash(serverUrl));
   let response: Response;
   try {
-    response = await fetch(listUrl, { signal: AbortSignal.timeout(TARGET_LIST_TIMEOUT_MS) });
+    response = await fetch(listUrl, {
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(TARGET_LIST_TIMEOUT_MS)])
+        : AbortSignal.timeout(TARGET_LIST_TIMEOUT_MS),
+    });
   } catch (error) {
     throw new AppError(
       'COMMAND_FAILED',
       `Could not reach the React Native dev server at ${serverUrl.origin}.`,
       {
+        reason: 'metro-server-unreachable',
         hint: 'Start Metro (or Expo/Re.Pack) for the app, or pass --metro-port/--metro-host when it does not run on localhost:8081.',
       },
       error,
@@ -86,6 +94,17 @@ export type RuntimeTargetFilter = {
   appId?: string;
   /** Device name or logical device id, as the dev server reports it. */
   device?: string;
+  /**
+   * Names the caller's own device answers to (display name, serial, UDID). When none of the
+   * candidates reports any of them, the filter's outcome depends on `requireDeviceMatch`.
+   */
+  deviceAliases?: readonly string[];
+  /**
+   * Refuse candidates whose reported device matches none of `deviceAliases`. Set it where the
+   * runtime copies the OS device name faithfully; leave it unset where the mapping is not proven,
+   * so a name mismatch alone does not disable the capture.
+   */
+  requireDeviceMatch?: boolean;
 };
 
 function isAppRuntime(target: MetroInspectorTarget): boolean {
@@ -148,17 +167,51 @@ function deviceSelectors(devices: MetroInspectorTarget[]): string[] {
   );
 }
 
+/** Names the target reports for its device: display name and logical device id. */
+function targetDeviceNames(target: MetroInspectorTarget): string[] {
+  return [target.deviceName, deviceKey(target)].filter((name): name is string => Boolean(name));
+}
+
 /**
  * Picks the one React Native runtime to profile. Pages without the `reactNative` field are not app
  * runtimes, and worklet runtimes render no React tree. Several apps or several devices fail
- * closed: the caller must narrow to exactly one runtime.
+ * closed: the caller must narrow to exactly one runtime. When `deviceAliases` name the caller's
+ * own device, candidates that positively match one are the only candidates considered next; when
+ * none matches and `requireDeviceMatch` is set, selection fails closed instead of profiling a
+ * runtime that may belong to another device.
  */
 export function selectReactNativeTarget(
   targets: MetroInspectorTarget[],
   filter: RuntimeTargetFilter = {},
 ): MetroInspectorTarget {
   const runtimes = targets.filter(isAppRuntime);
-  const candidates = runtimes.filter((target) => matchesFilter(target, filter));
+  let candidates = runtimes.filter((target) => matchesFilter(target, filter));
+  if (filter.deviceAliases !== undefined && candidates.length > 0) {
+    const aliases = new Set(filter.deviceAliases.filter(Boolean));
+    const identified = candidates.filter((target) => targetDeviceNames(target).length > 0);
+    // Targets that report no device identity cannot be distinguished; the several-devices guard
+    // below still fails a multi-device Metro closed, and a lone candidate keeps its app-id match.
+    if (identified.length > 0) {
+      const owned = identified.filter((target) =>
+        targetDeviceNames(target).some((name) => aliases.has(name)),
+      );
+      if (owned.length > 0) {
+        candidates = owned;
+      } else if (filter.requireDeviceMatch) {
+        throw new AppError(
+          'COMMAND_FAILED',
+          "No React Native runtime connected to the dev server reports this session's device.",
+          { reason: 'metro-device-mismatch' },
+        );
+      }
+    } else if (filter.requireDeviceMatch) {
+      throw new AppError(
+        'COMMAND_FAILED',
+        'No React Native runtime connected to the dev server reports its device.',
+        { reason: 'metro-device-mismatch' },
+      );
+    }
+  }
   if (candidates.length === 0) throw noMatchingRuntime(runtimes, filter);
   const apps = new Set(candidates.map(targetAppId));
   if (apps.size > 1) {
@@ -211,12 +264,20 @@ export class InspectorSession {
     });
   }
 
-  static async connect(webSocketDebuggerUrl: string): Promise<InspectorSession> {
+  static async connect(
+    webSocketDebuggerUrl: string,
+    signal?: AbortSignal,
+  ): Promise<InspectorSession> {
+    signal?.throwIfAborted();
     const url = new URL(webSocketDebuggerUrl);
     // Metro refuses debugger upgrades without a loopback Origin, and Expo's dev server terminates
     // any whose Origin host differs from its own 127.0.0.1:<port> base URL.
     const origin = `http://127.0.0.1:${url.port || (url.protocol === 'wss:' ? '443' : '80')}`;
     const socket = new WebSocketWithHeaders(url, { headers: { origin } });
+    // A caller budget must end this connection, not merely stop waiting on it: an aborted signal
+    // closes the socket, so no CDP session outlives the request that opened it.
+    const closeOnAbort = () => socket.close();
+    signal?.addEventListener('abort', closeOnAbort, { once: true });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         socket.close();
@@ -243,6 +304,17 @@ export class InspectorSession {
         },
         { once: true },
       );
+      signal?.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer);
+          reject(new AppError('COMMAND_FAILED', 'Network capture was cancelled.'));
+        },
+        { once: true },
+      );
+    }).catch((error: unknown) => {
+      signal?.removeEventListener('abort', closeOnAbort);
+      throw error;
     });
     return new InspectorSession(socket);
   }

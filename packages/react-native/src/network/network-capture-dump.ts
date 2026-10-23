@@ -29,6 +29,10 @@ export type ReactNativeNetworkDumpInput = Readonly<{
   maxEntries: number;
   include: NetworkIncludeMode;
   maxPayloadChars: number;
+  /** Names the session device answers to; see `NetworkTransportScope.deviceAliases`. */
+  deviceAliases?: readonly string[];
+  /** Refuse candidates matching none of `deviceAliases` instead of falling back. */
+  requireDeviceMatch?: boolean;
 }>;
 
 function runtimeCall(
@@ -92,10 +96,18 @@ export async function dumpReactNativeAppNetwork(
     );
   }
   const serverUrl = resolveSessionMetroServerUrl(scope);
-  const target = selectReactNativeTarget(await listMetroInspectorTargets(serverUrl), {
+  const target = selectReactNativeTarget(await listMetroInspectorTargets(serverUrl, signal), {
     appId: input.appBundleId,
+    ...(input.deviceAliases === undefined
+      ? {}
+      : {
+          deviceAliases: input.deviceAliases,
+          ...(input.requireDeviceMatch === undefined
+            ? {}
+            : { requireDeviceMatch: input.requireDeviceMatch }),
+        }),
   });
-  const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, target));
+  const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, target), signal);
   try {
     // The installing dump's payload budget becomes the in-app body cap, so the app-side copy is
     // never larger than what the host would report anyway.

@@ -42,6 +42,10 @@ export async function resolveReactNativeNetworkTransport(
           maxEntries: input.maxEntries,
           include: input.include,
           maxPayloadChars,
+          ...(scope.deviceAliases === undefined ? {} : { deviceAliases: scope.deviceAliases }),
+          ...(scope.requireDeviceMatch === undefined
+            ? {}
+            : { requireDeviceMatch: scope.requireDeviceMatch }),
         },
         signal,
       ),

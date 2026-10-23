@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { redactDiagnosticData, redactNetworkHeaders, redactNetworkPayload } from './redaction.ts';
+import { redactDiagnosticData, redactNetworkPayload } from './redaction.ts';
 
 test('stderr retains nested command failure details beyond 400 characters', () => {
   const stderr = `Launch request denied\n${'Context line\n'.repeat(50)}Underlying reason: device locked`;
@@ -84,7 +84,7 @@ test('a network payload truncation stays inside its budget', () => {
 
 test('a header with a sensitive name is replaced and its peers keep their text', () => {
   assert.deepEqual(
-    redactNetworkHeaders({ authorization: 'Bearer abc123', 'x-request-id': 'r-1' }),
+    redactDiagnosticData({ authorization: 'Bearer abc123', 'x-request-id': 'r-1' }),
     {
       authorization: '[REDACTED]',
       'x-request-id': 'r-1',

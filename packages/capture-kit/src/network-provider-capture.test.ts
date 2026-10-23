@@ -74,7 +74,26 @@ test('the provider result is handed back with the session scope the transport ne
     stateDir: '/tmp/state',
     appBundleId: 'com.example.app',
     maxPayloadChars: 2048,
+    deviceAliases: ['Device', 'device-1'],
+    requireDeviceMatch: true,
   });
+});
+
+test('a session without an app id never probes a provider: injection needs a named app', async () => {
+  const fixture = hostWith({
+    mode: 'transport-composed',
+    dump: async () => ({ backend: 'x', entries: [] }),
+  });
+
+  const capture = await captureNetworkProviderTraffic(
+    fixture.host,
+    device,
+    { ...input, appBundleId: undefined },
+    new AbortController().signal,
+  );
+
+  assert.deepEqual(capture, { status: 'unavailable', notes: [] });
+  assert.equal(fixture.scopes.length, 0);
 });
 
 test('a provider that only armed its capture reports armed so the caller keeps its own source', async () => {

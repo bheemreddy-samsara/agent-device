@@ -89,6 +89,38 @@ test('the dump that only arms the in-app capture still reports the app log windo
   expect(result.notes).toContain(armingNote);
 });
 
+test('an armed provider over an inactive log stream keeps the lifecycle guidance beside the arming note', async () => {
+  const result = await dumpAndroidNetworkTraffic(
+    host({
+      marker: { status: 'missing' },
+      command: () => {
+        throw new Error('an in-app capture answer must not run adb');
+      },
+      appLogText: '',
+      logcat: '',
+      transport: {
+        mode: 'transport-composed',
+        dump: async () => ({
+          backend: 'react-native-app',
+          entries: [],
+          armed: true,
+          notes: ['In-app network capture was installed by this dump.'],
+        }),
+      },
+    }),
+    device,
+    input({ appLogSnapshot: { state: 'ended', startedAt: 1 } }),
+    new AbortController().signal,
+  );
+
+  if (result.source !== 'app-log') throw new Error('expected app-log result');
+  const inactiveIndex = result.notes!.findIndex((note) => note.includes('inactive'));
+  const armingIndex = result.notes!.findIndex((note) => note.includes('installed by this dump'));
+  expect(inactiveIndex).toBeGreaterThanOrEqual(0);
+  expect(armingIndex).toBeGreaterThanOrEqual(0);
+  expect(inactiveIndex).toBeLessThan(armingIndex);
+});
+
 test('an in-app capture that cannot answer falls back to the app log with its reason', async () => {
   const result = await dumpAndroidNetworkTraffic(
     host({

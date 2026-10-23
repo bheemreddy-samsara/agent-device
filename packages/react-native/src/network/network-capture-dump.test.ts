@@ -152,6 +152,44 @@ test('a failed request is reported with its error instead of a status', async ()
   expect(result.entries[0]?.status).toBeUndefined();
 });
 
+test('a failed fetch releases its claim so a later XHR to the same URL still records', async () => {
+  await dump();
+  await server.app.request('https://api.example.test/down', { reject: 'Network request failed' });
+  await server.app.xhrRequest('https://api.example.test/down');
+
+  const result = await dump({ include: 'summary' });
+
+  const transports = result.entries.map((entry) => entry.metadata?.transport);
+  expect(transports).toEqual(['xhr', 'fetch']);
+  const xhrEntry = result.entries.find((entry) => entry.metadata?.transport === 'xhr');
+  expect(xhrEntry?.url).toBe('https://api.example.test/down');
+});
+
+test('a fetch polyfilled on XMLHttpRequest records exactly one entry per request', async () => {
+  await dump();
+  await server.app.request('https://api.example.test/json', { status: 200, body: '{}' });
+
+  const result = await dump();
+
+  expect(result.entries).toHaveLength(1);
+  expect(result.entries[0]?.metadata?.transport).toBe('fetch');
+});
+
+test('an XHR the app performs directly records with its own transport', async () => {
+  await dump();
+  await server.app.xhrRequest('https://api.example.test/poll');
+
+  const result = await dump();
+
+  expect(result.entries).toHaveLength(1);
+  expect(result.entries[0]).toMatchObject({
+    method: 'GET',
+    url: 'https://api.example.test/poll',
+    status: 200,
+  });
+  expect(result.entries[0]?.metadata?.transport).toBe('xhr');
+});
+
 test('a second connected device fails closed instead of guessing a runtime', async () => {
   await server.close();
   server = await fakeMetroDevServer({ devices: 2 });
@@ -161,6 +199,39 @@ test('a second connected device fails closed instead of guessing a runtime', asy
     code: 'INVALID_ARGS',
     details: { hint: expect.stringContaining('--metro-device') },
   });
+});
+
+test('a session device no runtime reports fails closed instead of hooking another device', async () => {
+  // The fake server's runtimes name `Fake Device 1/2`; this session's device answers to neither,
+  // so the provider must refuse to inject anywhere rather than read a stranger's traffic.
+  await expect(
+    dumpReactNativeAppNetwork({
+      stateDir,
+      session: 'repro',
+      appBundleId: 'com.example.app',
+      maxEntries: 25,
+      include: 'summary',
+      maxPayloadChars: 2048,
+      deviceAliases: ['rn-net ios', 'com.apple.CoreSimulator.42'],
+      requireDeviceMatch: true,
+    }),
+  ).rejects.toMatchObject({
+    details: { reason: 'metro-device-mismatch' },
+  });
+});
+
+test('a runtime reporting the session device is hooked even among other devices', async () => {
+  const result = await dumpReactNativeAppNetwork({
+    stateDir,
+    session: 'repro',
+    appBundleId: 'com.example.app',
+    maxEntries: 25,
+    include: 'summary',
+    maxPayloadChars: 2048,
+    deviceAliases: ['Fake Device 1'],
+    requireDeviceMatch: true,
+  });
+  expect(result.armed).toBe(true);
 });
 
 test('a session without a Metro binding or an unreachable dev server fails with a typed reason', async () => {
@@ -177,5 +248,7 @@ test('a session without a Metro binding or an unreachable dev server fails with 
   await server.close();
   server = await fakeMetroDevServer();
   writeMetroHints(stateDir, 'repro', 'http://127.0.0.1:1/');
-  await expect(dump()).rejects.toThrow(/Could not reach the React Native dev server/);
+  await expect(dump()).rejects.toMatchObject({
+    details: { reason: 'metro-server-unreachable' },
+  });
 });

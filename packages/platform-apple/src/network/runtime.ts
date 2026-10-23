@@ -27,7 +27,9 @@ export async function dumpAppleNetworkTraffic(
   }
   const fallback = await scanNetworkAppLogFallback(host, input, backend);
   let scan = fallback.scan;
-  const notes: string[] = [...provider.notes];
+  // Lifecycle and scan notes describe the app-log source alone; provider notes join last, so an
+  // arming or unavailable note never hides the inactive-stream guidance.
+  const notes: string[] = [];
   if (canRecoverSimulator(device, input, scan.dump)) {
     const recovery = await recoverSimulatorTraffic(
       host,
@@ -41,6 +43,7 @@ export async function dumpAppleNetworkTraffic(
   appendLifecycleNote(notes, device, input);
   appendUnnamedRequestNote(notes, scan.dump);
   if (scan.dump.entries.length === 0) notes.push(noEntriesNote(device));
+  notes.push(...provider.notes);
   return Object.freeze({
     source: 'app-log',
     backend,

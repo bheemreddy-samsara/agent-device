@@ -1,6 +1,6 @@
 import type { NetworkIncludeMode } from '@agent-device/kernel/contracts';
 import type { NetworkProviderEntry } from '@agent-device/contracts/network-runtime';
-import { redactNetworkHeaders, redactNetworkPayload } from '@agent-device/kernel/redaction';
+import { redactDiagnosticData, redactNetworkPayload } from '@agent-device/kernel/redaction';
 import { NETWORK_CAPTURE_MAX_ENTRIES } from './network-capture-runtime.ts';
 
 function readString(value: unknown): string | undefined {
@@ -17,7 +17,9 @@ function readHeaders(value: unknown): Record<string, string> | undefined {
   for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
     if (typeof entry === 'string') headers[name] = entry;
   }
-  return Object.keys(headers).length > 0 ? redactNetworkHeaders(headers) : undefined;
+  return Object.keys(headers).length > 0
+    ? (redactDiagnosticData(headers) as Record<string, string>)
+    : undefined;
 }
 
 /** Metadata a drained entry earns beyond its request fields: the transport it ran on, its error. */

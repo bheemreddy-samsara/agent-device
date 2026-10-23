@@ -89,14 +89,84 @@ const APP_RUNTIME_SOURCE = `
   var Body = function (text) { this.text = function () { return Promise.resolve(text); }; };
   Body.prototype.clone = function () { return this; };
   globalThis.__pending = {};
-  globalThis.fetch = function (url) {
-    var spec = globalThis.__pending[url];
-    if (spec.reject) return Promise.reject(new Error(spec.reject));
-    return Promise.resolve({
-      status: spec.status,
-      url: url,
-      headers: new Headers(spec.responseHeaders),
-      clone: function () { return new Body(spec.body); }
+
+  // An XMLHttpRequest with the real surface the capture instruments: readyState transitions,
+  // readystatechange/load/error events, setRequestHeader accumulation, and getAllResponseHeaders.
+  var XHR = function () {
+    this.readyState = 0;
+    this.status = 0;
+    this.responseText = '';
+    this.responseType = '';
+    this._listeners = {};
+    this._headers = {};
+  };
+  XHR.prototype.addEventListener = function (type, fn) {
+    (this._listeners[type] = this._listeners[type] || []).push(fn);
+  };
+  XHR.prototype._emit = function (type) {
+    var listeners = this._listeners[type] || [];
+    for (var i = 0; i < listeners.length; i += 1) listeners[i].call(this);
+  };
+  XHR.prototype.open = function (method, url) {
+    this._method = method;
+    this._url = url;
+    this.readyState = 1;
+  };
+  XHR.prototype.setRequestHeader = function (name, value) {
+    this._headers[name] = value;
+  };
+  XHR.prototype.getAllResponseHeaders = function () {
+    var spec = globalThis.__pending[this._url] || {};
+    var lines = Object.keys(spec.responseHeaders || {}).map(function (name) {
+      return name + ': ' + spec.responseHeaders[name];
+    });
+    return lines.length ? lines.join('\\n') + '\\n' : '';
+  };
+  XHR.prototype.send = function () {
+    var xhr = this;
+    var spec = globalThis.__pending[xhr._url] || {};
+    Promise.resolve().then(function () {
+      if (spec.reject) {
+        xhr.__failed = spec.reject;
+        xhr.readyState = 4;
+        xhr._emit('readystatechange');
+        xhr._emit('error');
+        return;
+      }
+      xhr.status = spec.status;
+      xhr.responseText = spec.body || '';
+      xhr.readyState = 4;
+      xhr._emit('readystatechange');
+      xhr._emit('load');
+    });
+  };
+  globalThis.XMLHttpRequest = XHR;
+
+  // fetch polyfilled on XMLHttpRequest, the way whatwg-fetch does it: open, headers, and send
+  // all run synchronously inside the call, and the promise settles on readystatechange.
+  globalThis.fetch = function (url, init) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open((init && init.method) || 'GET', url);
+      var headers = (init && init.headers) || {};
+      Object.keys(headers).forEach(function (name) {
+        xhr.setRequestHeader(name, headers[name]);
+      });
+      xhr.addEventListener('readystatechange', function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.__failed) {
+          reject(new Error(xhr.__failed));
+          return;
+        }
+        var spec = globalThis.__pending[url] || {};
+        resolve({
+          status: xhr.status,
+          url: url,
+          headers: new Headers(spec.responseHeaders),
+          clone: function () { return new Body(xhr.responseText); }
+        });
+      });
+      xhr.send(init && init.body);
     });
   };
   globalThis.__settled = Promise.resolve('idle');
@@ -105,7 +175,19 @@ const APP_RUNTIME_SOURCE = `
     globalThis.__settled = promise.then(function () { return 'ok'; }, function () { return 'error'; });
     return promise;
   };
+  globalThis.__xhr = function (url) {
+    var request = new XMLHttpRequest();
+    request.open('GET', url);
+    request.send();
+    globalThis.__settled = new Promise(function (resolve) {
+      request.addEventListener('readystatechange', function () {
+        if (request.readyState === 4) resolve(request.status ? 'ok' : 'error');
+      });
+    });
+  };
 `;
+
+const DEFAULT_XHR_RESPONSE: FakeAppResponse = { status: 200, body: 'xhr-ok' };
 
 /** A scripted response the fake app can request. */
 export type FakeAppResponse = {
@@ -119,6 +201,8 @@ export type FakeAppResponse = {
 export type FakeAppRuntime = Readonly<{
   /** The app issues its own request for a scripted response and lets it finish. */
   request(url: string, response: FakeAppResponse, options?: unknown): Promise<void>;
+  /** The app performs a direct XMLHttpRequest GET and lets it finish. */
+  xhrRequest(url: string): Promise<void>;
   evaluate<T>(expression: string): Promise<T>;
 }>;
 
@@ -127,6 +211,7 @@ export type FakeMetroDevServer = Readonly<{
   app: FakeAppRuntime;
   /** Inspector targets the dev server lists; a second entry is a second connected device. */
   targets: string[];
+  deviceNameFor(page: number): string;
   close(): Promise<void>;
 }>;
 
@@ -216,6 +301,7 @@ export async function fakeMetroDevServer(
     serverUrl: `http://127.0.0.1:${port}`,
     app,
     targets: Array.from({ length: devices }, (_, page) => `device-1-${page + 1}`),
+    deviceNameFor: (page) => `Fake Device ${page}`,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       server.close();
@@ -259,6 +345,16 @@ class FakeAppRuntimeState implements FakeAppRuntime {
       `globalThis.__pending[${JSON.stringify(url)}] = ${JSON.stringify(response)};
        globalThis.__settled = Promise.resolve('pending');
        globalThis.__request(${JSON.stringify(url)}, ${JSON.stringify(options ?? null)});`,
+      this.#context,
+    );
+    await this.evaluate<string>('globalThis.__settled');
+  }
+
+  async xhrRequest(url: string): Promise<void> {
+    vm.runInContext(
+      `globalThis.__pending[${JSON.stringify(url)}] = globalThis.__pending[${JSON.stringify(url)}] || ${JSON.stringify(DEFAULT_XHR_RESPONSE)};
+       globalThis.__settled = Promise.resolve('pending');
+       globalThis.__xhr(${JSON.stringify(url)});`,
       this.#context,
     );
     await this.evaluate<string>('globalThis.__settled');

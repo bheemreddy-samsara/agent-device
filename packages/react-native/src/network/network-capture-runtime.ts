@@ -35,8 +35,9 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
   var patchedXhr = false;
   var fetchInFlight = {};
 
-  // whatwg-fetch polyfills fetch on top of XMLHttpRequest; a request already claimed by an
-  // in-flight fetch URL must not also record that transport's own XHR.
+  // whatwg-fetch polyfills fetch on top of XMLHttpRequest. While a wrapped fetch() call runs
+  // synchronously, its URL is claimed; an XHR send inside that window belongs to that fetch and
+  // must not record a second entry. The window closes when fetch() returns.
   function claimFetch(url) {
     fetchInFlight[url] = (fetchInFlight[url] || 0) + 1;
     return function () {
@@ -149,10 +150,14 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
         });
         throw e;
       }
+      // The claim spans only this synchronous call: a fetch polyfilled on XHR builds and sends
+      // its request here, so the XHR sees the claim; a real async fetch never touches
+      // XMLHttpRequest during this window, and later XHRs to the same URL stay their own entry
+      // even while this request is in flight or after it fails.
+      release();
       if (!promise || typeof promise.then !== 'function') return promise;
       return promise.then(
         function (response) {
-          release();
           var entry = {
             timestamp: began,
             method: method,
@@ -168,19 +173,19 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
           try { contentType = response && response.headers && response.headers.get('content-type'); } catch (e) {}
           var clone = response && typeof response.clone === 'function' ? response.clone() : undefined;
           if (clone && typeof clone.text === 'function' && !isBinaryContentType(contentType)) {
-            // Record only after the body settles: a drain between the response and its body
-            // would otherwise hand the host an entry it could still complete in the app.
-            return clone.text().then(
+            // Record in a detached chain: the app receives its response at once, and the entry
+            // joins the buffer when the body read settles. A drain in that window reports the
+            // request without its body instead of delaying the app for the whole read.
+            clone.text().then(
               function (text) {
                 entry.responseBody = cap(text);
                 record(entry);
-                return response;
               },
               function () {
                 record(entry);
-                return response;
               }
             );
+            return response;
           }
           record(entry);
           return response;

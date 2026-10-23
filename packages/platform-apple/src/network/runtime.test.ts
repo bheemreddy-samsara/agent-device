@@ -90,6 +90,40 @@ test('the dump that only arms the in-app capture still reports the app log windo
   expect(result.notes).toContain(armingNote);
 });
 
+test('an armed provider over an inactive log stream keeps the lifecycle guidance beside the arming note', async () => {
+  const result = await dumpAppleNetworkTraffic(
+    host({
+      text: '',
+      runSimctl: vi.fn(async () => ({ stdout: '', stderr: '', exitCode: 0 })),
+      transport: {
+        mode: 'transport-composed',
+        dump: async () => ({
+          backend: 'react-native-app',
+          entries: [],
+          armed: true,
+          notes: ['In-app network capture was installed by this dump.'],
+        }),
+      },
+    }),
+    simulator,
+    input({ appLogSnapshot: { state: 'ended', startedAt: 1_000 } }),
+    new AbortController().signal,
+  );
+
+  if (result.source !== 'app-log') throw new Error('expected app-log result');
+  expect(result.notes).toContainEqual(
+    expect.stringContaining('Session app log stream is inactive'),
+  );
+  expect(result.notes).toContainEqual(
+    expect.stringContaining('In-app network capture was installed by this dump'),
+  );
+  expect(
+    result.notes!.indexOf(result.notes!.find((note) => note.includes('inactive'))!),
+  ).toBeLessThan(
+    result.notes!.indexOf(result.notes!.find((note) => note.includes('installed by this dump'))!),
+  );
+});
+
 test('an in-app capture that cannot answer falls back to the app log with its reason', async () => {
   const result = await dumpAppleNetworkTraffic(
     host({

@@ -24,13 +24,23 @@ export async function dumpAndroidNetworkTraffic(
   input: NetworkDumpInput,
   signal: AbortSignal,
 ): Promise<NetworkDumpResult> {
-  const provider = await captureNetworkProviderTraffic(host, device, input, signal);
+  // The dev server reports a runtime's device as `Build.MODEL`; the session device carries that
+  // same model from the inventory probe, so it joins the aliases the provider may hook.
+  const provider = await captureNetworkProviderTraffic(
+    host,
+    device,
+    input,
+    signal,
+    device.model === undefined ? {} : { extraDeviceAliases: [device.model] },
+  );
   if (provider.status === 'captured') {
     return Object.freeze({ source: 'provider', ...provider.result });
   }
   const fallback = await scanNetworkAppLogFallback(host, input, 'android');
   let scan = fallback.scan;
-  const notes: string[] = [...provider.notes];
+  // Lifecycle and scan notes describe the app-log source alone; provider notes join last, so an
+  // arming or unavailable note never hides the inactive-stream guidance.
+  const notes: string[] = [];
   const context = await recoveryContext(host, device, input, signal);
   if (context && input.appBundleId) {
     assertAndroidLogPackageSafe(input.appBundleId);
@@ -52,6 +62,7 @@ export async function dumpAndroidNetworkTraffic(
   if (scan.dump.entries.length === 0) {
     notes.push('No HTTP(s) entries were found in recent session app logs.');
   }
+  notes.push(...provider.notes);
   return Object.freeze({
     source: 'app-log',
     backend: 'android',

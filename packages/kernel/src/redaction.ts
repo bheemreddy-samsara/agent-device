@@ -22,9 +22,9 @@ export function redactDiagnosticData<T>(input: T): T {
 }
 
 /**
- * Redacts one captured network payload (a header value or a request/response body) with the same
- * secret rules diagnostics use, then bounds it to `maxLength` characters. Captured HTTP payloads
- * carry their own agreed budget, so this bound replaces the shorter diagnostic string bound.
+ * Redacts one captured network payload (a body) with the same secret rules diagnostics use, then
+ * bounds it to `maxLength` characters. Captured HTTP payloads carry their own agreed budget, so
+ * this bound replaces the shorter diagnostic string bound.
  */
 export function redactNetworkPayload(value: string, maxLength: number): string {
   const redacted = maskSecrets(value);
@@ -39,18 +39,6 @@ export function redactNetworkPayload(value: string, maxLength: number): string {
  * sensitive (authorization, cookie, an API key, a token) is replaced entirely; every other value
  * keeps its text with secrets masked.
  */
-export function redactNetworkHeaders(
-  headers: Readonly<Record<string, string>>,
-): Readonly<Record<string, string>> {
-  const output: Record<string, string> = {};
-  for (const [name, value] of Object.entries(headers)) {
-    output[name] = SENSITIVE_KEY_RE.test(name)
-      ? '[REDACTED]'
-      : redactNetworkPayload(value, REDACTED_STRING_MAX_LENGTH);
-  }
-  return output;
-}
-
 /** Sanitizes an untrusted structured cause before it crosses a process or client boundary. */
 export function sanitizeErrorCause(cause: unknown): { message: string; code?: string } | undefined {
   if (!cause || typeof cause !== 'object') return undefined;
@@ -110,16 +98,6 @@ function maskSecrets(value: string, keyHint?: string): string {
   output = output.replace(
     SENSITIVE_ASSIGNMENT_RE,
     (match, key: string, separator: string, rawValue: string, offset: number, input: string) => {
-      // Only the exact JSON form (`"key":` with the key closing its quote before the separator) is
-      // the JSON rule's job; a quote merely in front of the key (`'api_key=value'`) is a shell-like
-      // assignment this rule has always masked.
-      const before = input[offset - 1];
-      if (
-        (before === '"' || before === "'") &&
-        /^["']\s*[=:]/.test(input.slice(offset + key.length))
-      ) {
-        return match;
-      }
       if (isSafeSetupUrlAssignment({ key, separator, rawValue, offset, input })) return match;
       if (isDocumentedTokenPlaceholder(rawValue)) return match;
       return `${key}${separator}[REDACTED]`;

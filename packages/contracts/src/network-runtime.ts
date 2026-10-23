@@ -77,6 +77,18 @@ export type NetworkTransportScope = Readonly<{
   appBundleId?: string;
   /** Payload budget the dump will apply; a transport may pre-bound what it reads with it. */
   maxPayloadChars?: number;
+  /**
+   * Names the session device answers to (display name, id). A provider dump hooks only a runtime
+   * whose reported device matches one of them; a runtime naming another device is not this
+   * session's app and fails the provider closed instead of being read.
+   */
+  deviceAliases?: readonly string[];
+  /**
+   * Refuse every candidate that matches none of `deviceAliases` instead of falling back to the
+   * undistinguished set. Set it where the runtime copies the OS device name faithfully (Apple);
+   * leave it unset where the dev server's name is not proven to equal the session's own.
+   */
+  requireDeviceMatch?: boolean;
 }>;
 
 export type NetworkTransport = Readonly<{
