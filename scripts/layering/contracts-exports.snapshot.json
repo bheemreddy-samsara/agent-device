@@ -81,6 +81,7 @@
   "@agent-device/contracts/network-traffic",
   "@agent-device/contracts/observability",
   "@agent-device/contracts/orientation-runtime",
+  "@agent-device/contracts/perf-hang-next-steps",
   "@agent-device/contracts/perf-runtime",
   "@agent-device/contracts/perf-runtime-host",
   "@agent-device/contracts/perf-runtime-operation-builder",

@@ -893,8 +893,8 @@ agent-device cdp memory snapshot capture --name baseline --gc
 agent-device perf cpu profile start --kind xctrace --template "Time Profiler" --out app.trace
 agent-device perf cpu profile stop --kind xctrace --out app.trace
 agent-device perf cpu profile report --kind xctrace --out app-profile.json
-agent-device perf trace start --kind xctrace --template "Animation Hitches" --out hitches.trace
-agent-device perf trace stop --kind xctrace --out hitches.trace
+agent-device perf trace start --kind xctrace --out app.trace
+agent-device perf trace stop --kind xctrace --out app.trace
 agent-device perf cpu profile start --kind simpleperf --out cpu.perf.data
 agent-device perf cpu profile stop --kind simpleperf --out cpu.perf.data
 agent-device perf cpu profile report --kind simpleperf --out cpu-report.json
@@ -905,6 +905,7 @@ agent-device perf trace stop --kind perfetto --out app.perfetto-trace
 - Name one area: `frames`, `memory`, `cpu`, or `trace`. Bare `perf`, `perf sample`, `perf metrics`, and the `metrics` alias fail with guidance to the focused replacements.
 - `perf frames` returns frame/jank health (`droppedFramePercent`, `worstWindows`). `perf memory sample` returns a compact process memory sample in kilobytes. `perf memory snapshot` writes a heap or memgraph artifact and returns its path.
 - `perf cpu profile` and `perf trace` record Apple (`--kind xctrace`) or Android (`--kind simpleperf`, `--kind perfetto`) profiles and traces, and return artifact paths plus compact metadata; raw contents stay on disk.
+- `perf trace stop` interprets the capture: Apple reports hangs, hitches, and hotspots. Each hang carries bounded `nextSteps` guidance; the CLI text prints at most five entries per list and JSON carries the full list. `perf trace` records with the Time Profiler template by default, so hitch tables need `--template "Animation Hitches"`.
 - `cdp` samples and snapshots the React Native JavaScript heap through Metro CDP; see [Debugging & Profiling](/docs/debugging-profiling#react-native-js-memory-through-cdp).
 - App startup duration is returned in `open`'s `startup` result.
 - Perf commands need an app session with a package or bundle ID; run `open <app>` first.

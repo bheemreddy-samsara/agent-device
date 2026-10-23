@@ -143,13 +143,14 @@ Diagnostics and traces:
     agent-device press 'id="load-diagnostics"'
     agent-device trace stop ./traces/diagnostics.trace
   The trace path is positional. Do not use --path for trace start or trace stop.
-  Use perf xctrace only for Apple native CPU/profile or Animation Hitches artifacts:
+  Use perf xctrace only for Apple native CPU/profile and hang artifacts:
     agent-device perf cpu profile start --kind xctrace --template "Time Profiler" --out ./artifacts/app.trace
     agent-device perf cpu profile stop --kind xctrace --out ./artifacts/app.trace
     agent-device perf cpu profile report --kind xctrace --out ./artifacts/app-profile.json
-    agent-device perf trace start --kind xctrace --template "Animation Hitches" --out ./artifacts/hitches.trace
-    agent-device perf trace stop --kind xctrace --out ./artifacts/hitches.trace
+    agent-device perf trace start --kind xctrace --out ./artifacts/app.trace
+    agent-device perf trace stop --kind xctrace --out ./artifacts/app.trace
   perf xctrace keeps the .trace artifact on disk; CPU report returns a bounded weighted top-function summary. Do not dump .trace contents into context.
+  perf trace stop interprets the finished trace and reports hangs, hitches, hotspots, and next steps in the stop summary. Pass --template "Animation Hitches" only when hitch tables are the goal.
   For Android native CPU/trace evidence, use perf artifacts instead of raw adb/simpleperf/perfetto output:
     agent-device perf cpu profile start --kind simpleperf --out /tmp/cpu.perf.data
     agent-device perf cpu profile stop --kind simpleperf

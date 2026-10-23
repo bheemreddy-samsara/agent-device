@@ -557,6 +557,7 @@ test('stopAppleXctracePerfCapture returns compact artifact metadata', async () =
     assert.equal(result.outPath, tracePath);
     assert.deepEqual(result.targetPids, [111]);
     assert.equal(result.template, 'Time Profiler');
+    assert.equal(result.summary, undefined, 'cpu-profile stop must not run trace analysis');
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
   }

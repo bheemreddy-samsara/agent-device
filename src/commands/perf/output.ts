@@ -1,4 +1,5 @@
 import type { CommandRequestResult } from '@agent-device/contracts/client';
+import { uniqueStrings } from '@agent-device/kernel/collections';
 import { isRecord } from '@agent-device/kernel/record';
 import type { CliOutput } from '../command-contract.ts';
 import { resultOutput, type CliOutputFormatter } from '../output-common.ts';
@@ -93,12 +94,15 @@ function formatAppleNativePerfOutput(data: Record<string, unknown>): string | un
   const mode = typeof data.mode === 'string' ? data.mode : 'capture';
   const lines = formatNativePerfLines(outPath, mode, state, data.template);
   const topFunctions = formatNativeTopFunctions(data);
-  return topFunctions.length > 0
-    ? `${lines}\nTop CPU self time:\n${topFunctions.join('\n')}`
-    : lines;
+  const analysis = formatTraceAnalysisOutput(data);
+  const sections = [lines];
+  if (topFunctions.length > 0) sections.push(`Top CPU self time:\n${topFunctions.join('\n')}`);
+  if (analysis) sections.push(analysis);
+  return sections.join('\n');
 }
 
 const PERF_CLI_TOP_FUNCTION_LIMIT = 5;
+const PERF_CLI_TRACE_ANALYSIS_LIMIT = 5;
 
 function formatNativeTopFunctions(data: Record<string, unknown>): string[] {
   const summary = isRecord(data.summary) ? data.summary : undefined;
@@ -111,6 +115,97 @@ function formatNativeTopFunctions(data: Record<string, unknown>): string[] {
     const binary = readString(entry.binary);
     return [`- ${formatPercent(percent)} ${symbol}${binary ? ` (${binary})` : ''}`];
   });
+}
+
+function formatTraceAnalysisOutput(data: Record<string, unknown>): string | undefined {
+  const hangs = readTraceHangs(data);
+  const summary = isRecord(data.summary) ? data.summary : undefined;
+  const sections: string[] = [];
+  const hangSection = formatTraceHangSection(hangs);
+  if (hangSection) sections.push(hangSection);
+  if (data.kind === 'xctrace' && isRecord(summary)) {
+    sections.push(...formatAppleTraceSections(summary));
+  }
+  const nextSteps = uniqueStrings(
+    hangs
+      .slice(0, PERF_CLI_TRACE_ANALYSIS_LIMIT)
+      .flatMap((hang) => readStringArray(hang.nextSteps)),
+  );
+  if (nextSteps.length > 0) {
+    sections.push(`Next steps:\n${nextSteps.map((step) => `- ${step}`).join('\n')}`);
+  }
+  if (sections.length > 0) return sections.join('\n');
+  return formatTraceAnalysisUnavailable(summary);
+}
+
+function formatTraceHangSection(hangs: Array<Record<string, unknown>>): string | undefined {
+  if (hangs.length === 0) return undefined;
+  const shown = hangs.slice(0, PERF_CLI_TRACE_ANALYSIS_LIMIT);
+  const lines = shown.map((hang) => formatTraceHangLine(hang));
+  const overflow = hangs.length - shown.length;
+  if (overflow > 0) lines.push(`- and ${overflow} more, see the JSON summary`);
+  return `Hangs (${hangs.length}):\n${lines.join('\n')}`;
+}
+
+function formatTraceAnalysisUnavailable(
+  summary: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!isRecord(summary) || summary.available !== false) return undefined;
+  const message = readString(summary.message);
+  if (!message) return undefined;
+  return `Trace analysis: unavailable - ${readString(summary.reason) ?? message}`;
+}
+
+function formatAppleTraceSections(summary: Record<string, unknown>): string[] {
+  const sections: string[] = [];
+  if (isRecord(summary.hitches) && summary.hitches.available === true) {
+    const count = readFiniteNumber(summary.hitches.count);
+    if (count !== undefined && count > 0) {
+      sections.push(`Hitches: ${Math.round(count)} animation hitch${count === 1 ? '' : 'es'}`);
+    }
+  }
+  if (Array.isArray(summary.hotspots)) {
+    const hotspots = summary.hotspots.slice(0, PERF_CLI_TRACE_ANALYSIS_LIMIT).flatMap((entry) => {
+      if (!isRecord(entry)) return [];
+      const symbol = readString(entry.symbol);
+      const selfSampleMs = readFiniteNumber(entry.selfSampleMs);
+      if (!symbol || selfSampleMs === undefined) return [];
+      return [`- ${formatDurationMs(selfSampleMs)} ${symbol}`];
+    });
+    if (hotspots.length > 0) sections.push(`Hotspots:\n${hotspots.join('\n')}`);
+  }
+  return sections;
+}
+
+function readTraceHangs(data: Record<string, unknown>): Array<Record<string, unknown>> {
+  const summary = isRecord(data.summary) ? data.summary : undefined;
+  if (!Array.isArray(summary?.hangs)) return [];
+  return summary.hangs.filter(isRecord).flatMap((hang) => {
+    const startOffsetMs = readFiniteNumber(hang.startOffsetMs);
+    const durationMs = readFiniteNumber(hang.durationMs);
+    return startOffsetMs === undefined || durationMs === undefined ? [] : [hang];
+  });
+}
+
+function formatTraceHangLine(hang: Record<string, unknown>): string {
+  const startOffsetMs = readFiniteNumber(hang.startOffsetMs) ?? 0;
+  const durationMs = readFiniteNumber(hang.durationMs) ?? 0;
+  const thread = readString(hang.thread) ?? 'main';
+  const topSymbol = readString(hang.topSymbol);
+  const runningMs = readFiniteNumber(hang.runningMs);
+  const blockedMs = readFiniteNumber(hang.blockedMs);
+  const parts = [`+${formatDurationMs(startOffsetMs)} ${formatDurationMs(durationMs)} ${thread}`];
+  if (topSymbol) parts.push(topSymbol);
+  if (runningMs !== undefined && blockedMs !== undefined) {
+    parts.push(`running ${formatDurationMs(runningMs)} / blocked ${formatDurationMs(blockedMs)}`);
+  }
+  return `- ${parts.join(' - ')}`;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function readNativePerfArtifactPath(data: Record<string, unknown>): string | undefined {
@@ -135,10 +230,12 @@ function formatAndroidNativePerfOutput(data: Record<string, unknown>): string | 
   const lines = `Perf ${summary.action}: ${summary.kind} ${summary.type}${formatNativePerfState(
     data,
   )}${formatNativePerfArtifact(data)}${formatNativePerfFrameHealth(data)}`;
+  const sections = [lines];
   const topFunctions = formatNativeTopFunctions(data);
-  return topFunctions.length > 0
-    ? `${lines}\nTop CPU self time:\n${topFunctions.join('\n')}`
-    : lines;
+  if (topFunctions.length > 0) sections.push(`Top CPU self time:\n${topFunctions.join('\n')}`);
+  const analysis = formatTraceAnalysisOutput(data);
+  if (analysis) sections.push(analysis);
+  return sections.join('\n');
 }
 
 function readNativePerfSummary(

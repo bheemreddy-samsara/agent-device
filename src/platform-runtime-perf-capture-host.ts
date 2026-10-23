@@ -24,7 +24,10 @@ import type {
   AndroidNativePerfStartResult,
   AndroidNativePerfStopResult,
 } from '@agent-device/platform-android/mechanics';
-import type { AppleXctracePerfCapture } from '@agent-device/platform-apple/perf';
+import type {
+  AppleTraceAnalysisResult,
+  AppleXctracePerfCapture,
+} from '@agent-device/platform-apple/perf';
 import {
   inspectManagedProcess,
   resolveManagedProcessIdentity,
@@ -59,8 +62,7 @@ export async function startApplePerfCapture(
   input: PerfNativeCaptureStartInput,
 ): Promise<PerfNativeCaptureStartResult> {
   if (input.kind !== 'xctrace') throw wrongNativeKind('Apple', 'xctrace', input.kind);
-  const template =
-    input.template ?? (input.mode === 'cpu-profile' ? 'Time Profiler' : 'Animation Hitches');
+  const template = input.template ?? 'Time Profiler';
   const apple = await loadAppleXctrace();
   const capture = await apple.startAppleXctracePerfCapture({
     device,
@@ -277,7 +279,10 @@ function stripAppleCapture(
 
 function compactAppleCapture(
   state: 'started' | 'stopped',
-  result: Omit<AppleXctracePerfCapture, 'child' | 'wait'> & { endedAt?: string },
+  result: Omit<AppleXctracePerfCapture, 'child' | 'wait'> & {
+    endedAt?: string;
+    summary?: AppleTraceAnalysisResult;
+  },
 ): PerfNativeCaptureSnapshot {
   return {
     perf: state,
@@ -292,6 +297,7 @@ function compactAppleCapture(
     targetProcesses: result.targetProcesses,
     startedAt: result.startedAt,
     endedAt: result.endedAt,
+    ...(result.summary === undefined ? {} : { summary: result.summary }),
   };
 }
 

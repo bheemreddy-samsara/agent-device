@@ -276,7 +276,7 @@ test('starts, retargets, stops, and reclaims an Apple xctrace capture through on
   expect(processHost.terminateManagedProcessSet).toHaveBeenCalledWith([appleMarker]);
 });
 
-test('derives the xctrace template from the capture mode', async () => {
+test('defaults the xctrace template to Time Profiler for every capture mode', async () => {
   appleXctrace.startAppleXctracePerfCapture.mockResolvedValue(
     appleCapture({ mode: 'cpu-profile', template: 'Time Profiler' }),
   );
@@ -297,7 +297,7 @@ test('derives the xctrace template from the capture mode', async () => {
     captureInput({ kind: 'xctrace', mode: 'trace' }),
   );
   expect(appleXctrace.startAppleXctracePerfCapture).toHaveBeenLastCalledWith(
-    expect.objectContaining({ template: 'Animation Hitches' }),
+    expect.objectContaining({ template: 'Time Profiler' }),
   );
 });
 

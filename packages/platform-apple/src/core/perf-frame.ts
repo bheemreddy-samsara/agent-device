@@ -41,7 +41,7 @@ export type AppleFramePerfSample = {
   worstWindows?: AppleFrameDropWindow[];
 };
 
-type AppleFrameHitchRow = {
+export type AppleFrameHitchRow = {
   startNs: number;
   durationNs: number;
   pid?: number;
@@ -118,7 +118,7 @@ function parseAppleDisplayRefreshRate(xml: string | undefined): number | undefin
   return undefined;
 }
 
-function parseAppleHitchRows(xml: string): AppleFrameHitchRow[] {
+export function parseAppleHitchRows(xml: string): AppleFrameHitchRow[] {
   const document = parseXmlDocumentSync(xml);
   const indexes = readAppleHitchSchemaIndexes(document);
   if (!indexes) return [];

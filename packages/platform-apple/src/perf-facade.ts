@@ -7,12 +7,14 @@ export {
   sampleAppleMemoryPerf,
 } from './core/perf.ts';
 export {
+  analyzeAppleXctraceTrace,
   cleanupAppleXctracePerfCapture,
   isRetryableIosDeviceTraceRecordFailure,
   resolveIosDevicePerfHint,
   startAppleXctracePerfCapture,
   stopAppleXctracePerfCapture,
   writeAppleXctracePerfReport,
+  type AppleTraceAnalysisResult,
   type AppleXctraceCpuProfileReport,
   type AppleXctracePerfCapture,
   type AppleXctracePerfMode,

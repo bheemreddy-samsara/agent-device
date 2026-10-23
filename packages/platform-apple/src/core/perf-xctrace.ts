@@ -33,6 +33,9 @@ import {
   parseAppleTimeProfileSummary,
   type AppleTimeProfileFunction,
 } from './perf-time-profile.ts';
+import type { AppleTraceAnalysisResult, AppleTraceAnalysisTable } from './perf-trace-analysis.ts';
+
+export type { AppleTraceAnalysisResult } from './perf-trace-analysis.ts';
 import { IOS_DEVICECTL_DEFAULT_HINT, resolveIosDevicectlHint } from './devicectl.ts';
 import { runXcrun } from './tool-provider.ts';
 
@@ -86,6 +89,8 @@ export type AppleXctracePerfResult = {
   targetProcesses: string[];
   startedAt: string;
   endedAt: string;
+  /** Interpreted hang/hitch/hotspot evidence; present for stopped trace-mode captures. */
+  summary?: AppleTraceAnalysisResult;
 };
 
 export type AppleXctraceCpuProfileReport = {
@@ -155,6 +160,7 @@ export async function stopAppleXctracePerfCapture(
   capture: AppleXctracePerfCapture,
   outPath = capture.outPath,
 ): Promise<AppleXctracePerfResult> {
+  const stopStartedAtMs = Date.now();
   if (outPath !== capture.outPath) {
     await ensureHostDirectory(path.dirname(outPath));
   }
@@ -193,6 +199,15 @@ export async function stopAppleXctracePerfCapture(
     targetProcesses: capture.targetProcesses,
     startedAt: capture.startedAt,
     endedAt: new Date().toISOString(),
+    summary:
+      capture.mode === 'trace'
+        ? await analyzeAppleXctraceTrace({
+            tracePath: outPath,
+            targetProcesses: capture.targetProcesses,
+            targetPids: capture.targetPids,
+            budgetMs: remainingAppleTraceAnalysisBudgetMs(stopStartedAtMs),
+          })
+        : undefined,
   };
 }
 
@@ -243,6 +258,192 @@ export async function writeAppleXctracePerfReport(params: {
     return report;
   } finally {
     await removeHostPath(tempDir).catch(() => {});
+  }
+}
+
+/**
+ * Reads the hang, hitch, and Time Profiler tables present in an xctrace file and
+ * returns bounded agent-readable evidence. Exported tables follow the TOC, so a
+ * template without a table (for example Time Profiler without `hitches`) skips that
+ * table instead of failing the export. Best-effort by contract: this interprets a
+ * finished capture and never fails the capture itself.
+ */
+export async function analyzeAppleXctraceTrace(params: {
+  tracePath: string;
+  targetProcesses: string[];
+  targetPids: number[];
+  /**
+   * Remaining budget for the whole export-and-interpret pass, derived by the stop
+   * path from its static cap (APPLE_TRACE_ANALYSIS_DEADLINE_MS) minus the stop
+   * time already consumed. Defaults to the full cap; never exceeds it.
+   */
+  budgetMs?: number;
+}): Promise<AppleTraceAnalysisResult> {
+  // One overall deadline bounds the whole export-and-interpret pass, so a slow
+  // xctrace export cannot eat the stop request's whole envelope.
+  const budgetMs = Math.min(
+    params.budgetMs ?? APPLE_TRACE_ANALYSIS_DEADLINE_MS,
+    APPLE_TRACE_ANALYSIS_DEADLINE_MS,
+  );
+  if (budgetMs <= 0) {
+    return analyzeTraceTimeout(params.tracePath);
+  }
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<AppleTraceAnalysisResult>((resolve) => {
+    deadlineTimer = setTimeout(() => resolve(analyzeTraceTimeout(params.tracePath)), budgetMs);
+    deadlineTimer.unref?.();
+  });
+  try {
+    return await Promise.race([
+      runAppleTraceAnalysis({ ...params, exportBudgetMs: budgetMs }),
+      deadline,
+    ]);
+  } catch (error) {
+    return {
+      available: false,
+      reason: 'analysis-failed',
+      message: `Trace analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+      hint: `Open ${params.tracePath} in Instruments to inspect the raw trace, then retry perf trace stop.`,
+      tableSchemas: [],
+    };
+  } finally {
+    clearTimeout(deadlineTimer);
+  }
+}
+
+function analyzeTraceTimeout(tracePath: string): AppleTraceAnalysisResult {
+  return {
+    available: false,
+    reason: 'analysis-timeout',
+    message: 'Trace analysis exceeded its overall deadline and was abandoned.',
+    hint: `Open ${tracePath} in Instruments to inspect the raw trace, or retry perf trace stop on a shorter capture.`,
+    tableSchemas: [],
+  };
+}
+
+// A static cap tied to the stop path's own waits: sizing the analysis pass at the
+// graceful stop wait minus the force-kill window keeps worst-case stop plus analysis
+// inside the stop request's envelope without mirroring the daemon request timeout
+// here (no real deadline reaches the perf runtime).
+const APPLE_TRACE_ANALYSIS_DEADLINE_MS =
+  APPLE_XCTRACE_STOP_GRACE_TIMEOUT_MS - APPLE_XCTRACE_STOP_FORCE_TIMEOUT_MS;
+
+// The static cap shrinks by the stop wait already spent, so a stop that consumed
+// the full grace plus force-kill window leaves no analysis budget and the pass is
+// abandoned before spawning any export.
+function remainingAppleTraceAnalysisBudgetMs(stopStartedAtMs: number): number {
+  return Math.max(0, APPLE_TRACE_ANALYSIS_DEADLINE_MS - (Date.now() - stopStartedAtMs));
+}
+
+async function runAppleTraceAnalysis(params: {
+  tracePath: string;
+  targetProcesses: string[];
+  targetPids: number[];
+  exportBudgetMs: number;
+}): Promise<AppleTraceAnalysisResult> {
+  // Every export shares this one deadline, so a slow export shrinks (and finally
+  // cancels by timeout) the following ones instead of stacking 15s timeouts.
+  const deadlineAtMs = Date.now() + params.exportBudgetMs;
+  const exportTimeoutMs = () =>
+    Math.min(IOS_DEVICE_PERF_EXPORT_TIMEOUT_MS, deadlineAtMs - Date.now());
+  const tempDir = await makeHostTemporaryDirectory('agent-device-xctrace-trace-report-');
+  try {
+    const toc = await exportAppleXctraceOptionalData({
+      tracePath: params.tracePath,
+      outPath: path.join(tempDir, 'trace-toc.xml'),
+      query: 'toc',
+      timeoutMs: exportTimeoutMs(),
+    });
+    if (toc === undefined) {
+      return {
+        available: false,
+        reason: 'toc-export-failed',
+        message: 'Failed to export the Apple xctrace table of contents.',
+        hint: `Open ${params.tracePath} in Instruments to inspect the raw trace, then retry perf trace stop.`,
+        tableSchemas: [],
+      };
+    }
+    // Loading the analyzer on demand keeps the contracts rule table out of the
+    // eager perf-facade closure; only trace-stop analysis pays for it.
+    const { analyzeAppleTraceTables, readAppleTraceTableSchemas } =
+      await import('./perf-trace-analysis.ts');
+    const tableSchemas = readAppleTraceTableSchemas(toc);
+    const exported = await exportAppleTraceTablesPresent(
+      params.tracePath,
+      tempDir,
+      tableSchemas,
+      exportTimeoutMs,
+    );
+    return analyzeAppleTraceTables({
+      target: {
+        tracePath: params.tracePath,
+        targetProcesses: params.targetProcesses,
+        targetPids: params.targetPids,
+      },
+      tocXml: toc,
+      timeProfileXml: exported.tables['time-profile'],
+      hangRisksXml: exported.tables['hang-risks'],
+      hitchesXml: exported.tables.hitches,
+      failedTables: exported.failedTables,
+    });
+  } finally {
+    await removeHostPath(tempDir).catch(() => {});
+  }
+}
+
+const APPLE_TRACE_ANALYSIS_TABLES = [
+  'time-profile',
+  'hang-risks',
+  'hitches',
+] as const satisfies readonly AppleTraceAnalysisTable[];
+
+async function exportAppleTraceTablesPresent(
+  tracePath: string,
+  tempDir: string,
+  tableSchemas: string[],
+  timeoutMs: () => number,
+): Promise<{
+  tables: Partial<Record<AppleTraceAnalysisTable, string>>;
+  failedTables: string[];
+}> {
+  const present = new Set(tableSchemas);
+  const tables: Partial<Record<AppleTraceAnalysisTable, string>> = {};
+  const failedTables: string[] = [];
+  for (const table of APPLE_TRACE_ANALYSIS_TABLES) {
+    if (!present.has(table)) continue;
+    const remainingMs = timeoutMs();
+    if (remainingMs <= 0) {
+      // The shared deadline has passed: stop spawning exports. The caller's
+      // overall deadline resolves the pass as analysis-timeout.
+      failedTables.push(table);
+      continue;
+    }
+    const xml = await exportAppleXctraceOptionalData({
+      tracePath,
+      outPath: path.join(tempDir, `${table}.xml`),
+      query: { schema: table },
+      timeoutMs: remainingMs,
+    });
+    if (xml !== undefined) tables[table] = xml;
+    else failedTables.push(table);
+  }
+  return { tables, failedTables };
+}
+
+async function exportAppleXctraceOptionalData(params: {
+  tracePath: string;
+  outPath: string;
+  query: 'toc' | { schema: string };
+  timeoutMs: number;
+}): Promise<string | undefined> {
+  try {
+    return await exportAppleXctraceData({
+      ...params,
+      failureMessage: `Failed to export Apple xctrace ${params.query === 'toc' ? 'metadata' : params.query.schema} data`,
+      failureDetails: { tracePath: params.tracePath },
+    });
+  } catch {
+    return undefined;
   }
 }
 
@@ -305,6 +506,8 @@ export async function exportAppleXctraceData(params: {
   query: 'toc' | { schema: string };
   failureMessage: string;
   failureDetails: Record<string, unknown>;
+  /** Per-export timeout; the trace-analysis pass shrinks it under its own budget. */
+  timeoutMs?: number;
 }): Promise<string> {
   const exportArgs: ['xctrace', ...string[]] = [
     'xctrace',
@@ -320,7 +523,7 @@ export async function exportAppleXctraceData(params: {
   requireExecSuccess(
     await runXcrun(exportArgs, {
       allowFailure: true,
-      timeoutMs: IOS_DEVICE_PERF_EXPORT_TIMEOUT_MS,
+      timeoutMs: params.timeoutMs ?? IOS_DEVICE_PERF_EXPORT_TIMEOUT_MS,
     }),
     params.failureMessage,
     (exportResult) => ({

@@ -340,6 +340,10 @@
       "types": "./src/orientation-runtime.ts",
       "default": "./src/orientation-runtime.ts"
     },
+    "./perf-hang-next-steps": {
+      "types": "./src/perf-hang-next-steps.ts",
+      "default": "./src/perf-hang-next-steps.ts"
+    },
     "./perf-runtime": {
       "types": "./src/perf-runtime.ts",
       "default": "./src/perf-runtime.ts"
