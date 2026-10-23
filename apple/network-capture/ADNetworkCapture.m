@@ -17,7 +17,24 @@
 // capture file without limit. The reader truncates again with its own budget.
 static const NSUInteger AdMaxFieldChars = 8192;
 
+// Credentials that must never reach the capture file, whatever the app put on the wire. The dump's
+// --include headers mode would otherwise echo them (ADR 0037 rule 6).
+static BOOL AdIsSensitiveHeader(NSString *name) {
+  for (NSString *sensitive in @[
+    @"Authorization", @"Proxy-Authorization", @"WWW-Authenticate", @"Proxy-Authenticate",
+    @"Cookie", @"Set-Cookie",
+  ]) {
+    if ([name caseInsensitiveCompare:sensitive] == NSOrderedSame) return YES;
+  }
+  return NO;
+}
+
 static NSString *kAdOutputPath = nil;
+
+// Bound on the capture file itself. The probe stops recording once the file reaches it, so a
+// long-running session cannot grow the file without limit; the daemon's reader takes the newest
+// window from the tail.
+static const unsigned long long AdMaxFileBytes = 32 * 1024 * 1024;
 
 static void AdWriteLine(NSString *line) {
   static NSFileHandle *handle = nil;
@@ -32,7 +49,13 @@ static void AdWriteLine(NSString *line) {
     handle = [NSFileHandle fileHandleForWritingAtPath:kAdOutputPath];
     [handle seekToEndOfFile];
   });
-  [handle writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
+  if (handle.offsetInFile >= AdMaxFileBytes) return;
+  // The error: form (available at the probe's iOS 15 floor): a plain writeData: raises an
+  // Objective-C exception on ENOSPC, which would crash the app under test. A failed capture write
+  // must never be the app's failure.
+  NSError *error = nil;
+  NSData *data = [[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
+  [handle writeData:data error:&error];
 }
 
 static NSString *AdBound(NSString *value) {
@@ -65,11 +88,16 @@ static NSString *AdJsonHeaders(NSDictionary<id, id> *headers) {
   if (headers.count == 0) return @"null";
   NSMutableArray<NSString *> *parts = [NSMutableArray array];
   for (id key in [headers.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+    NSString *name = [key description];
+    if (AdIsSensitiveHeader(name)) {
+      [parts addObject:[NSString stringWithFormat:@"%@: \"%@\"", AdJsonString(name), @"[REDACTED]"]];
+      continue;
+    }
     id value = headers[key];
     NSString *text = [value isKindOfClass:NSString.class] ? value : [value description];
     text = [text stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
     [parts addObject:[NSString stringWithFormat:@"%@: %@",
-                      AdJsonString([key description]),
+                      AdJsonString(name),
                       AdJsonString(AdBound(text))]];
   }
   return [NSString stringWithFormat:@"{%@}", [parts componentsJoinedByString:@","]];

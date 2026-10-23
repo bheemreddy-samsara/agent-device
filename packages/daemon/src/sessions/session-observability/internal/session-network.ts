@@ -60,7 +60,7 @@ export async function handleNetworkCommand(params: NetworkHandlerParams): Promis
       sessionId: params.sessionName,
       appBundleId: session.appBundleId,
       ...(appLog ? { appLogSnapshot: { state: appLog.state, startedAt: appLog.startedAt } } : {}),
-      ...(session.networkCapture ? { networkCapturePath: session.networkCapture.path } : {}),
+      ...(session.networkCapture ? { networkCapture: true } : {}),
       maxEntries: request.maxEntries,
       include: plan.include,
       maxPayloadChars: NETWORK_MAX_PAYLOAD_CHARS,

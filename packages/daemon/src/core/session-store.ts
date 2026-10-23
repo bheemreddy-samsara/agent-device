@@ -144,10 +144,10 @@ export class SessionStore {
 
   /**
    * Records or clears the session's network capture window (ADR 0037). The store owns the record,
-   * so this is the only writer of the field; an open passes the file its probe launch writes, and
-   * any other open clears the window a previous open left.
+   * so this is the only writer of the field; the open that launched the app under the probe sets
+   * it, and any other open clears the window a previous open left.
    */
-  setNetworkCapture(session: SessionState, capture: Readonly<{ path: string }> | undefined): void {
+  setNetworkCapture(session: SessionState, capture: true | undefined): void {
     session.networkCapture = capture;
   }
 

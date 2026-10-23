@@ -8,7 +8,11 @@ Accepted (2026-10-23). Applies to iOS simulator app launches only.
 
 1. `open <app> --capture-network` on an iOS simulator injects `apple/network-capture/ADNetworkCapture.m`
    (built on demand, cached per content hash and toolchain) into the app process through
-   `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`. Every other platform and every URL open refuse the flag.
+   `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`. Admission follows the owner that dispatches the open, not
+   the device shape: only the local Apple lifecycle declares it can inject the probe, so a
+   provider-backed iOS simulator (Limrun, TestMu) refuses the flag with `UNSUPPORTED_OPERATION`
+   instead of launching without capture. Every other platform and every URL open refuse the flag.
+   `--launch-console` admits the same way, and the same local-Simulator declaration gates both.
 2. The probe method-swizzles `-[NSURLSessionTask resume]`, observes each task to completion, and
    appends one JSON line per completed HTTP(S) task to the file named by
    `AGENT_DEVICE_NETWORK_CAPTURE_PATH` — the session's `network.jsonl`, one per session, replaced on
@@ -23,7 +27,15 @@ Accepted (2026-10-23). Applies to iOS simulator app launches only.
    `source: 'app-log'`. These are the two modes, not a primary and a fallback. The dump states
    which source it used.
 6. The probe file is host-side text an untrusted app wrote: reads are byte-bounded at the tail and
-   pass through the operator's `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` before any response.
+   pass through the operator's `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` before any response. The probe
+   masks credential headers itself (`Authorization`, `Cookie`, `Set-Cookie`, and their
+   authentication siblings) before writing, so a secret never enters the file and survives a dump
+   run without operator patterns. File writes use `writeData:error:` and stop at a 32 MB cap: a
+   capture failure must never crash the app under test.
+7. The capture window names the app process the probe was injected into. If that app crashes and
+   the runner relaunches it, the new process has no probe and writes nothing more; the dump of such
+   a session keeps reporting `source: 'probe'` over the frozen entries. Reopen with
+   `--capture-network` to capture again.
 
 ## Reason
 

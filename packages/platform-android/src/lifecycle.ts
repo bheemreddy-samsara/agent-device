@@ -141,6 +141,7 @@ async function openAndroidApplication(
     appBundleId: input.appBundleId,
     execution: input.execution,
     terminateRunningApp: relaunching && !relaunchOwner,
+    supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
   });
   timing.openDispatchDurationMs = elapsed(openStartedAtMs);
   if (input.enableTestIme) {
@@ -160,6 +161,7 @@ async function openAndroidApplication(
           ...input.execution,
           clearAppState: undefined,
           launchConsole: undefined,
+          networkCapturePath: undefined,
           launchArgs: undefined,
         },
         input.appBundleId,
@@ -170,8 +172,10 @@ async function openAndroidApplication(
         ...input.execution,
         clearAppState: undefined,
         launchConsole: undefined,
+        networkCapturePath: undefined,
         launchArgs: undefined,
       },
+      supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
     });
     timing.launchUrlDurationMs = elapsed(launchUrlStartedAtMs);
   } else {

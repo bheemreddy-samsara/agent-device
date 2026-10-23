@@ -55,7 +55,7 @@ async function dumpCapturedProbeTraffic(
   input: NetworkDumpInput,
   backend: ReturnType<typeof backendForAppleDevice>,
 ): Promise<NetworkDumpResult | undefined> {
-  if (input.networkCapturePath === undefined || !isIosFamily(device) || device.kind !== 'simulator')
+  if (input.networkCapture !== true || !isIosFamily(device) || device.kind !== 'simulator')
     return undefined;
   const recent = await host.captureProbe.readRecent(input.sessionId, input.maxScanLines);
   const { dump } = readNetworkProbeTrafficFromText(recent.text, {

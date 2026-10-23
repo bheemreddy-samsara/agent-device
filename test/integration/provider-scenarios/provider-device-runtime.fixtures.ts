@@ -221,6 +221,7 @@ function providerScenarioApplicationLifecycle(
         positionals: input.positionals,
         appBundleId: input.appBundleId,
         execution: input.execution,
+        supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
       });
       return { appBundleId: input.appBundleId, timing: {} };
     },

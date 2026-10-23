@@ -390,10 +390,7 @@ export async function completeOpenCommand(params: {
   const nextSession = sessionStore.requireCurrent(nextRef);
   // The store owns this field: the open that launched the app under the probe records the file,
   // and any other open clears the window a previous open left (ADR 0037).
-  sessionStore.setNetworkCapture(
-    nextSession,
-    networkCapturePath ? { path: networkCapturePath } : undefined,
-  );
+  sessionStore.setNetworkCapture(nextSession, networkCapturePath ? true : undefined);
   markPostOpenStabilization(nextSession, timing.postOpenObservation);
   if (req.runtime !== undefined)
     setSessionRuntimeHintsForOpen(sessionStore, sessionName, runtimeHints);

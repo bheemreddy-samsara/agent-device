@@ -111,7 +111,12 @@ export function appLogRedactionPatterns(env: NodeJS.ProcessEnv): RegExp[] {
     });
 }
 
-function redact(chunk: string, patterns: readonly RegExp[]): string {
+/**
+ * Applies the operator's redaction patterns to one captured-text value. Every text artifact a
+ * session writes — the app log stream and the injected network capture probe's file — is masked
+ * with this one implementation, so one policy cannot drift between readers.
+ */
+export function redact(chunk: string, patterns: readonly RegExp[]): string {
   return patterns.reduce((output, pattern) => output.replace(pattern, '[REDACTED]'), chunk);
 }
 

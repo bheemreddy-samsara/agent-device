@@ -91,15 +91,13 @@ test('a session opened with network capture gets the probe file and reports the 
     name: 'iPhone',
     kind: 'simulator',
   });
-  sessionStore.setNetworkCapture(session, {
-    path: sessionStore.resolveNetworkCapturePath(session.name),
-  });
+  sessionStore.setNetworkCapture(session, true);
   sessionStore.publish(session.name, session);
   const runtime = createNetworkRuntime(session.device, async (input) => ({
     source: 'probe',
     backend: 'ios-simulator',
     dump: {
-      path: input.networkCapturePath ?? '/sessions/one/network.jsonl',
+      path: '/sessions/one/network.jsonl',
       exists: true,
       scannedLines: 1,
       matchedLines: 1,
@@ -134,7 +132,7 @@ test('a session opened with network capture gets the probe file and reports the 
 
   expect(runtime.networkDump).toHaveBeenCalledWith(
     expect.objectContaining({
-      networkCapturePath: sessionStore.resolveNetworkCapturePath(session.name),
+      networkCapture: true,
     }),
   );
   expect(response).toMatchObject({

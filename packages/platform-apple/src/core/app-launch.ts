@@ -319,7 +319,7 @@ async function launchIosSimulatorApp(
         );
         const result = options?.launchConsole
           ? await runIosSimulatorConsoleLaunch(launchArgs, options.launchConsole, launchEnv)
-          : await runSimulatorLaunch(launchArgs, launchEnv);
+          : await runSimulatorLaunch(launchArgs, launchEnv ? { env: launchEnv } : {});
         if (result.exitCode === 0) return;
 
         throw new AppError(
@@ -380,14 +380,25 @@ function buildIosSimulatorLaunchArgs(
   return args;
 }
 
+type SimulatorLaunchOptions = Readonly<{
+  /** Spawn env overrides merged over the host environment, from a capture launch. */
+  env?: Record<string, string>;
+  /** Upper bound on the spawn itself, e.g. the console capture window. */
+  timeoutMs?: number;
+}>;
+
 async function runSimulatorLaunch(
   launchArgs: ScopedSimctlCommand,
-  launchEnv: Record<string, string> | undefined,
+  options: SimulatorLaunchOptions = {},
 ): Promise<Awaited<ReturnType<typeof runXcrun>>> {
-  if (!launchEnv) {
-    return await runXcrun(launchArgs, { allowFailure: true });
+  const execOptions = {
+    allowFailure: true,
+    ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+  };
+  if (options.env) {
+    return await runScopedSimctlCommandWithHostEnv(launchArgs, options.env, execOptions);
   }
-  return await runScopedSimctlCommandWithHostEnv(launchArgs, launchEnv, { allowFailure: true });
+  return await runXcrun(launchArgs, execOptions);
 }
 
 async function runIosSimulatorConsoleLaunch(
@@ -397,15 +408,10 @@ async function runIosSimulatorConsoleLaunch(
 ): Promise<Awaited<ReturnType<typeof runXcrun>>> {
   await ensureHostDirectory(path.dirname(logPath));
   try {
-    const result = launchEnv
-      ? await runScopedSimctlCommandWithHostEnv(launchArgs, launchEnv, {
-          allowFailure: true,
-          timeoutMs: IOS_SIMULATOR_CONSOLE_CAPTURE_MS,
-        })
-      : await runXcrun(launchArgs, {
-          allowFailure: true,
-          timeoutMs: IOS_SIMULATOR_CONSOLE_CAPTURE_MS,
-        });
+    const result = await runSimulatorLaunch(launchArgs, {
+      timeoutMs: IOS_SIMULATOR_CONSOLE_CAPTURE_MS,
+      ...(launchEnv ? { env: launchEnv } : {}),
+    });
     await writeIosSimulatorConsoleLog(logPath, result.stdout, result.stderr);
     return result;
   } catch (error) {

@@ -16,11 +16,12 @@ export type NetworkDumpInput = Readonly<{
   appBundleId?: string;
   appLogSnapshot?: NetworkAppLogSnapshot;
   /**
-   * The session's capture-probe file, present only when the session's app was opened with
-   * `--capture-network` (ADR 0037). It selects the probe mode of the Apple dump, which reports that
-   * file instead of parsing the app log.
+   * True when the session's app was opened with `--capture-network` (ADR 0037). It selects the
+   * probe mode of the Apple dump, which reports the session's capture file instead of parsing the
+   * app log. The file path itself is derived from `sessionId` by the host reader, so the input
+   * carries no host path.
    */
-  networkCapturePath?: string;
+  networkCapture?: boolean;
   maxEntries: number;
   include: NetworkIncludeMode;
   maxPayloadChars: number;

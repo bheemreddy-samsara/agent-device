@@ -131,6 +131,28 @@ test('open --capture-network injects the probe and network dump replays its file
     });
     assert.equal(builds, 1, 'the cached probe binary is reused, not rebuilt');
 
+    // Console capture and network capture on one open: the same launch reads the console PTY
+    // AND injects the probe, through the single spawn path both options share.
+    const consolePath = path.join(isolatedHome, 'launch-console.log');
+    await daemon.client().apps.open({
+      app: 'com.example.demo',
+      platform: 'ios',
+      udid: PROVIDER_SCENARIO_IOS_SIMULATOR.id,
+      captureNetwork: true,
+      launchConsole: consolePath,
+    });
+    const consoleLaunch = launches.at(-1)!;
+    assert.equal(consoleLaunch.args.includes('--console-pty'), true);
+    assert.equal(consoleLaunch.args.includes('--terminate-running-process'), true);
+    assert.ok(
+      consoleLaunch.env?.SIMCTL_CHILD_DYLD_INSERT_LIBRARIES,
+      'the console launch still injects the probe',
+    );
+    assert.ok(
+      consoleLaunch.env?.SIMCTL_CHILD_AGENT_DEVICE_NETWORK_CAPTURE_PATH,
+      'the console launch still names the capture file',
+    );
+
     // The probe wrote its file inside the app process; the scripted world writes what that app
     // would have appended, then the dump must report it as the probe's own record.
     fs.mkdirSync(path.dirname(capturePath!), { recursive: true });

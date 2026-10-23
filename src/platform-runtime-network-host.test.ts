@@ -107,6 +107,37 @@ test('applies the operator redaction patterns to the capture-probe window', () =
   assert.doesNotMatch(recent.text, /secret/);
 });
 
+test('a byte-window read never hands the parser a partial first line', () => {
+  const directory = createTemporaryDirectory();
+  const pathname = path.join(directory, 'network.jsonl');
+  // Push the file past the 2 MB byte budget so the read window starts mid-file. The filler lines
+  // are exactly 50 characters, so a fragment surviving the window cut would be a short line.
+  const filler = `${'p'.repeat(50)}\n`;
+  const whole = `${JSON.stringify({ url: 'https://api.example.test/whole', status: 201 })}\n`;
+  fs.writeFileSync(
+    pathname,
+    `${filler.repeat(Math.ceil((2 * 1024 * 1024) / filler.length) + 7)}${whole}`,
+  );
+
+  const recent = readRecentNetworkCaptureLines({
+    pathname,
+    maxScanLines: 60_000,
+    redactionPatterns: [],
+  });
+
+  assert.equal(recent.exists, true);
+  const lines = recent.text.split('\n').filter((line) => line.length > 0);
+  assert.ok(lines.length > 1, 'the window kept a real frame');
+  for (const line of lines) {
+    assert.ok(
+      line.length === 50 || line.startsWith('{'),
+      `partial line reached the parser: ${line.slice(0, 40)}`,
+    );
+  }
+  assert.ok(recent.text.endsWith(whole));
+  assert.ok(recent.skippedLines >= 1, 'the dropped fragment counts as a skipped line');
+});
+
 function createTemporaryDirectory(): string {
   const directory = mkdtempForTestSync('agent-device-network-host-');
   temporaryDirectories.push(directory);

@@ -28,6 +28,14 @@ import type {
 export type ApplicationLifecycleInteractorBinding = Readonly<{
   device: DeviceInfo;
   signal: AbortSignal;
+  /**
+   * True only for a local owner bound to an iOS simulator it controls, i.e. an owner whose direct
+   * app launch can read simctl's console PTY and inject the network capture probe. The shared open
+   * refuses `--launch-console` and `--capture-network` without it, so a provider-backed simulator
+   * — same device shape, provider-owned lifecycle — refuses rather than silently ignoring the
+   * request (ADR 0037).
+   */
+  supportsLocalSimulatorLaunch: boolean;
   resolveInteractor(
     execution: ApplicationLifecycleExecution,
     appBundleId?: string,
@@ -86,6 +94,10 @@ function bindApplicationLifecycleInteractor(
   return Object.freeze({
     device,
     signal,
+    // A local owner bound to an iOS simulator controls simctl and can read the console PTY and
+    // inject the capture probe; a provider owner never can, whatever the device shape says.
+    supportsLocalSimulatorLaunch:
+      ownership === 'local' && isIosFamily(device) && device.kind === 'simulator',
     resolveInteractor: async (execution, appBundleId) => {
       const runner = applicationLifecycleRunnerContext(execution, appBundleId, signal);
       if (ownership === 'local') return await params.resolveLocalInteractor(device, runner);
@@ -135,6 +147,14 @@ export function bindProviderApplicationLifecycleInteractor(
  * Canonical direct open semantics used only after a package lifecycle binding has admitted the
  * operation. It intentionally has no device-resolution or platform-mechanics branches.
  */
+// The owner-capacity refusals belong to this module's admission rule, not to the shared
+// launch-option message home: only the canonical open states them.
+const LAUNCH_CONSOLE_UNADMITTED_MESSAGE =
+  '--launch-console is supported only for a local iOS simulator app launch; this session owner cannot capture the launch console';
+
+const CAPTURE_NETWORK_UNADMITTED_MESSAGE =
+  '--capture-network is supported only for a local iOS simulator app launch; this session owner cannot inject the capture probe';
+
 export async function invokeApplicationOpen(
   params: Readonly<{
     device: DeviceInfo;
@@ -143,6 +163,13 @@ export async function invokeApplicationOpen(
     appBundleId?: string;
     execution: ApplicationLifecycleExecution;
     terminateRunningApp?: boolean;
+    /**
+     * From the owner's binding: true only for a local owner bound to an iOS simulator it controls,
+     * whose direct app launch can read simctl's console PTY and inject the capture probe. An open
+     * carrying `--launch-console` or `execution.networkCapturePath` without this declaration is
+     * refused, so an owner that cannot honor the request never silently ignores it (ADR 0037).
+     */
+    supportsLocalSimulatorLaunch: boolean;
   }>,
 ): Promise<ApplicationLaunchReport | void> {
   const { device, positionals, execution } = params;
@@ -153,7 +180,7 @@ export async function invokeApplicationOpen(
     await invokeDeviceOpen(params);
     return;
   }
-  assertOpenDeviceSupport(device, execution);
+  assertOpenDeviceSupport(device, execution, params.supportsLocalSimulatorLaunch);
   if (url !== undefined) return await invokeApplicationUrlOpen(params, app, url);
   return await invokeApplicationTargetOpen(params, app);
 }
@@ -165,6 +192,7 @@ type DirectOpenParameters = Readonly<{
   appBundleId?: string;
   execution: ApplicationLifecycleExecution;
   terminateRunningApp?: boolean;
+  supportsLocalSimulatorLaunch: boolean;
 }>;
 
 function assertOpenPositionals(positionals: readonly string[]): void {
@@ -177,7 +205,7 @@ async function invokeDeviceOpen(params: DirectOpenParameters): Promise<void> {
   if (params.execution.launchConsole) {
     throw new AppError('INVALID_ARGS', '--launch-console requires an app target');
   }
-  if (params.execution.captureNetwork) {
+  if (params.execution.networkCapturePath) {
     throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
   }
   if (params.execution.launchArgs && params.execution.launchArgs.length > 0) {
@@ -189,12 +217,22 @@ async function invokeDeviceOpen(params: DirectOpenParameters): Promise<void> {
 function assertOpenDeviceSupport(
   device: DeviceInfo,
   execution: ApplicationLifecycleExecution,
+  supportsLocalSimulatorLaunch: boolean,
 ): void {
   if (execution.launchConsole && (!isIosFamily(device) || device.kind !== 'simulator')) {
     throw new AppError('UNSUPPORTED_OPERATION', LAUNCH_CONSOLE_IOS_SIMULATOR_ONLY_MESSAGE);
   }
-  if (execution.captureNetwork && (!isIosFamily(device) || device.kind !== 'simulator')) {
+  if (execution.networkCapturePath && (!isIosFamily(device) || device.kind !== 'simulator')) {
     throw new AppError('UNSUPPORTED_OPERATION', CAPTURE_NETWORK_IOS_SIMULATOR_ONLY_MESSAGE);
+  }
+  // Both launch-only options additionally follow the owner, not the device shape: a
+  // provider-backed iOS simulator has the shape but dispatches through a lifecycle that cannot
+  // read the console PTY or inject the capture probe, so it must refuse rather than ignore (0037).
+  if (execution.launchConsole && !supportsLocalSimulatorLaunch) {
+    throw new AppError('UNSUPPORTED_OPERATION', LAUNCH_CONSOLE_UNADMITTED_MESSAGE);
+  }
+  if (execution.networkCapturePath && !supportsLocalSimulatorLaunch) {
+    throw new AppError('UNSUPPORTED_OPERATION', CAPTURE_NETWORK_UNADMITTED_MESSAGE);
   }
   if (device.platform === 'linux' && execution.launchArgs && execution.launchArgs.length > 0) {
     throw new AppError('UNSUPPORTED_OPERATION', '--launch-args is not supported on Linux.');
@@ -218,7 +256,7 @@ async function invokeApplicationUrlOpen(
   if (params.execution.launchConsole) {
     throw new AppError('INVALID_ARGS', LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE);
   }
-  if (params.execution.captureNetwork) {
+  if (params.execution.networkCapturePath) {
     throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
   }
   return await params.interactor.open(app, {
@@ -328,6 +366,7 @@ async function openDirectApplication(
     positionals: input.positionals,
     appBundleId: input.appBundleId,
     execution: input.execution,
+    supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
   });
   const followUpUrl = followUpRuntimeLaunchUrl(input);
   if (followUpUrl) {
@@ -340,8 +379,10 @@ async function openDirectApplication(
         ...input.execution,
         clearAppState: undefined,
         launchConsole: undefined,
+        networkCapturePath: undefined,
         launchArgs: undefined,
       },
+      supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
     });
   }
   return { appBundleId: input.appBundleId, timing: {} };

@@ -17,7 +17,6 @@ export function applicationLifecycleExecutionFromRequest(
     verbose: req.flags?.verbose,
     activity: req.flags?.activity,
     launchConsole: req.flags?.launchConsole,
-    captureNetwork: req.flags?.captureNetwork,
     networkCapturePath,
     launchArgs: req.flags?.launchArgs,
     clearAppState: req.flags?.clearAppState,

@@ -12,7 +12,7 @@ import type {
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { openVerifiedFileForRead } from '@agent-device/host-kit/file';
 import { resolveSessionNetworkCapturePath } from '@agent-device/daemon-contracts/session-artifact-paths';
-import { appLogRedactionPatterns } from './platform-runtime-app-log-output.ts';
+import { appLogRedactionPatterns, redact } from './platform-runtime-app-log-output.ts';
 
 type ProcessMarkerReader = Readonly<{
   readMarker(pathname: string): Promise<AppLogProcessMarkerReadOutcome>;
@@ -110,20 +110,29 @@ export function readRecentNetworkCaptureLines(
   try {
     const size = fs.fstatSync(descriptor).size;
     const length = Math.min(size, NETWORK_CAPTURE_MAX_BYTES);
-    const buffer = Buffer.alloc(length);
-    fs.readSync(descriptor, buffer, 0, length, size - length);
-    const recent = selectRecentLines(buffer.toString('utf8'), input.maxScanLines);
+    const start = size - length;
+    // Same posture as the app-log tail: a byte window cut mid-line must not hand the parser a
+    // partial entry, so one byte behind the window decides whether the first line is whole.
+    const prefixLength = start > 0 ? 1 : 0;
+    const buffer = Buffer.alloc(length + prefixLength);
+    fs.readSync(descriptor, buffer, 0, buffer.length, start - prefixLength);
+    let decoded = buffer.subarray(prefixLength).toString('utf8');
+    let droppedPartialLine = 0;
+    if (prefixLength > 0 && buffer[0] !== 0x0a) {
+      const firstCompleteLine = decoded.indexOf('\n');
+      decoded = firstCompleteLine < 0 ? '' : decoded.slice(firstCompleteLine + 1);
+      droppedPartialLine = firstCompleteLine < 0 ? 0 : 1;
+    }
+    const recent = selectRecentLines(decoded, input.maxScanLines);
     return Object.freeze({
       path: input.pathname,
       exists: true,
-      text: redactCaptureText(recent.text, input.redactionPatterns),
-      skippedLines: recent.skippedLines,
+      text: redact(recent.text, input.redactionPatterns),
+      // Exact while the read covers the whole file; past the byte budget the window is the
+      // newest frame, and the probe file's own line numbers are unreachable without a full read.
+      skippedLines: recent.skippedLines + droppedPartialLine,
     });
   } finally {
     fs.closeSync(descriptor);
   }
-}
-
-function redactCaptureText(text: string, patterns: readonly RegExp[]): string {
-  return patterns.reduce((output, pattern) => output.replace(pattern, '[REDACTED]'), text);
 }

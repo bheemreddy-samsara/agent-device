@@ -264,6 +264,7 @@ async function dispatchAppleOpen(
     positionals: launch.positionals,
     appBundleId: input.appBundleId,
     execution: input.execution,
+    supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
     ...(localIosSimulator && input.relaunch && !input.execution.clearAppState
       ? { terminateRunningApp: true }
       : {}),
@@ -297,7 +298,6 @@ async function openLaunchUrl(
     ...input.execution,
     clearAppState: undefined,
     launchConsole: undefined,
-    captureNetwork: undefined,
     networkCapturePath: undefined,
     launchArgs: undefined,
   };
@@ -307,6 +307,7 @@ async function openLaunchUrl(
     positionals: [url],
     appBundleId: input.appBundleId,
     execution,
+    supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
   });
 }
 

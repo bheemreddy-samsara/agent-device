@@ -409,7 +409,7 @@ test('a capture session reports the probe file with each request named in full',
       ].join('\n') + '\n',
     ),
     simulator,
-    input({ networkCapturePath: '/sessions/one/network.jsonl' }),
+    input({ networkCapture: true }),
     new AbortController().signal,
   );
 
@@ -425,7 +425,7 @@ test('a capture session with no probe file yet reports the probe source and guid
   const result = await dumpAppleNetworkTraffic(
     probeHost(undefined),
     simulator,
-    input({ networkCapturePath: '/sessions/one/network.jsonl' }),
+    input({ networkCapture: true }),
     new AbortController().signal,
   );
 
