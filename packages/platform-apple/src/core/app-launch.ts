@@ -19,6 +19,7 @@ import {
 } from '@agent-device/contracts/command';
 import {
   IOS_APP_LAUNCH_TIMEOUT_MS,
+  IOS_SIMULATOR_CONSOLE_CAPTURE_MS,
   IOS_SIMULATOR_OPENURL_TIMEOUT_MS,
   IOS_SIMULATOR_TERMINATE_TIMEOUT_MS,
 } from './config.ts';
@@ -42,7 +43,6 @@ import { closeMacOsApp, openMacOsApp } from '../os/macos/apps.ts';
 import { resolveIosApp } from './app-resolution.ts';
 import { buildSimctlArgsForDevice } from './simctl.ts';
 
-const IOS_SIMULATOR_CONSOLE_CAPTURE_MS = 25_000;
 const IOS_SIMULATOR_LAUNCH_ARGS_WITH_URL_MESSAGE =
   '--launch-args is not supported with iOS simulator URL opens (simctl openurl ignores launch args). Launch the app first with --launch-args, then issue the URL open in a separate call.';
 
