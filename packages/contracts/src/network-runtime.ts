@@ -78,12 +78,13 @@ export type NetworkTransportScope = Readonly<{
   /** Payload budget the dump will apply; a transport may pre-bound what it reads with it. */
   maxPayloadChars?: number;
   /**
-   * The dev server's device name of exactly one device attached to this host, composed by the
-   * platform package that owns the device inventory. The provider hooks only a runtime reporting
-   * that name verbatim. Absent when the platform cannot name one attached device unambiguously;
-   * then the provider fails closed instead of guessing.
+   * Lazily composes the dev server's device name of exactly one device attached to this host. The
+   * platform that owns the device inventory provides it; a transport calls it only inside a dump,
+   * so a session whose transport declares none never pays for the probe (adb device properties or
+   * `simctl list devices booted`). It answers undefined when the host cannot name one attached
+   * device unambiguously; then the provider fails closed instead of guessing.
    */
-  metroDeviceIdentity?: string;
+  resolveMetroDeviceIdentity?: (signal: AbortSignal) => Promise<string | undefined>;
 }>;
 
 export type NetworkTransport = Readonly<{

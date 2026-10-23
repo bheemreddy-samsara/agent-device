@@ -32,16 +32,19 @@ const PROVIDER_CAPTURE_BUDGET_MS = 12_000;
  * Reads one session's provider network source, when its transport declares one. A provider that
  * only armed its capture during this call reports `armed` with no entries, so the caller answers
  * the current window from its own source and keeps the arming note. Every provider failure stays
- * a typed `unavailable` note; this function never throws. The caller passes the dev-server identity
- * of exactly one device attached to this host (`metroDeviceIdentity`); without one the provider
- * fails closed, because a runtime could then only be guessed at.
+ * a typed `unavailable` note; this function never throws. The caller passes a resolver for the
+ * dev-server identity of exactly one device attached to this host
+ * (`resolveMetroDeviceIdentity`); a transport calls it only inside a dump, so a non-React-Native
+ * session never pays for the probe, and without an identity the provider fails closed.
  */
 export async function captureNetworkProviderTraffic(
   host: Pick<PlatformRuntimeHost, 'networkTransports'>,
   device: DeviceInfo,
   input: NetworkDumpInput,
   signal: AbortSignal,
-  options: { metroDeviceIdentity?: string } = {},
+  options: {
+    resolveMetroDeviceIdentity?: (signal: AbortSignal) => Promise<string | undefined>;
+  } = {},
 ): Promise<NetworkProviderCapture> {
   // A provider dump injects into the runtime it selects, so it runs only for a session that names
   // its app. The identity gate lives in the dump itself, which fails closed without one.
@@ -51,9 +54,9 @@ export async function captureNetworkProviderTraffic(
     stateDir: input.stateDir,
     appBundleId: input.appBundleId,
     maxPayloadChars: input.maxPayloadChars,
-    ...(options.metroDeviceIdentity === undefined
+    ...(options.resolveMetroDeviceIdentity === undefined
       ? {}
-      : { metroDeviceIdentity: options.metroDeviceIdentity }),
+      : { resolveMetroDeviceIdentity: options.resolveMetroDeviceIdentity }),
   };
   let transport;
   try {

@@ -65,21 +65,28 @@ test('the provider result is handed back with the session scope the transport ne
     device,
     input,
     new AbortController().signal,
-    { metroDeviceIdentity: 'Device' },
+    { resolveMetroDeviceIdentity: async () => 'Device' },
   );
 
   assert.deepEqual(capture, { status: 'captured', result });
   assert.deepEqual(seen, { maxEntries: 25, include: 'summary' });
-  assert.deepEqual(fixture.scopes[0], {
-    sessionId: 'repro',
-    stateDir: '/tmp/state',
-    appBundleId: 'com.example.app',
-    maxPayloadChars: 2048,
-    metroDeviceIdentity: 'Device',
-  });
+  assert.equal(
+    await fixture.scopes[0]?.resolveMetroDeviceIdentity?.(new AbortController().signal),
+    'Device',
+  );
+  assert.deepEqual(
+    { ...fixture.scopes[0], resolveMetroDeviceIdentity: undefined },
+    {
+      sessionId: 'repro',
+      stateDir: '/tmp/state',
+      appBundleId: 'com.example.app',
+      maxPayloadChars: 2048,
+      resolveMetroDeviceIdentity: undefined,
+    },
+  );
 });
 
-test('a caller without a device identity reaches the transport without one; the dump fails closed', async () => {
+test('a caller without a device identity resolver reaches the transport without one; the dump fails closed', async () => {
   const fixture = hostWith({
     mode: 'transport-composed',
     dump: async () => ({ backend: 'react-native-app', entries: [] }),
@@ -87,7 +94,28 @@ test('a caller without a device identity reaches the transport without one; the 
 
   await captureNetworkProviderTraffic(fixture.host, device, input, new AbortController().signal);
 
-  assert.equal(fixture.scopes[0]?.metroDeviceIdentity, undefined);
+  assert.equal(fixture.scopes[0]?.resolveMetroDeviceIdentity, undefined);
+});
+
+test('a transport that declares no dump never calls the identity resolver: the probe stays unpaid', async () => {
+  let probed = 0;
+  const fixture = hostWith({ mode: 'local' });
+
+  const capture = await captureNetworkProviderTraffic(
+    fixture.host,
+    device,
+    input,
+    new AbortController().signal,
+    {
+      resolveMetroDeviceIdentity: async () => {
+        probed += 1;
+        return 'Device';
+      },
+    },
+  );
+
+  assert.deepEqual(capture, { status: 'unavailable', notes: [] });
+  assert.equal(probed, 0);
 });
 
 test('a session without an app id never probes a provider: injection needs a named app', async () => {

@@ -58,6 +58,10 @@ test('in-app capture answers with the full URL and status, and the app log is no
   expect(readRecent).not.toHaveBeenCalled();
 });
 
+async function identityOf(scope: NetworkTransportScope | undefined): Promise<string | undefined> {
+  return await scope?.resolveMetroDeviceIdentity?.(new AbortController().signal);
+}
+
 test('a second attached emulator of the same model takes the identity away from the provider', async () => {
   // Two emulators of one system image report one `ro.product.model`; naming either one could hook
   // and drain the other's runtime, so the platform passes no identity and the dump fails closed.
@@ -77,7 +81,30 @@ test('a second attached emulator of the same model takes the identity away from 
     input({ stateDir: '/state' }),
     new AbortController().signal,
   );
-  expect(scopes[0]?.metroDeviceIdentity).toBeUndefined();
+  expect(await identityOf(scopes[0])).toBeUndefined();
+});
+
+test('a listed serial whose properties cannot be read takes the identity away from the provider', async () => {
+  // An offline or unauthorized serial cannot answer getprop. It is an unknown device that could
+  // share the model, so the fail-closed rule withholds the identity for the whole host.
+  const scopes: NetworkTransportScope[] = [];
+  const runtimeHost = host({
+    marker: { status: 'missing' },
+    command: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    logcat: '',
+    appLogText: '',
+    attached: 'List of devices attached\nemulator-5554\tdevice\nZY22\toffline\n',
+    getpropFailures: new Set(['ZY22']),
+    transport: { mode: 'transport-composed', dump: async () => providerResult },
+    scopes,
+  });
+  await dumpAndroidNetworkTraffic(
+    runtimeHost,
+    device,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+  expect(await identityOf(scopes[0])).toBeUndefined();
 });
 
 test('one attached device gives the provider the composed dev-server name as its identity', async () => {
@@ -96,7 +123,7 @@ test('one attached device gives the provider the composed dev-server name as its
     input({ stateDir: '/state' }),
     new AbortController().signal,
   );
-  expect(scopes[0]?.metroDeviceIdentity).toBe('sdk_gphone64_arm64 - 15 - API 35');
+  expect(await identityOf(scopes[0])).toBe('sdk_gphone64_arm64 - 15 - API 35');
 });
 
 test('the dump that only arms the in-app capture still reports the app log window', async () => {
@@ -299,6 +326,7 @@ function host(options: {
   logcat: string | Error;
   transport?: NetworkTransport;
   attached?: string;
+  getpropFailures?: ReadonlySet<string>;
   scopes?: NetworkTransportScope[];
 }): PlatformRuntimeHost {
   return {
@@ -306,8 +334,8 @@ function host(options: {
     commands: {
       which: async () => undefined,
       run: async (request) => {
-        // The provider's device-identity probe runs before the transport is resolved; the harness
-        // answers it as a host with exactly this one attached device under one unique name.
+        // The identity probe answers only when a test resolves the scope's identity; the harness
+        // answers it as a host with exactly these listed devices under one unique name.
         if (request.args.includes('devices')) {
           return {
             stdout: options.attached ?? 'List of devices attached\nemulator-5554\tdevice\n',
@@ -316,6 +344,10 @@ function host(options: {
           };
         }
         if (request.args.some((arg) => arg.includes('getprop ro.product.model'))) {
+          const serial = request.args[request.args.indexOf('-s') + 1];
+          if (serial !== undefined && options.getpropFailures?.has(serial)) {
+            return { stdout: '', stderr: 'device offline', exitCode: 1 };
+          }
           return {
             stdout: 'sdk_gphone64_arm64\n15\n35\n',
             stderr: '',

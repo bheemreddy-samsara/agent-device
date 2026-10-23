@@ -12,6 +12,10 @@ import {
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { deviceShellArgv } from '@agent-device/kernel/device-shell';
 import { assertAndroidLogPackageSafe } from '../logs/package-name.ts';
+import {
+  parseAndroidListedDeviceEntries,
+  type AndroidListedDeviceEntry,
+} from '../inventory-parsers.ts';
 
 type RecoveryContext = Readonly<{
   reason: 'inactive' | 'stale-active';
@@ -24,13 +28,19 @@ export async function dumpAndroidNetworkTraffic(
   input: NetworkDumpInput,
   signal: AbortSignal,
 ): Promise<NetworkDumpResult> {
-  // Probing the identity costs adb calls, and only an app-backed session has a provider to name.
+  // The identity probe costs adb calls, so it rides into the transport as a resolver and only a
+  // dump that reached a Metro binding pays for it.
   const provider = await captureNetworkProviderTraffic(
     host,
     device,
     input,
     signal,
-    input.appBundleId === undefined ? {} : await metroDeviceIdentity(host, device, signal),
+    input.appBundleId === undefined
+      ? {}
+      : {
+          resolveMetroDeviceIdentity: (dumpSignal: AbortSignal) =>
+            metroDeviceIdentity(host, device, dumpSignal),
+        },
   );
   if (provider.status === 'captured') {
     return Object.freeze({ source: 'provider', ...provider.result });
@@ -88,18 +98,26 @@ async function metroDeviceIdentity(
   host: PlatformRuntimeHost,
   device: DeviceInfo,
   signal: AbortSignal,
-): Promise<{ metroDeviceIdentity?: string }> {
+): Promise<string | undefined> {
   const own = await readDeviceNameParts(host, device.id, signal);
-  if (own === undefined) return {};
-  const serials = await listAttachedSerials(host, signal);
-  if (serials === undefined) return {};
-  for (const serial of serials) {
-    if (serial === device.id) continue;
-    const other = await readDeviceNameParts(host, serial, signal);
-    if (other !== undefined && other.joined === own.joined) return {};
+  if (own === undefined) return undefined;
+  const listed = await listAttachedDevices(host, signal);
+  // The listing must state this session's own serial: a listing that omits an attached device is
+  // an untrustworthy host view (a resetting adb server, a half-written listing), and one cannot
+  // prove collisions against devices it hides.
+  if (listed === undefined || !listed.some((entry) => entry.serial === device.id)) return undefined;
+  for (const entry of listed) {
+    if (entry.serial === device.id) continue;
+    // Every other serial adb lists — offline or unauthorized included — must answer with its own
+    // model. An unreadable serial is an unknown device, and an unknown device could share the
+    // name, so the whole identity is withheld.
+    const other = await readDeviceNameParts(host, entry.serial, signal);
+    if (other === undefined || other.joined === own.joined) return undefined;
   }
-  return { metroDeviceIdentity: own.joined };
+  return own.joined;
 }
+
+const IDENTITY_PROBE_TIMEOUT_MS = 4_000;
 
 async function readDeviceNameParts(
   host: PlatformRuntimeHost,
@@ -121,6 +139,7 @@ async function readDeviceNameParts(
         ['-s', serial],
       ),
       allowFailure: true,
+      timeoutMs: IDENTITY_PROBE_TIMEOUT_MS,
     },
     signal,
   );
@@ -130,21 +149,22 @@ async function readDeviceNameParts(
   return { joined: `${model} - ${release} - API ${sdk}` };
 }
 
-async function listAttachedSerials(
+async function listAttachedDevices(
   host: PlatformRuntimeHost,
   signal: AbortSignal,
-): Promise<readonly string[] | undefined> {
+): Promise<readonly AndroidListedDeviceEntry[] | undefined> {
   const result = await runOptionalRecoveryCommand(
     host,
-    { executable: 'adb', args: ['devices'], allowFailure: true },
+    {
+      executable: 'adb',
+      args: ['devices'],
+      allowFailure: true,
+      timeoutMs: IDENTITY_PROBE_TIMEOUT_MS,
+    },
     signal,
   );
   if (!result || result.exitCode !== 0) return undefined;
-  return result.stdout
-    .split('\n')
-    .slice(1)
-    .map((line) => /^\s*(\S+)\s+device\b/.exec(line)?.[1])
-    .filter((serial): serial is string => Boolean(serial));
+  return parseAndroidListedDeviceEntries(result.stdout);
 }
 
 function appendLifecycleNote(notes: string[], input: NetworkDumpInput): void {

@@ -73,3 +73,47 @@ test('a session with a Metro binding dumps through the app-side capture with the
     signal,
   ]);
 });
+
+test('the identity resolver runs only inside the dump and its answer joins the dump input', async () => {
+  metroReads.mockResolvedValue({ metroPort: 8081 });
+  dumps.mockResolvedValue({ backend: 'react-native-app', entries: [] });
+  let resolved = 0;
+  const transport = await resolveReactNativeNetworkTransport(
+    device('android'),
+    {
+      ...scope,
+      appBundleId: 'com.example.app',
+      resolveMetroDeviceIdentity: async () => {
+        resolved += 1;
+        return 'sdk_gphone64_arm64 - 15 - API 35';
+      },
+    },
+    host,
+  );
+  assert.ok(transport.dump);
+  // Resolving the transport declares the dump; it does not yet pay for the probe.
+  assert.equal(resolved, 0);
+  await transport.dump({ maxEntries: 25, include: 'summary' }, new AbortController().signal);
+  assert.equal(resolved, 1);
+  assert.equal(
+    (dumps.mock.calls[0]?.[0] as { metroDeviceIdentity?: string }).metroDeviceIdentity,
+    'sdk_gphone64_arm64 - 15 - API 35',
+  );
+});
+
+test('a resolver without a Metro binding is never called', async () => {
+  metroReads.mockResolvedValue(undefined);
+  let resolved = 0;
+  await resolveReactNativeNetworkTransport(
+    device('android'),
+    {
+      ...scope,
+      resolveMetroDeviceIdentity: async () => {
+        resolved += 1;
+        return 'Device';
+      },
+    },
+    host,
+  );
+  assert.equal(resolved, 0);
+});

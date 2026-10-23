@@ -33,8 +33,14 @@ export async function resolveReactNativeNetworkTransport(
   const maxPayloadChars = scope.maxPayloadChars ?? NETWORK_MAX_PAYLOAD_CHARS;
   return Object.freeze({
     mode: 'local',
-    dump: async (input, signal) =>
-      await dumpReactNativeAppNetwork(
+    dump: async (input, signal) => {
+      // The identity probe is the first thing the dump pays for: only a session that reached this
+      // point (a Metro binding exists) runs the platform's adb or simctl probe, and the dump's own
+      // budget signal bounds it.
+      const metroDeviceIdentity = await scope.resolveMetroDeviceIdentity?.(
+        signal ?? AbortSignal.timeout(30_000),
+      );
+      return await dumpReactNativeAppNetwork(
         {
           stateDir,
           session: scope.sessionId,
@@ -42,11 +48,10 @@ export async function resolveReactNativeNetworkTransport(
           maxEntries: input.maxEntries,
           include: input.include,
           maxPayloadChars,
-          ...(scope.metroDeviceIdentity === undefined
-            ? {}
-            : { metroDeviceIdentity: scope.metroDeviceIdentity }),
+          ...(metroDeviceIdentity === undefined ? {} : { metroDeviceIdentity }),
         },
         signal,
-      ),
+      );
+    },
   });
 }
