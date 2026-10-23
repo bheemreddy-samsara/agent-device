@@ -18,13 +18,32 @@ export default function NetworkLabRoute() {
     try {
       const response = await fetch(ENDPOINT, {
         method: 'GET',
-        headers: { 'x-agent-device-lab': 'network' },
+        headers: { 'x-agent-device-lab': 'network', 'x-api-key': 'lab-secret-1' },
       });
       const body = await response.text();
       setStatus(`fetch:${response.status}:${body.length}`);
     } catch (error) {
       setStatus(`fetch:error:${(error as Error).message}`);
     }
+  };
+
+  /**
+   * One failed fetch followed by a direct XHR to the same URL. The capture must report both:
+   * the failed fetch's claim on the URL must not hide the XHR that comes after it.
+   */
+  const runFailedFetchThenXhr = async () => {
+    setStatus('running');
+    const url = 'https://invalid.agent-device.test/after-failed-fetch';
+    try {
+      await fetch(url);
+    } catch {
+      // The failure is the fixture; the XHR below is what the dump must still name.
+    }
+    const request = new XMLHttpRequest();
+    request.open('GET', url);
+    request.onload = () => setStatus(`xhr-after-failed-fetch:${request.status}`);
+    request.onerror = () => setStatus(`xhr-after-failed-fetch:failed:${request.status}`);
+    request.send();
   };
 
   const runPost = async () => {
@@ -65,6 +84,13 @@ export default function NetworkLabRoute() {
       </Pressable>
       <Pressable onPress={runXhr} style={styles.button} testID="network-xhr">
         <Text>Run XHR</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => void runFailedFetchThenXhr()}
+        style={styles.button}
+        testID="network-failed-fetch-xhr"
+      >
+        <Text>Run failed fetch then XHR</Text>
       </Pressable>
       <View>
         <Text testID="network-lab-status">{status}</Text>
