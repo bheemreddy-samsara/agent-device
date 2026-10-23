@@ -78,17 +78,12 @@ export type NetworkTransportScope = Readonly<{
   /** Payload budget the dump will apply; a transport may pre-bound what it reads with it. */
   maxPayloadChars?: number;
   /**
-   * Names the session device answers to (display name, id). A provider dump hooks only a runtime
-   * whose reported device matches one of them; a runtime naming another device is not this
-   * session's app and fails the provider closed instead of being read.
+   * The dev server's device name of exactly one device attached to this host, composed by the
+   * platform package that owns the device inventory. The provider hooks only a runtime reporting
+   * that name verbatim. Absent when the platform cannot name one attached device unambiguously;
+   * then the provider fails closed instead of guessing.
    */
-  deviceAliases?: readonly string[];
-  /**
-   * Refuse every candidate that matches none of `deviceAliases` instead of falling back to the
-   * undistinguished set. Set it where the runtime copies the OS device name faithfully (Apple);
-   * leave it unset where the dev server's name is not proven to equal the session's own.
-   */
-  requireDeviceMatch?: boolean;
+  metroDeviceIdentity?: string;
 }>;
 
 export type NetworkTransport = Readonly<{

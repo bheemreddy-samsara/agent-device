@@ -32,34 +32,28 @@ const PROVIDER_CAPTURE_BUDGET_MS = 12_000;
  * Reads one session's provider network source, when its transport declares one. A provider that
  * only armed its capture during this call reports `armed` with no entries, so the caller answers
  * the current window from its own source and keeps the arming note. Every provider failure stays
- * a typed `unavailable` note; this function never throws.
- * `extraDeviceAliases` carries device identities only the calling platform knows (a probed model
- * name); the session device's own name and id always name it. `requireDeviceMatch` decides whether
- * a runtime whose reported device matches none of them fails closed (the mapping between the OS
- * device name and the dev server's report is trusted) or falls back to the app-id match alone.
+ * a typed `unavailable` note; this function never throws. The caller passes the dev-server identity
+ * of exactly one device attached to this host (`metroDeviceIdentity`); without one the provider
+ * fails closed, because a runtime could then only be guessed at.
  */
 export async function captureNetworkProviderTraffic(
   host: Pick<PlatformRuntimeHost, 'networkTransports'>,
   device: DeviceInfo,
   input: NetworkDumpInput,
   signal: AbortSignal,
-  options: {
-    extraDeviceAliases?: readonly string[];
-    requireDeviceMatch?: boolean;
-  } = {},
+  options: { metroDeviceIdentity?: string } = {},
 ): Promise<NetworkProviderCapture> {
   // A provider dump injects into the runtime it selects, so it runs only for a session that names
-  // its app and may hook only a runtime that reports this session's device.
+  // its app. The identity gate lives in the dump itself, which fails closed without one.
   if (input.appBundleId === undefined) return { status: 'unavailable', notes: [] };
   const scope: NetworkTransportScope = {
     sessionId: input.sessionId,
     stateDir: input.stateDir,
     appBundleId: input.appBundleId,
     maxPayloadChars: input.maxPayloadChars,
-    deviceAliases: [
-      ...new Set([device.name, device.id, ...(options.extraDeviceAliases ?? [])].filter(Boolean)),
-    ],
-    requireDeviceMatch: options.requireDeviceMatch ?? true,
+    ...(options.metroDeviceIdentity === undefined
+      ? {}
+      : { metroDeviceIdentity: options.metroDeviceIdentity }),
   };
   let transport;
   try {

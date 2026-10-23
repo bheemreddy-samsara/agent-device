@@ -14,6 +14,45 @@ import { isIosFamily, type DeviceInfo } from '@agent-device/kernel/device';
 import { scopeSimctlArgsForDevice } from '../core/simctl.ts';
 import { backendForAppleDevice } from '../logs/backend.ts';
 
+/**
+ * The dev server's device name of this one simulator, or nothing when the name is not an identity.
+ * The dev server names an Apple runtime after the simulator's display name, so the name joins only
+ * when exactly one booted simulator in this set carries it; a shared name could select and drain
+ * the other simulator's runtime. A physical device has no host-side listing that proves its name
+ * is unique among attached devices, so it gets no identity and the provider stays off.
+ */
+async function metroDeviceIdentity(
+  host: PlatformRuntimeHost,
+  device: DeviceInfo,
+  signal: AbortSignal,
+): Promise<{ metroDeviceIdentity?: string }> {
+  if (!isIosFamily(device) || device.kind !== 'simulator') return {};
+  const result = await host.appleTools.run(
+    {
+      tool: 'simctl',
+      args: scopeSimctlArgsForDevice(device, ['list', 'devices', 'booted', '-j']),
+      allowFailure: true,
+      timeoutMs: 4_000,
+    },
+    signal,
+  );
+  if (result.exitCode !== 0) return {};
+  let names: string[];
+  try {
+    const payload = JSON.parse(result.stdout) as {
+      devices?: Record<string, Array<{ name?: string; state?: string }>>;
+    };
+    names = Object.values(payload.devices ?? {})
+      .flat()
+      .filter((entry) => entry.state === 'Booted')
+      .map((entry) => entry.name ?? '');
+  } catch {
+    return {};
+  }
+  const sameName = names.filter((name) => name === device.name).length;
+  return sameName === 1 ? { metroDeviceIdentity: device.name } : {};
+}
+
 export async function dumpAppleNetworkTraffic(
   host: PlatformRuntimeHost,
   device: DeviceInfo,
@@ -21,7 +60,13 @@ export async function dumpAppleNetworkTraffic(
   signal: AbortSignal,
 ): Promise<NetworkDumpResult> {
   const backend = backendForAppleDevice(device);
-  const provider = await captureNetworkProviderTraffic(host, device, input, signal);
+  const provider = await captureNetworkProviderTraffic(
+    host,
+    device,
+    input,
+    signal,
+    input.appBundleId === undefined ? {} : await metroDeviceIdentity(host, device, signal),
+  );
   if (provider.status === 'captured') {
     return Object.freeze({ source: 'provider', ...provider.result });
   }

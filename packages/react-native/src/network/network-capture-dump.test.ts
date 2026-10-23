@@ -37,6 +37,8 @@ function dump(overrides: Partial<{ include: NetworkIncludeMode; maxEntries: numb
     maxEntries: 25,
     include: 'summary',
     maxPayloadChars: 2048,
+    // What the platform layer contributes for a host with one attached device of this name.
+    metroDeviceIdentity: 'Fake Device 1',
     ...overrides,
   });
 }
@@ -195,10 +197,17 @@ test('a second connected device fails closed instead of guessing a runtime', asy
   server = await fakeMetroDevServer({ devices: 2 });
   writeMetroHints(stateDir, 'repro', server.serverUrl);
 
-  await expect(dump()).rejects.toMatchObject({
-    code: 'INVALID_ARGS',
-    details: { hint: expect.stringContaining('--metro-device') },
-  });
+  // No identity the session could name: the provider fails closed before reaching the listing.
+  await expect(
+    dumpReactNativeAppNetwork({
+      stateDir,
+      session: 'repro',
+      appBundleId: 'com.example.app',
+      maxEntries: 25,
+      include: 'summary',
+      maxPayloadChars: 2048,
+    }),
+  ).rejects.toMatchObject({ details: { reason: 'metro-device-mismatch' } });
 });
 
 test('a session device no runtime reports fails closed instead of hooking another device', async () => {
@@ -212,15 +221,17 @@ test('a session device no runtime reports fails closed instead of hooking anothe
       maxEntries: 25,
       include: 'summary',
       maxPayloadChars: 2048,
-      deviceAliases: ['rn-net ios', 'com.apple.CoreSimulator.42'],
-      requireDeviceMatch: true,
+      metroDeviceIdentity: 'rn-net ios',
     }),
   ).rejects.toMatchObject({
     details: { reason: 'metro-device-mismatch' },
   });
 });
 
-test('a runtime reporting the session device is hooked even among other devices', async () => {
+test('only the runtime reporting the session identity is hooked, never the other device', async () => {
+  await server.close();
+  server = await fakeMetroDevServer({ devices: 2 });
+  writeMetroHints(stateDir, 'repro', server.serverUrl);
   const result = await dumpReactNativeAppNetwork({
     stateDir,
     session: 'repro',
@@ -228,10 +239,24 @@ test('a runtime reporting the session device is hooked even among other devices'
     maxEntries: 25,
     include: 'summary',
     maxPayloadChars: 2048,
-    deviceAliases: ['Fake Device 1'],
-    requireDeviceMatch: true,
+    metroDeviceIdentity: 'Fake Device 2',
   });
   expect(result.armed).toBe(true);
+  expect(server.hookedPages).toEqual(['device-2-1']);
+});
+
+test('an app-backed session whose device cannot be named fails closed without listing runtimes', async () => {
+  await expect(
+    dumpReactNativeAppNetwork({
+      stateDir,
+      session: 'repro',
+      appBundleId: 'com.example.app',
+      maxEntries: 25,
+      include: 'summary',
+      maxPayloadChars: 2048,
+    }),
+  ).rejects.toMatchObject({ details: { reason: 'metro-device-mismatch' } });
+  expect(server.hookedPages).toEqual([]);
 });
 
 test('a session without a Metro binding or an unreachable dev server fails with a typed reason', async () => {

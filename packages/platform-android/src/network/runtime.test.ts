@@ -4,6 +4,7 @@ import type {
   NetworkDumpInput,
   NetworkProviderDumpResult,
   NetworkTransport,
+  NetworkTransportScope,
 } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import type { DeviceInfo } from '@agent-device/kernel/device';
@@ -55,6 +56,47 @@ test('in-app capture answers with the full URL and status, and the app log is no
 
   expect(result).toEqual({ source: 'provider', ...providerResult });
   expect(readRecent).not.toHaveBeenCalled();
+});
+
+test('a second attached emulator of the same model takes the identity away from the provider', async () => {
+  // Two emulators of one system image report one `ro.product.model`; naming either one could hook
+  // and drain the other's runtime, so the platform passes no identity and the dump fails closed.
+  const scopes: NetworkTransportScope[] = [];
+  const runtimeHost = host({
+    marker: { status: 'missing' },
+    command: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    logcat: '',
+    appLogText: '',
+    attached: 'List of devices attached\nemulator-5554\tdevice\nemulator-5556\tdevice\n',
+    transport: { mode: 'transport-composed', dump: async () => providerResult },
+    scopes,
+  });
+  await dumpAndroidNetworkTraffic(
+    runtimeHost,
+    device,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+  expect(scopes[0]?.metroDeviceIdentity).toBeUndefined();
+});
+
+test('one attached device gives the provider the composed dev-server name as its identity', async () => {
+  const scopes: NetworkTransportScope[] = [];
+  const runtimeHost = host({
+    marker: { status: 'missing' },
+    command: () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    logcat: '',
+    appLogText: '',
+    transport: { mode: 'transport-composed', dump: async () => providerResult },
+    scopes,
+  });
+  await dumpAndroidNetworkTraffic(
+    runtimeHost,
+    device,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+  expect(scopes[0]?.metroDeviceIdentity).toBe('sdk_gphone64_arm64 - 15 - API 35');
 });
 
 test('the dump that only arms the in-app capture still reports the app log window', async () => {
@@ -256,12 +298,30 @@ function host(options: {
   appLogText?: string;
   logcat: string | Error;
   transport?: NetworkTransport;
+  attached?: string;
+  scopes?: NetworkTransportScope[];
 }): PlatformRuntimeHost {
   return {
     ...unusedAppLogHost(),
     commands: {
       which: async () => undefined,
       run: async (request) => {
+        // The provider's device-identity probe runs before the transport is resolved; the harness
+        // answers it as a host with exactly this one attached device under one unique name.
+        if (request.args.includes('devices')) {
+          return {
+            stdout: options.attached ?? 'List of devices attached\nemulator-5554\tdevice\n',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (request.args.some((arg) => arg.includes('getprop ro.product.model'))) {
+          return {
+            stdout: 'sdk_gphone64_arm64\n15\n35\n',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (!request.args.includes('logcat')) return options.command(request);
         options.command(request);
         if (options.logcat instanceof Error) throw options.logcat;
@@ -283,7 +343,12 @@ function host(options: {
       }),
       readProcessMarker: async () => options.marker,
     },
-    networkTransports: { resolve: async () => options.transport ?? { mode: 'local' } },
+    networkTransports: {
+      resolve: async (_device, scope) => {
+        options.scopes?.push(scope!);
+        return options.transport ?? { mode: 'local' };
+      },
+    },
   };
 }
 

@@ -174,8 +174,9 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
           var clone = response && typeof response.clone === 'function' ? response.clone() : undefined;
           if (clone && typeof clone.text === 'function' && !isBinaryContentType(contentType)) {
             // Record in a detached chain: the app receives its response at once, and the entry
-            // joins the buffer when the body read settles. A drain in that window reports the
-            // request without its body instead of delaying the app for the whole read.
+            // joins the buffer when the body read settles. A drain taken inside that window
+            // reports this request on a later dump, never half-written, and never delays the app
+            // for the whole read.
             clone.text().then(
               function (text) {
                 entry.responseBody = cap(text);

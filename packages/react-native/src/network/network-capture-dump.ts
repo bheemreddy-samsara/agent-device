@@ -29,10 +29,8 @@ export type ReactNativeNetworkDumpInput = Readonly<{
   maxEntries: number;
   include: NetworkIncludeMode;
   maxPayloadChars: number;
-  /** Names the session device answers to; see `NetworkTransportScope.deviceAliases`. */
-  deviceAliases?: readonly string[];
-  /** Refuse candidates matching none of `deviceAliases` instead of falling back. */
-  requireDeviceMatch?: boolean;
+  /** The dev server's device name of exactly one attached device; see `RuntimeTargetFilter`. */
+  metroDeviceIdentity?: string;
 }>;
 
 function runtimeCall(
@@ -96,16 +94,20 @@ export async function dumpReactNativeAppNetwork(
     );
   }
   const serverUrl = resolveSessionMetroServerUrl(scope);
+  if (input.appBundleId !== undefined && input.metroDeviceIdentity === undefined) {
+    // Without a name that marks exactly one attached device, any same-app runtime could be
+    // picked and hooked; the provider does not guess.
+    throw new AppError(
+      'COMMAND_FAILED',
+      'This session device cannot be named unambiguously among the devices attached to this host, so the in-app network capture stays off for it.',
+      { reason: 'metro-device-mismatch' },
+    );
+  }
   const target = selectReactNativeTarget(await listMetroInspectorTargets(serverUrl, signal), {
     appId: input.appBundleId,
-    ...(input.deviceAliases === undefined
+    ...(input.metroDeviceIdentity === undefined
       ? {}
-      : {
-          deviceAliases: input.deviceAliases,
-          ...(input.requireDeviceMatch === undefined
-            ? {}
-            : { requireDeviceMatch: input.requireDeviceMatch }),
-        }),
+      : { metroDeviceIdentity: input.metroDeviceIdentity }),
   });
   const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, target), signal);
   try {

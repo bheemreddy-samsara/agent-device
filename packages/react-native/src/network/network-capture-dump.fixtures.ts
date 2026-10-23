@@ -209,9 +209,8 @@ export type FakeAppRuntime = Readonly<{
 export type FakeMetroDevServer = Readonly<{
   serverUrl: string;
   app: FakeAppRuntime;
-  /** Inspector targets the dev server lists; a second entry is a second connected device. */
-  targets: string[];
-  deviceNameFor(page: number): string;
+  /** Inspector page ids whose debugger connection ran an expression, in connection order. */
+  hookedPages: string[];
   close(): Promise<void>;
 }>;
 
@@ -219,13 +218,17 @@ export type FakeMetroDevServer = Readonly<{
  * A React Native dev server that lists inspector targets and answers `Runtime.evaluate` by running
  * the expression in one in-process JavaScript runtime. Every debugger connection reaches that same
  * runtime, the way several DevTools sessions reach one Hermes instance, so a test can dump, drive
- * app traffic, and dump again over separate connections.
+ * app traffic, and dump again over separate connections. `deviceNames` overrides the device each
+ * listed target reports; two entries may share one name, the way two emulators of one system
+ * image report one `Build.MODEL`-derived name.
  */
 export async function fakeMetroDevServer(
-  options: { appId?: string; devices?: number } = {},
+  options: { appId?: string; devices?: number; deviceNames?: readonly string[] } = {},
 ): Promise<FakeMetroDevServer> {
   const appId = options.appId ?? 'com.example.app';
   const devices = options.devices ?? 1;
+  const deviceName = (page: number) => options.deviceNames?.[page] ?? `Fake Device ${page + 1}`;
+  const hookedPages: string[] = [];
   const app = new FakeAppRuntimeState();
   const sockets = new Set<Duplex>();
   const server = createServer((req, res) => {
@@ -242,7 +245,7 @@ export async function fakeMetroDevServer(
           title: 'React Native',
           description: 'React Native Bridgeless [C++ connection]',
           appId,
-          deviceName: `Fake Device ${page + 1}`,
+          deviceName: deviceName(page),
           reactNative: { logicalDeviceId: `device-${page + 1}` },
           webSocketDebuggerUrl: `ws://127.0.0.1:${port}/inspector/debug?page=device-${page + 1}-1`,
         })),
@@ -251,6 +254,8 @@ export async function fakeMetroDevServer(
   });
   server.on('upgrade', (req: IncomingMessage, socket: Duplex) => {
     sockets.add(socket);
+    const page = /page=([^&]+)/.exec(req.url ?? '')?.[1] ?? req.url ?? '';
+    if (!hookedPages.includes(page)) hookedPages.push(page);
     const accept = createHash('sha1')
       .update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
       .digest('base64');
@@ -300,8 +305,7 @@ export async function fakeMetroDevServer(
   return {
     serverUrl: `http://127.0.0.1:${port}`,
     app,
-    targets: Array.from({ length: devices }, (_, page) => `device-1-${page + 1}`),
-    deviceNameFor: (page) => `Fake Device ${page}`,
+    hookedPages,
     close: async () => {
       for (const socket of sockets) socket.destroy();
       server.close();

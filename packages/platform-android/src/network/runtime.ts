@@ -24,14 +24,13 @@ export async function dumpAndroidNetworkTraffic(
   input: NetworkDumpInput,
   signal: AbortSignal,
 ): Promise<NetworkDumpResult> {
-  // The dev server reports a runtime's device as `Build.MODEL`; the session device carries that
-  // same model from the inventory probe, so it joins the aliases the provider may hook.
+  // Probing the identity costs adb calls, and only an app-backed session has a provider to name.
   const provider = await captureNetworkProviderTraffic(
     host,
     device,
     input,
     signal,
-    device.model === undefined ? {} : { extraDeviceAliases: [device.model] },
+    input.appBundleId === undefined ? {} : await metroDeviceIdentity(host, device, signal),
   );
   if (provider.status === 'captured') {
     return Object.freeze({ source: 'provider', ...provider.result });
@@ -75,6 +74,77 @@ function androidRecoveryNote(context: RecoveryContext, pids: readonly string[]):
   return context.reason === 'stale-active'
     ? `Session app log stream was still bound to prior Android PID ${context.trackedPid}. Recovered recent Android HTTP entries from adb logcat for PID set ${pids.join(', ')}.`
     : `Session app log stream was inactive. Recovered recent Android HTTP entries from adb logcat for PID set ${pids.join(', ')}.`;
+}
+
+/**
+ * The dev server's device name of this one device, or nothing when another attached device would
+ * answer to it too. The dev server names an Android runtime `<Build.MODEL> - <release> - API
+ * <level>`; `ro.product.model` and `ro.build.version.release` compose the same string, and
+ * `ro.build.version.sdk` is the API level. Two devices of one system image share all three, so the
+ * model joins only when the whole name is unique across attached devices; otherwise the provider
+ * fails closed instead of reading and draining another device's runtime.
+ */
+async function metroDeviceIdentity(
+  host: PlatformRuntimeHost,
+  device: DeviceInfo,
+  signal: AbortSignal,
+): Promise<{ metroDeviceIdentity?: string }> {
+  const own = await readDeviceNameParts(host, device.id, signal);
+  if (own === undefined) return {};
+  const serials = await listAttachedSerials(host, signal);
+  if (serials === undefined) return {};
+  for (const serial of serials) {
+    if (serial === device.id) continue;
+    const other = await readDeviceNameParts(host, serial, signal);
+    if (other !== undefined && other.joined === own.joined) return {};
+  }
+  return { metroDeviceIdentity: own.joined };
+}
+
+async function readDeviceNameParts(
+  host: PlatformRuntimeHost,
+  serial: string,
+  signal: AbortSignal,
+): Promise<{ joined: string } | undefined> {
+  const result = await runOptionalRecoveryCommand(
+    host,
+    {
+      executable: 'adb',
+      args: deviceShellArgv(
+        'adb',
+        'shell',
+        [
+          'sh',
+          '-c',
+          'getprop ro.product.model; getprop ro.build.version.release; getprop ro.build.version.sdk',
+        ],
+        ['-s', serial],
+      ),
+      allowFailure: true,
+    },
+    signal,
+  );
+  if (!result || result.exitCode !== 0) return undefined;
+  const [model, release, sdk] = result.stdout.split('\n').map((line) => line.trim());
+  if (!model || !release || !sdk) return undefined;
+  return { joined: `${model} - ${release} - API ${sdk}` };
+}
+
+async function listAttachedSerials(
+  host: PlatformRuntimeHost,
+  signal: AbortSignal,
+): Promise<readonly string[] | undefined> {
+  const result = await runOptionalRecoveryCommand(
+    host,
+    { executable: 'adb', args: ['devices'], allowFailure: true },
+    signal,
+  );
+  if (!result || result.exitCode !== 0) return undefined;
+  return result.stdout
+    .split('\n')
+    .slice(1)
+    .map((line) => /^\s*(\S+)\s+device\b/.exec(line)?.[1])
+    .filter((serial): serial is string => Boolean(serial));
 }
 
 function appendLifecycleNote(notes: string[], input: NetworkDumpInput): void {

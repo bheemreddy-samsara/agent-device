@@ -34,11 +34,6 @@ export function redactNetworkPayload(value: string, maxLength: number): string {
   return `${redacted.slice(0, kept)}${TRUNCATION_SUFFIX}`;
 }
 
-/**
- * Redacts captured HTTP headers with the same rules diagnostics use: a value whose header name is
- * sensitive (authorization, cookie, an API key, a token) is replaced entirely; every other value
- * keeps its text with secrets masked.
- */
 /** Sanitizes an untrusted structured cause before it crosses a process or client boundary. */
 export function sanitizeErrorCause(cause: unknown): { message: string; code?: string } | undefined {
   if (!cause || typeof cause !== 'object') return undefined;

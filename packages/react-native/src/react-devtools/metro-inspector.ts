@@ -95,16 +95,12 @@ export type RuntimeTargetFilter = {
   /** Device name or logical device id, as the dev server reports it. */
   device?: string;
   /**
-   * Names the caller's own device answers to (display name, serial, UDID). When none of the
-   * candidates reports any of them, the filter's outcome depends on `requireDeviceMatch`.
+   * The dev server's device name of exactly one device attached to this host, composed by the
+   * platform package that owns the device inventory. A runtime is selected by it only when it
+   * reports that name verbatim; no candidate doing so fails closed. A name shared by several
+   * attached devices is not an identity, and the platform must not pass one.
    */
-  deviceAliases?: readonly string[];
-  /**
-   * Refuse candidates whose reported device matches none of `deviceAliases`. Set it where the
-   * runtime copies the OS device name faithfully; leave it unset where the mapping is not proven,
-   * so a name mismatch alone does not disable the capture.
-   */
-  requireDeviceMatch?: boolean;
+  metroDeviceIdentity?: string;
 };
 
 function isAppRuntime(target: MetroInspectorTarget): boolean {
@@ -167,27 +163,15 @@ function deviceSelectors(devices: MetroInspectorTarget[]): string[] {
   );
 }
 
-/** Names the target reports for its device: display name and logical device id. */
-function targetDeviceNames(target: MetroInspectorTarget): string[] {
-  return [target.deviceName, deviceKey(target)].filter((name): name is string => Boolean(name));
-}
-
-/**
- * Whether a reported device name names the alias's device. An Android runtime reports
- * `<model> - <release> - API <level>`, so a `<model> - ` prefix is the same device; an Apple
- * runtime reports the simulator name verbatim.
- */
-function deviceNameMatchesAlias(name: string, alias: string): boolean {
-  return name === alias || name.startsWith(`${alias} - `);
-}
-
 /**
  * Picks the one React Native runtime to profile. Pages without the `reactNative` field are not app
  * runtimes, and worklet runtimes render no React tree. Several apps or several devices fail
- * closed: the caller must narrow to exactly one runtime. When `deviceAliases` name the caller's
- * own device, candidates that positively match one are the only candidates considered next; when
- * none matches and `requireDeviceMatch` is set, selection fails closed instead of profiling a
- * runtime that may belong to another device.
+ * closed: the caller must narrow to exactly one runtime. When `metroDeviceIdentity` is set, only a
+ * runtime reporting that name verbatim may be selected; none doing so fails closed, because
+ * selecting the same app id on another device would read and hook a runtime this session does not
+ * own. Two runtimes reporting the same shared device name both match and reach the several-devices
+ * guard: a name two devices share is not an identity, and the platform that owns the inventory
+ * must not pass one.
  */
 export function selectReactNativeTarget(
   targets: MetroInspectorTarget[],
@@ -195,29 +179,16 @@ export function selectReactNativeTarget(
 ): MetroInspectorTarget {
   const runtimes = targets.filter(isAppRuntime);
   let candidates = runtimes.filter((target) => matchesFilter(target, filter));
-  if (filter.deviceAliases !== undefined && candidates.length > 0) {
-    const aliases = new Set(filter.deviceAliases.filter(Boolean));
-    // A target counts as identified only when the dev server names its device: the logical device
-    // id alone is synthetic and cannot be matched against a session's device. Without any name the
-    // several-devices guard below still fails a multi-device Metro closed, and a lone candidate
-    // keeps its app-id match.
-    const identified = candidates.filter((target) => target.deviceName !== undefined);
-    if (identified.length > 0) {
-      const owned = identified.filter((target) =>
-        targetDeviceNames(target).some((name) =>
-          [...aliases].some((alias) => deviceNameMatchesAlias(name, alias)),
-        ),
+  if (filter.metroDeviceIdentity !== undefined && candidates.length > 0) {
+    const owned = candidates.filter((target) => target.deviceName === filter.metroDeviceIdentity);
+    if (owned.length === 0) {
+      throw new AppError(
+        'COMMAND_FAILED',
+        "No React Native runtime connected to the dev server reports this session's device.",
+        { reason: 'metro-device-mismatch' },
       );
-      if (owned.length > 0) {
-        candidates = owned;
-      } else if (filter.requireDeviceMatch) {
-        throw new AppError(
-          'COMMAND_FAILED',
-          "No React Native runtime connected to the dev server reports this session's device.",
-          { reason: 'metro-device-mismatch' },
-        );
-      }
     }
+    candidates = owned;
   }
   if (candidates.length === 0) throw noMatchingRuntime(runtimes, filter);
   const apps = new Set(candidates.map(targetAppId));

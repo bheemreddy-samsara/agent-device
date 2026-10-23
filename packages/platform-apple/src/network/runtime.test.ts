@@ -3,6 +3,7 @@ import type {
   NetworkDumpInput,
   NetworkProviderDumpResult,
   NetworkTransport,
+  NetworkTransportScope,
 } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import type { DeviceInfo } from '@agent-device/kernel/device';
@@ -275,7 +276,31 @@ function host(options: {
   text?: string;
   runSimctl: PlatformRuntimeHost['appleTools']['run'];
   transport?: NetworkTransport;
+  bootedNames?: readonly string[];
+  scopes?: NetworkTransportScope[];
 }): PlatformRuntimeHost {
+  // The provider's identity probe lists booted simulators before the transport resolves; the
+  // harness answers it with the default one-simulator host unless a test names more.
+  const runSimctl: PlatformRuntimeHost['appleTools']['run'] = async (request, signal) => {
+    if (request.args.includes('booted')) {
+      const devices = [
+        { udid: 'sim-1', name: 'iPhone', state: 'Booted' },
+        ...(options.bootedNames ?? []).map((name, index) => ({
+          udid: `other-${index}`,
+          name,
+          state: 'Booted' as const,
+        })),
+      ];
+      return {
+        stdout: JSON.stringify({
+          devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-27-0': devices },
+        }),
+        stderr: '',
+        exitCode: 0,
+      };
+    }
+    return options.runSimctl(request, signal);
+  };
   return {
     ...unusedAppLogHost(),
     commands: {
@@ -284,7 +309,7 @@ function host(options: {
         throw new Error('generic command runner must not own Apple network recovery');
       },
     },
-    appleTools: { isXcrunAvailable: async () => true, run: options.runSimctl },
+    appleTools: { isXcrunAvailable: async () => true, run: runSimctl },
     appLogs: {
       readRecent: async () => ({
         path: '/sessions/one/app.log',
@@ -294,9 +319,47 @@ function host(options: {
       }),
       readProcessMarker: async () => ({ status: 'missing' }),
     },
-    networkTransports: { resolve: async () => options.transport ?? { mode: 'local' } },
+    networkTransports: {
+      resolve: async (_device, scope) => {
+        options.scopes?.push(scope!);
+        return options.transport ?? { mode: 'local' };
+      },
+    },
   };
 }
+
+test('a simulator whose display name another booted simulator shares gets no identity', async () => {
+  const scopes: NetworkTransportScope[] = [];
+  await dumpAppleNetworkTraffic(
+    host({
+      text: '',
+      runSimctl: vi.fn(),
+      transport: { mode: 'transport-composed', dump: async () => providerResult },
+      bootedNames: ['iPhone'],
+      scopes,
+    }),
+    simulator,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+  expect(scopes[0]?.metroDeviceIdentity).toBeUndefined();
+});
+
+test('one booted simulator gives the provider its display name as the identity', async () => {
+  const scopes: NetworkTransportScope[] = [];
+  await dumpAppleNetworkTraffic(
+    host({
+      text: '',
+      runSimctl: vi.fn(),
+      transport: { mode: 'transport-composed', dump: async () => providerResult },
+      scopes,
+    }),
+    simulator,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+  expect(scopes[0]?.metroDeviceIdentity).toBe('iPhone');
+});
 
 function unusedAppLogHost(): Omit<
   PlatformRuntimeHost,

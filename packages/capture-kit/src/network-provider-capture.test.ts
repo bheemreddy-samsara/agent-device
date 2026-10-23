@@ -65,6 +65,7 @@ test('the provider result is handed back with the session scope the transport ne
     device,
     input,
     new AbortController().signal,
+    { metroDeviceIdentity: 'Device' },
   );
 
   assert.deepEqual(capture, { status: 'captured', result });
@@ -74,9 +75,19 @@ test('the provider result is handed back with the session scope the transport ne
     stateDir: '/tmp/state',
     appBundleId: 'com.example.app',
     maxPayloadChars: 2048,
-    deviceAliases: ['Device', 'device-1'],
-    requireDeviceMatch: true,
+    metroDeviceIdentity: 'Device',
   });
+});
+
+test('a caller without a device identity reaches the transport without one; the dump fails closed', async () => {
+  const fixture = hostWith({
+    mode: 'transport-composed',
+    dump: async () => ({ backend: 'react-native-app', entries: [] }),
+  });
+
+  await captureNetworkProviderTraffic(fixture.host, device, input, new AbortController().signal);
+
+  assert.equal(fixture.scopes[0]?.metroDeviceIdentity, undefined);
 });
 
 test('a session without an app id never probes a provider: injection needs a named app', async () => {
