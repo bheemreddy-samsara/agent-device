@@ -168,6 +168,12 @@ export type SessionState = {
   surface?: SessionSurface;
   appBundleId?: string;
   appName?: string;
+  /**
+   * The session's iOS simulator network capture window (ADR 0037): present when the session's app
+   * was last opened with `--capture-network`, naming the file the injected probe writes. A later
+   * open without the flag clears it. `network dump` reads this file instead of the app log.
+   */
+  networkCapture?: { path: string };
   snapshot?: SnapshotState;
   /**
    * Monotonically increasing generation of the stored session snapshot (#1076

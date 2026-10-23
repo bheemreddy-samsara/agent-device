@@ -40,6 +40,14 @@ export type ApplicationLifecycleExecution = Readonly<{
   activity?: string;
   launchConsole?: string;
   launchArgs?: readonly string[];
+  /** The raw `open --capture-network` intent, kept so open validation can refuse it where unsupported. */
+  captureNetwork?: boolean;
+  /**
+   * Where an iOS simulator launch should write the session's captured network lines (ADR 0037). Set
+   * only when the request asked for network capture; the Apple owner injects its capture probe so
+   * the app writes there, and `network dump` reads from there.
+   */
+  networkCapturePath?: string;
   clearAppState?: boolean;
   iosXctestrunFile?: string;
   iosXctestDerivedDataPath?: string;

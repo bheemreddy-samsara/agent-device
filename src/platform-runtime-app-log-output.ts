@@ -25,7 +25,7 @@ export async function openAppLogOutput(
     streamError ??= error;
   });
   const { env } = host;
-  const patterns = redactionPatterns(env);
+  const patterns = appLogRedactionPatterns(env);
   let pending = '';
   let writes = Promise.resolve();
   let disposal: Promise<void> | undefined;
@@ -92,7 +92,12 @@ function requireManagedOutputPath(sessionsDir: string, pathname: string): string
   });
 }
 
-function redactionPatterns(env: NodeJS.ProcessEnv): RegExp[] {
+/**
+ * The operator's app-log redaction patterns (`AGENT_DEVICE_APP_LOG_REDACT_PATTERNS`). The session's
+ * other captured text — including the injected network capture probe's file — is scanned with these
+ * same patterns, so one operator setting covers every text artifact a session writes.
+ */
+export function appLogRedactionPatterns(env: NodeJS.ProcessEnv): RegExp[] {
   return (env.AGENT_DEVICE_APP_LOG_REDACT_PATTERNS ?? '')
     .split(',')
     .map((part) => part.trim())

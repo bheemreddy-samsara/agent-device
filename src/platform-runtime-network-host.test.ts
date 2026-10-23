@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readRecentNetworkTrafficFromText } from '@agent-device/capture-kit';
 import { afterEach, test } from 'vitest';
-import { readRecentAppLogLines } from './platform-runtime-network-host.ts';
+import {
+  readRecentAppLogLines,
+  readRecentNetworkCaptureLines,
+} from './platform-runtime-network-host.ts';
 import { mkdtempForTestSync } from '@agent-device/test-kit';
 
 const temporaryDirectories: string[] = [];
@@ -67,6 +70,41 @@ test('preserves absolute source line numbers after selecting a bounded suffix', 
   });
 
   assert.equal(dump.entries[0]?.line, 5001);
+});
+
+test('bounds one capture-probe read in bytes and keeps the newest window', () => {
+  const directory = createTemporaryDirectory();
+  const pathname = path.join(directory, 'network.jsonl');
+  const old = `${'x'.repeat(64)}\n`.repeat(200);
+  const fresh = `${JSON.stringify({ url: 'https://api.example.test/v1/newest', status: 200 })}\n`;
+  fs.writeFileSync(pathname, `${old}${fresh}`);
+
+  const recent = readRecentNetworkCaptureLines({
+    pathname,
+    maxScanLines: 4000,
+    redactionPatterns: [],
+  });
+
+  assert.equal(recent.exists, true);
+  assert.ok(recent.text.endsWith(fresh));
+});
+
+test('applies the operator redaction patterns to the capture-probe window', () => {
+  const directory = createTemporaryDirectory();
+  const pathname = path.join(directory, 'network.jsonl');
+  fs.writeFileSync(
+    pathname,
+    `${JSON.stringify({ url: 'https://api.example.test/v1/a?token=secret', status: 200 })}\n`,
+  );
+
+  const recent = readRecentNetworkCaptureLines({
+    pathname,
+    maxScanLines: 100,
+    redactionPatterns: [/secret/g],
+  });
+
+  assert.match(recent.text, /\[REDACTED\]/);
+  assert.doesNotMatch(recent.text, /secret/);
 });
 
 function createTemporaryDirectory(): string {

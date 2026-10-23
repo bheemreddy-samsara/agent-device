@@ -15,6 +15,12 @@ export type NetworkDumpInput = Readonly<{
   sessionId: string;
   appBundleId?: string;
   appLogSnapshot?: NetworkAppLogSnapshot;
+  /**
+   * The session's capture-probe file, present only when the session's app was opened with
+   * `--capture-network` (ADR 0037). It selects the probe mode of the Apple dump, which reports that
+   * file instead of parsing the app log.
+   */
+  networkCapturePath?: string;
   maxEntries: number;
   include: NetworkIncludeMode;
   maxPayloadChars: number;
@@ -47,6 +53,17 @@ export type NetworkDumpResult =
       dump: NetworkDump;
       notes: readonly string[];
     }>
+  /**
+   * Traffic the injected iOS simulator capture probe recorded for the session (ADR 0037). Each
+   * entry names the request URL the app itself asked for, so a request that reused a keep-alive
+   * connection is not reduced to its connection's origin.
+   */
+  | Readonly<{
+      source: 'probe';
+      backend: LogBackend;
+      dump: NetworkDump;
+      notes: readonly string[];
+    }>
   | (Readonly<{ source: 'provider' }> & NetworkProviderDumpResult);
 
 export type NetworkRuntimeOperations = Readonly<{
@@ -73,12 +90,26 @@ export type NetworkAppLogRead = Readonly<{
   skippedLines: number;
 }>;
 
+/**
+ * What the composition root read of the session's capture-probe file (ADR 0037). `path` is the file
+ * this daemon owns; a probe that wrote nothing leaves `exists` false. `text` already carries the
+ * operator's app-log redaction pass, so no consumer may treat it as raw app output.
+ */
+export type NetworkCaptureRead = NetworkAppLogRead;
+
 export type NetworkRuntimeHost = Readonly<{
   commands: HostCommandRunner;
   appleTools: AppleToolHost;
   appLogs: Readonly<{
     readRecent(sessionId: string, maxScanLines: number): Promise<NetworkAppLogRead>;
     readProcessMarker(sessionId: string): Promise<AppLogProcessMarkerReadOutcome>;
+  }>;
+  /**
+   * Reads the capture probe's file for a session. The path is derived by the composition root from
+   * the session id, so platform code never names a host path of its own.
+   */
+  captureProbe: Readonly<{
+    readRecent(sessionId: string, maxScanLines: number): Promise<NetworkCaptureRead>;
   }>;
   networkTransports: Readonly<{
     resolve(device: DeviceInfo): Promise<NetworkTransport>;

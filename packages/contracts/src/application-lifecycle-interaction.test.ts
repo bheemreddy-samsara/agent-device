@@ -155,6 +155,27 @@ test.each([
     execution: { clearAppState: true },
     message: /requires an app target, not a deep link/,
   },
+  {
+    name: 'network capture without an app',
+    device: IOS_SIMULATOR,
+    positionals: [],
+    execution: { captureNetwork: true },
+    message: /direct app launch/,
+  },
+  {
+    name: 'network capture outside an iOS simulator',
+    device: LINUX_DEVICE,
+    positionals: ['org.example.App'],
+    execution: { captureNetwork: true },
+    message: /iOS simulator/i,
+  },
+  {
+    name: 'network capture with a direct URL pair',
+    device: IOS_SIMULATOR,
+    positionals: ['com.example.app', 'example://home'],
+    execution: { captureNetwork: true },
+    message: /direct app launch/,
+  },
 ])('rejects invalid open input: $name', async ({ device, positionals, execution, message }) => {
   await expect(
     invokeApplicationOpen({
@@ -164,4 +185,17 @@ test.each([
       execution,
     }),
   ).rejects.toThrow(message);
+});
+
+test('passes the session capture file to the interactor on a capture launch', async () => {
+  let seen: Parameters<Interactor['open']>[1];
+  await invokeApplicationOpen({
+    device: IOS_SIMULATOR,
+    interactor: interactorWithOpen(async (_app, options) => {
+      seen = options;
+    }),
+    positionals: ['com.example.app'],
+    execution: { captureNetwork: true, networkCapturePath: '/sessions/one/network.jsonl' },
+  });
+  expect(seen).toMatchObject({ networkCapturePath: '/sessions/one/network.jsonl' });
 });

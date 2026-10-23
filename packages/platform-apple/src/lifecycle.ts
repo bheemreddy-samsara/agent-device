@@ -297,6 +297,8 @@ async function openLaunchUrl(
     ...input.execution,
     clearAppState: undefined,
     launchConsole: undefined,
+    captureNetwork: undefined,
+    networkCapturePath: undefined,
     launchArgs: undefined,
   };
   await invokeApplicationOpen({
@@ -596,6 +598,7 @@ function isDirectAppLaunch(input: OpenApplicationInput): boolean {
   return (
     input.execution.clearAppState === true ||
     Boolean(input.execution.launchConsole?.trim()) ||
+    Boolean(input.execution.networkCapturePath?.trim()) ||
     Boolean(input.execution.launchArgs?.length)
   );
 }

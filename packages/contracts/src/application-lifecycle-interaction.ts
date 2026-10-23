@@ -1,5 +1,7 @@
 import { isDeepLinkTarget } from './open-target.ts';
 import {
+  CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE,
+  CAPTURE_NETWORK_IOS_SIMULATOR_ONLY_MESSAGE,
   LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE,
   LAUNCH_CONSOLE_IOS_SIMULATOR_ONLY_MESSAGE,
 } from './launch-console.ts';
@@ -175,6 +177,9 @@ async function invokeDeviceOpen(params: DirectOpenParameters): Promise<void> {
   if (params.execution.launchConsole) {
     throw new AppError('INVALID_ARGS', '--launch-console requires an app target');
   }
+  if (params.execution.captureNetwork) {
+    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
+  }
   if (params.execution.launchArgs && params.execution.launchArgs.length > 0) {
     throw new AppError('INVALID_ARGS', '--launch-args requires an app target');
   }
@@ -187,6 +192,9 @@ function assertOpenDeviceSupport(
 ): void {
   if (execution.launchConsole && (!isIosFamily(device) || device.kind !== 'simulator')) {
     throw new AppError('UNSUPPORTED_OPERATION', LAUNCH_CONSOLE_IOS_SIMULATOR_ONLY_MESSAGE);
+  }
+  if (execution.captureNetwork && (!isIosFamily(device) || device.kind !== 'simulator')) {
+    throw new AppError('UNSUPPORTED_OPERATION', CAPTURE_NETWORK_IOS_SIMULATOR_ONLY_MESSAGE);
   }
   if (device.platform === 'linux' && execution.launchArgs && execution.launchArgs.length > 0) {
     throw new AppError('UNSUPPORTED_OPERATION', '--launch-args is not supported on Linux.');
@@ -209,6 +217,9 @@ async function invokeApplicationUrlOpen(
   }
   if (params.execution.launchConsole) {
     throw new AppError('INVALID_ARGS', LAUNCH_CONSOLE_DIRECT_APP_ONLY_MESSAGE);
+  }
+  if (params.execution.captureNetwork) {
+    throw new AppError('INVALID_ARGS', CAPTURE_NETWORK_DIRECT_APP_ONLY_MESSAGE);
   }
   return await params.interactor.open(app, {
     activity: params.execution.activity,
@@ -240,6 +251,7 @@ async function invokeApplicationTargetOpen(
     activity: execution.activity,
     appBundleId: params.appBundleId,
     launchConsole: execution.launchConsole,
+    networkCapturePath: execution.networkCapturePath,
     launchArgs: execution.launchArgs ? [...execution.launchArgs] : undefined,
     terminateRunningApp: params.terminateRunningApp,
   });
