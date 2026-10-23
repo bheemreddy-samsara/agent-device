@@ -12,6 +12,7 @@ import {
 } from '@agent-device/contracts/application-lifecycle-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import {
+  assertOpenAdmitted,
   bindLocalApplicationLifecycleInteractor,
   invokeApplicationClose,
   invokeApplicationOpen,
@@ -122,6 +123,7 @@ async function openAppleApplication(
   observation: LaunchObservationPort | undefined,
 ): Promise<OpenApplicationOutcome> {
   const timing: MutableOpenTiming = {};
+  assertOpenAdmitted(binding, input.execution);
   const localIosSimulator = isIosSimulator(binding.device);
   const runner = createRunnerPrewarm(host, binding, input, timing);
   const policy = resolveRunnerPrewarmPolicy(binding.device, input, localIosSimulator);
@@ -264,7 +266,6 @@ async function dispatchAppleOpen(
     positionals: launch.positionals,
     appBundleId: input.appBundleId,
     execution: input.execution,
-    supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
     ...(localIosSimulator && input.relaunch && !input.execution.clearAppState
       ? { terminateRunningApp: true }
       : {}),
@@ -307,7 +308,6 @@ async function openLaunchUrl(
     positionals: [url],
     appBundleId: input.appBundleId,
     execution,
-    supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
   });
 }
 

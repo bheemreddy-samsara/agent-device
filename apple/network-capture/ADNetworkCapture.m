@@ -49,7 +49,14 @@ static void AdWriteLine(NSString *line) {
     handle = [NSFileHandle fileHandleForWritingAtPath:kAdOutputPath];
     [handle seekToEndOfFile];
   });
-  if (handle.offsetInFile >= AdMaxFileBytes) return;
+  // `offsetInFile` raises when the seek underneath it fails (and is deprecated for exactly that
+  // reason); `getOffset:error:` reports the same offset through an out-parameter (iOS 13+), so a
+  // cap check on a handle whose offset cannot be read skips the write instead of raising in the
+  // app under test (ADR 0037 rule 6).
+  unsigned long long offset = 0;
+  NSError *offsetError = nil;
+  if (![handle getOffset:&offset error:&offsetError] || offsetError != nil) return;
+  if (offset >= AdMaxFileBytes) return;
   // The error: form (available at the probe's iOS 15 floor): a plain writeData: raises an
   // Objective-C exception on ENOSPC, which would crash the app under test. A failed capture write
   // must never be the app's failure.

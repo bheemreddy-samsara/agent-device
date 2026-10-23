@@ -5,6 +5,7 @@ import path from 'node:path';
 import { readRecentNetworkTrafficFromText } from '@agent-device/capture-kit';
 import { afterEach, test } from 'vitest';
 import {
+  NETWORK_CAPTURE_FILE_CAP_BYTES,
   readRecentAppLogLines,
   readRecentNetworkCaptureLines,
 } from './platform-runtime-network-host.ts';
@@ -143,3 +144,26 @@ function createTemporaryDirectory(): string {
   temporaryDirectories.push(directory);
   return directory;
 }
+
+test('a probe file at its 32 MB cap reports atSizeCap so the dump can say the window is frozen', () => {
+  const directory = createTemporaryDirectory();
+  const pathname = path.join(directory, 'network.jsonl');
+  const line = `${JSON.stringify({ url: 'https://api.example.test/v1/newest', status: 200 })}\n`;
+  // The cap check reads the file size alone, so a sparse hole stands in for the 32 MB a long
+  // session wrote, with a real newline-bounded frame kept at the tail the reader must preserve.
+  const filler = `${'p'.repeat(50)}\n`.repeat(20_000);
+  fs.writeFileSync(pathname, line);
+  fs.truncateSync(pathname, NETWORK_CAPTURE_FILE_CAP_BYTES - filler.length - line.length);
+  assert.equal(
+    readRecentNetworkCaptureLines({ pathname, maxScanLines: 100, redactionPatterns: [] }).atSizeCap,
+    false,
+  );
+  fs.appendFileSync(pathname, `${filler}${line}`);
+  const capped = readRecentNetworkCaptureLines({
+    pathname,
+    maxScanLines: 60_000,
+    redactionPatterns: [],
+  });
+  assert.equal(capped.atSizeCap, true);
+  assert.ok(capped.text.endsWith(line), 'the newest window is still readable at the cap');
+});

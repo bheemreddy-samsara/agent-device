@@ -1,4 +1,5 @@
 import {
+  assertOpenAdmitted,
   bindProviderApplicationLifecycleInteractor,
   invokeApplicationClose,
   invokeApplicationOpen,
@@ -144,13 +145,13 @@ function applicationLifecycleRuntimeFixtureProviderOperations(
     }),
     prepareApplicationOpen: async () => undefined,
     openApplication: async (input) => {
+      assertOpenAdmitted(binding, input.execution);
       await invokeApplicationOpen({
         device,
         interactor: await binding.resolveInteractor(input.execution, input.appBundleId),
         positionals: input.positionals,
         appBundleId: input.appBundleId,
         execution: input.execution,
-        supportsLocalSimulatorLaunch: binding.supportsLocalSimulatorLaunch,
       });
       return { appBundleId: input.appBundleId, timing: {} };
     },

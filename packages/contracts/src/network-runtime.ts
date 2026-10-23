@@ -96,7 +96,11 @@ export type NetworkAppLogRead = Readonly<{
  * this daemon owns; a probe that wrote nothing leaves `exists` false. `text` already carries the
  * operator's app-log redaction pass, so no consumer may treat it as raw app output.
  */
-export type NetworkCaptureRead = NetworkAppLogRead;
+export type NetworkCaptureRead = NetworkAppLogRead &
+  Readonly<{
+    /** True when the probe stopped recording because the file reached its 32 MB cap (rule 6). */
+    atSizeCap: boolean;
+  }>;
 
 export type NetworkRuntimeHost = Readonly<{
   commands: HostCommandRunner;

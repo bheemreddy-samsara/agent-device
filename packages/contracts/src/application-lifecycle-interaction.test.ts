@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { AppError } from '@agent-device/kernel/errors';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import type { Interactor } from './interactor-types.ts';
 import type { OpenApplicationInput } from './application-lifecycle-runtime.ts';
@@ -34,12 +35,16 @@ const WEB_DEVICE: DeviceInfo = {
   booted: true,
 };
 
-function interactorWithOpen(open: Interactor['open'] = async () => undefined): Interactor {
+function interactorWithOpen(
+  open: Interactor['open'] = async () => undefined,
+  overrides: Partial<Pick<Interactor, 'close'>> = {},
+): Interactor {
   return {
     open,
     openDevice: async () => undefined,
     close: async () => undefined,
     setSetting: async () => undefined,
+    ...overrides,
   } as unknown as Interactor;
 }
 
@@ -115,13 +120,6 @@ test.each([
     message: /launch-args requires an app target/,
   },
   {
-    name: 'launch console outside an iOS simulator',
-    device: LINUX_DEVICE,
-    positionals: ['org.example.App'],
-    execution: { launchConsole: 'stdout' },
-    message: /iOS simulator/i,
-  },
-  {
     name: 'launch arguments on Linux',
     device: LINUX_DEVICE,
     positionals: ['org.example.App'],
@@ -164,13 +162,6 @@ test.each([
     message: /direct app launch/,
   },
   {
-    name: 'network capture outside an iOS simulator',
-    device: LINUX_DEVICE,
-    positionals: ['org.example.App'],
-    execution: { networkCapturePath: '/sessions/one/network.jsonl' },
-    message: /iOS simulator/i,
-  },
-  {
     name: 'network capture with a direct URL pair',
     device: IOS_SIMULATOR,
     positionals: ['com.example.app', 'example://home'],
@@ -184,37 +175,78 @@ test.each([
       interactor: interactorWithOpen(),
       positionals,
       execution,
-      supportsLocalSimulatorLaunch: true,
     }),
   ).rejects.toThrow(message);
 });
 
-for (const [name, execution] of [
-  ['capture', { networkCapturePath: '/sessions/one/network.jsonl' }],
-  ['launch console', { launchConsole: '/tmp/launch-console.log' }],
+for (const [name, execution, reason] of [
+  [
+    'capture',
+    { networkCapturePath: '/sessions/one/network.jsonl' },
+    'network-capture-owner-unadmitted',
+  ],
+  [
+    'launch console',
+    { launchConsole: '/tmp/launch-console.log' },
+    'launch-console-owner-unadmitted',
+  ],
 ] as const) {
-  test(`the generic provider lifecycle refuses ${name} on a provider-shaped iOS simulator`, async () => {
+  test(`the generic provider lifecycle refuses ${name} on a provider-shaped iOS simulator before touching the device`, async () => {
     // Limrun's iOS simulator has the local shape but dispatches through this generic provider
-    // lifecycle, whose interactor would silently ignore the request. Binding a provider interactor
-    // derives no local-simulator capability, so the open must refuse with UNSUPPORTED_OPERATION.
-    let opened = false;
+    // lifecycle, whose interactor would silently ignore the request; with closeBeforeRelaunch it
+    // would also close the running app first. Binding a provider interactor derives no
+    // local-simulator capability, so the open must refuse with the typed code and reason before
+    // its relaunch close or open dispatch runs.
+    const calls: string[] = [];
     const binding = bindProviderApplicationLifecycleInteractor({
       device: IOS_SIMULATOR,
       signal: new AbortController().signal,
       resolveInteractor: () =>
-        interactorWithOpen(async () => {
-          opened = true;
-        }),
+        interactorWithOpen(
+          async () => {
+            calls.push('open');
+          },
+          {
+            close: async () => {
+              calls.push('close');
+            },
+          },
+        ),
     });
     const lifecycle = bindDirectApplicationLifecycle({
       binding,
       owner: 'Provider',
       openTargetIdentity: 'bundle-id',
+      closeBeforeRelaunch: true,
     });
-    await expect(lifecycle.openApplication(openInput({ execution }))).rejects.toThrow(
-      /is supported only for a local iOS simulator/,
+    const refusal = await lifecycle.openApplication(openInput({ relaunch: true, execution })).then(
+      () => undefined,
+      (error: unknown) => error,
     );
-    expect(opened).toBe(false);
+    expect(refusal).toBeInstanceOf(AppError);
+    expect((refusal as AppError).code).toBe('UNSUPPORTED_OPERATION');
+    expect((refusal as AppError).details?.reason).toBe(reason);
+    expect(calls).toEqual([]);
+  });
+
+  test(`a local binding on a non-simulator device refuses ${name} with the typed code`, async () => {
+    const binding = bindLocalApplicationLifecycleInteractor({
+      device: LINUX_DEVICE,
+      signal: new AbortController().signal,
+      resolveInteractor: async () => interactorWithOpen(),
+    });
+    const lifecycle = bindDirectApplicationLifecycle({
+      binding,
+      owner: 'Linux',
+      openTargetIdentity: 'app-name',
+    });
+    const refusal = await lifecycle.openApplication(openInput({ execution })).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refusal).toBeInstanceOf(AppError);
+    expect((refusal as AppError).code).toBe('UNSUPPORTED_OPERATION');
+    expect((refusal as AppError).details?.reason).toBe(reason);
   });
 }
 
@@ -227,7 +259,6 @@ test('passes the session capture file to the interactor on a capture launch', as
     }),
     positionals: ['com.example.app'],
     execution: { networkCapturePath: '/sessions/one/network.jsonl' },
-    supportsLocalSimulatorLaunch: true,
   });
   expect(seen).toMatchObject({ networkCapturePath: '/sessions/one/network.jsonl' });
 });

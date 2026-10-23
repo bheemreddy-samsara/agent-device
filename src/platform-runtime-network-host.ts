@@ -21,6 +21,13 @@ type ProcessMarkerReader = Readonly<{
 /** Upper bound on one capture-probe read, so a long-running session cannot make a dump unbounded. */
 const NETWORK_CAPTURE_MAX_BYTES = 2 * 1024 * 1024;
 
+/**
+ * The probe's own append cap (ADR 0037 rule 6, `AdMaxFileBytes` in ADNetworkCapture.m): once the
+ * file reaches it the probe stops recording, and a dump must say so rather than report the frozen
+ * window as current. Mirrored here as the reader's check; the probe source owns the value.
+ */
+export const NETWORK_CAPTURE_FILE_CAP_BYTES = 32 * 1024 * 1024;
+
 export function createNetworkRuntimeHost(
   options: Readonly<{
     sessionsDir: string;
@@ -105,7 +112,13 @@ export function readRecentNetworkCaptureLines(
   }
   const descriptor = openVerifiedFileForRead(input.pathname);
   if (descriptor === undefined) {
-    return Object.freeze({ path: input.pathname, exists: false, text: '', skippedLines: 0 });
+    return Object.freeze({
+      path: input.pathname,
+      exists: false,
+      text: '',
+      skippedLines: 0,
+      atSizeCap: false,
+    });
   }
   try {
     const size = fs.fstatSync(descriptor).size;
@@ -131,6 +144,9 @@ export function readRecentNetworkCaptureLines(
       // Exact while the read covers the whole file; past the byte budget the window is the
       // newest frame, and the probe file's own line numbers are unreachable without a full read.
       skippedLines: recent.skippedLines + droppedPartialLine,
+      // The probe stops appending at its own cap (ADR 0037 rule 6), so a file at that size means
+      // the dump's window is the last thing the probe ever wrote, not the newest traffic.
+      atSizeCap: size >= NETWORK_CAPTURE_FILE_CAP_BYTES,
     });
   } finally {
     fs.closeSync(descriptor);

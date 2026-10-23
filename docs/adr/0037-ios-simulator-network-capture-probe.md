@@ -9,10 +9,14 @@ Accepted (2026-10-23). Applies to iOS simulator app launches only.
 1. `open <app> --capture-network` on an iOS simulator injects `apple/network-capture/ADNetworkCapture.m`
    (built on demand, cached per content hash and toolchain) into the app process through
    `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`. Admission follows the owner that dispatches the open, not
-   the device shape: only the local Apple lifecycle declares it can inject the probe, so a
-   provider-backed iOS simulator (Limrun, TestMu) refuses the flag with `UNSUPPORTED_OPERATION`
-   instead of launching without capture. Every other platform and every URL open refuse the flag.
-   `--launch-console` admits the same way, and the same local-Simulator declaration gates both.
+   the device shape, and it happens before the lifecycle touches the device: `assertOpenAdmitted`
+   runs first in every `openApplication` entry, so an owner that cannot inject the probe is refused
+   with `UNSUPPORTED_OPERATION` and a typed `reason` before its relaunch close, runner stop, or
+   runtime-hint write — a refused open never kills a running app. Only the local Apple lifecycle on
+   an iOS simulator declares the capability, so a provider-backed iOS simulator (Limrun, TestMu)
+   refuses the flag instead of launching without capture. Every other platform and every URL open
+   refuse the flag. `--launch-console` admits the same way, and the same local-Simulator
+   declaration gates both.
 2. The probe method-swizzles `-[NSURLSessionTask resume]`, observes each task to completion, and
    appends one JSON line per completed HTTP(S) task to the file named by
    `AGENT_DEVICE_NETWORK_CAPTURE_PATH` — the session's `network.jsonl`, one per session, replaced on
@@ -25,13 +29,18 @@ Accepted (2026-10-23). Applies to iOS simulator app launches only.
 5. `network dump` for a session with a capture window reads the probe file and reports
    `source: 'probe'`; a session opened without capture parses the app log and reports
    `source: 'app-log'`. These are the two modes, not a primary and a fallback. The dump states
-   which source it used.
+   which source it used. Apple source precedence is fixed here for every Apple dump, including the
+   Metro-backed provider dump added later: **probe, then provider, then app-log**. The probe wins
+   because the operator asked for it on this open and it also sees React Native `fetch`, which runs
+   on URLSession on iOS; the provider transport answers only when no probe window is open.
 6. The probe file is host-side text an untrusted app wrote: reads are byte-bounded at the tail and
    pass through the operator's `AGENT_DEVICE_APP_LOG_REDACT_PATTERNS` before any response. The probe
    masks credential headers itself (`Authorization`, `Cookie`, `Set-Cookie`, and their
    authentication siblings) before writing, so a secret never enters the file and survives a dump
-   run without operator patterns. File writes use `writeData:error:` and stop at a 32 MB cap: a
-   capture failure must never crash the app under test.
+   run without operator patterns. File writes use `writeData:error:` and the cap check reads the
+   handle offset through `getOffset:error:` rather than the raising `offsetInFile`: a capture
+   failure must never crash the app under test. Writes stop at a 32 MB file cap, and the dump
+   reports a note when the file has reached it, so a capped window is never read as current traffic.
 7. The capture window names the app process the probe was injected into. If that app crashes and
    the runner relaunches it, the new process has no probe and writes nothing more; the dump of such
    a session keeps reporting `source: 'probe'` over the frozen entries. Reopen with

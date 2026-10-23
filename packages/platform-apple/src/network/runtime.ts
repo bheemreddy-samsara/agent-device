@@ -69,6 +69,10 @@ async function dumpCapturedProbeTraffic(
     notes.push(
       'The capture probe has written no file for this session yet. Open the app with --capture-network, reproduce the requests, then rerun network dump.',
     );
+  } else if (recent.atSizeCap) {
+    notes.push(
+      'The capture probe reached its 32 MB file cap and stopped recording, so these entries are the newest window it wrote, not current traffic. Reopen with --capture-network to capture again.',
+    );
   } else if (dump.entries.length === 0) {
     notes.push(
       'The capture probe recorded no completed URLSession requests in this window. It captures URLSession traffic only; a Flutter dart:io or other non-URLSession stack is not covered.',
