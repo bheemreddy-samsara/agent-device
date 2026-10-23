@@ -23,6 +23,9 @@ export type NetworkDumpInput = Readonly<{
   maxScanLines: number;
 }>;
 
+/** Payload budget one `network dump` applies; the same bound pre-binds what a transport reads. */
+export const NETWORK_MAX_PAYLOAD_CHARS = 2048;
+
 export type NetworkProviderEntry = Readonly<{
   timestamp?: string;
   method?: string;

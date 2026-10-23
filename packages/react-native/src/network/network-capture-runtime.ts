@@ -6,8 +6,8 @@ export const NETWORK_CAPTURE_RUNTIME_GLOBAL = '__AGENT_DEVICE_NETWORK__';
 /** Entries the ring buffer holds; the oldest is dropped when it is full. */
 export const NETWORK_CAPTURE_MAX_ENTRIES = 200;
 
-/** Characters kept per captured body; the host redacts and re-bounds each entry on read. */
-export const NETWORK_CAPTURE_BODY_CHARS = 16_384;
+/** Characters kept per header value inside the app, on top of the payload budget. */
+export const NETWORK_CAPTURE_HEADER_CHARS = 512;
 
 /**
  * Source evaluated inside the app through CDP `Runtime.evaluate`. It installs
@@ -22,7 +22,7 @@ export const NETWORK_CAPTURE_BODY_CHARS = 16_384;
  * entry, and an app reload resets the buffer together with the runtime that holds it.
  */
 export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
-(function (VERSION, MAX_ENTRIES, BODY_CAP) {
+(function (VERSION, MAX_ENTRIES, BODY_CAP, HEADER_CAP) {
   var g = globalThis;
   var existing = g.__AGENT_DEVICE_NETWORK__;
   if (existing && typeof existing.drain === 'function' && typeof existing.stats === 'function') {
@@ -33,10 +33,30 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
   var dropped = 0;
   var patchedFetch = false;
   var patchedXhr = false;
+  var fetchInFlight = {};
+
+  // whatwg-fetch polyfills fetch on top of XMLHttpRequest; a request already claimed by an
+  // in-flight fetch URL must not also record that transport's own XHR.
+  function claimFetch(url) {
+    fetchInFlight[url] = (fetchInFlight[url] || 0) + 1;
+    return function () {
+      fetchInFlight[url] = (fetchInFlight[url] || 0) - 1;
+      if (fetchInFlight[url] <= 0) delete fetchInFlight[url];
+    };
+  }
+
+  function fetchClaims(url) {
+    return patchedFetch && fetchInFlight[url] > 0;
+  }
 
   function cap(value) {
     var text = String(value);
     return text.length <= BODY_CAP ? text : text.slice(0, BODY_CAP);
+  }
+
+  function capHeader(value) {
+    var text = String(value);
+    return text.length <= HEADER_CAP ? text : text.slice(0, HEADER_CAP);
   }
 
   function isBinaryContentType(contentType) {
@@ -69,11 +89,24 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
   function headerPairs(source) {
     var out = {};
     if (!source) return out;
+    var count = 0;
     if (typeof source.forEach === 'function') {
-      try { source.forEach(function (value, name) { out[name] = String(value); }); } catch (e) {}
+      try {
+        source.forEach(function (value, name) {
+          if (count >= 64) return;
+          count += 1;
+          out[name] = capHeader(value);
+        });
+      } catch (e) {}
       return out;
     }
-    try { Object.keys(source).forEach(function (name) { out[name] = String(source[name]); }); } catch (e) {}
+    try {
+      Object.keys(source).forEach(function (name) {
+        if (count >= 64) return;
+        count += 1;
+        out[name] = capHeader(source[name]);
+      });
+    } catch (e) {}
     return out;
   }
 
@@ -99,10 +132,12 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
       var requestHeaders = headerPairs(init && init.headers ? init.headers : (input && input.headers));
       var startedAt = Date.now();
       var began = new Date(startedAt).toISOString();
+      var release = claimFetch(url);
       var promise;
       try {
         promise = fetch.apply(this, arguments);
       } catch (e) {
+        release();
         record({
           timestamp: began,
           method: method,
@@ -117,6 +152,7 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
       if (!promise || typeof promise.then !== 'function') return promise;
       return promise.then(
         function (response) {
+          release();
           var entry = {
             timestamp: began,
             method: method,
@@ -132,13 +168,16 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
           try { contentType = response && response.headers && response.headers.get('content-type'); } catch (e) {}
           var clone = response && typeof response.clone === 'function' ? response.clone() : undefined;
           if (clone && typeof clone.text === 'function' && !isBinaryContentType(contentType)) {
-            record(entry);
+            // Record only after the body settles: a drain between the response and its body
+            // would otherwise hand the host an entry it could still complete in the app.
             return clone.text().then(
               function (text) {
                 entry.responseBody = cap(text);
+                record(entry);
                 return response;
               },
               function () {
+                record(entry);
                 return response;
               }
             );
@@ -182,13 +221,17 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
     };
     if (typeof setRequestHeader === 'function') {
       prototype.setRequestHeader = function (name, value) {
-        if (this.__agentDeviceRequest) this.__agentDeviceRequest.headers[name] = String(value);
+        if (this.__agentDeviceRequest)
+          this.__agentDeviceRequest.headers[name] = capHeader(value);
         return setRequestHeader.apply(this, arguments);
       };
     }
     var wrapped = function (body) {
       var state = this.__agentDeviceRequest;
-      if (state) {
+      // A fetch polyfilled on XHR calls send synchronously inside the fetch wrapper, while the
+      // wrapper's claim on this URL is held: that transport's XHR must not record a second entry.
+      if (state && fetchClaims(state.url)) state.ownedByFetch = true;
+      if (state && !state.ownedByFetch) {
         state.startedAt = Date.now();
         state.began = new Date(state.startedAt).toISOString();
         state.requestBody = bodyValue(body);
@@ -211,11 +254,13 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
           }
           try {
             var lines = String(xhr.getAllResponseHeaders() || '').split('\n');
-            for (var i = 0; i < lines.length; i++) {
+            for (var i = 0; i < lines.length && i < 64; i++) {
               var split = lines[i].indexOf(':');
               if (split > 0) {
                 entry.responseHeaders = entry.responseHeaders || {};
-                entry.responseHeaders[lines[i].slice(0, split).trim()] = lines[i].slice(split + 1).trim();
+                entry.responseHeaders[lines[i].slice(0, split).trim()] = capHeader(
+                  lines[i].slice(split + 1).trim()
+                );
               }
             }
           } catch (e) {}
@@ -254,7 +299,11 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
     drain: function (limit) {
       var count = Math.max(0, Math.min(limit || 0, entries.length));
       var drained = entries.splice(entries.length - count, count);
-      return JSON.stringify({ ok: true, entries: drained });
+      // Eviction accounting rides with the read it describes and resets here, so a later dump
+      // never re-reports requests an earlier dump already said the buffer gave up.
+      var evicted = dropped;
+      dropped = 0;
+      return JSON.stringify({ ok: true, entries: drained, dropped: evicted });
     }
   };
   return 'installed';

@@ -1,5 +1,6 @@
 import type { DaemonPlatformServices } from '../../../core/platform-services.ts';
 import type { NetworkDumpResult } from '@agent-device/contracts/network-runtime';
+import { NETWORK_MAX_PAYLOAD_CHARS } from '@agent-device/contracts/network-runtime';
 import {
   networkAdmissionUse,
   resolveNetworkRuntimePlan,
@@ -19,7 +20,6 @@ import type { DaemonRequest } from '../../../core/daemon-request.ts';
 const NETWORK_ACTIONS = ['dump', 'log'] as const;
 const NETWORK_ACTIONS_MESSAGE = `network requires ${NETWORK_ACTIONS.join(' or ')}`;
 const NETWORK_INCLUDE_MESSAGE = `network include mode must be one of: ${NETWORK_INCLUDE_MODES.join(', ')}`;
-const NETWORK_MAX_PAYLOAD_CHARS = 2048;
 const NETWORK_MAX_SCAN_LINES = 4000;
 
 export type NetworkHandlerParams = Readonly<{
@@ -170,6 +170,8 @@ function networkDumpResponse(
     data: {
       entries: result.entries,
       source: 'provider',
+      // Reaching this branch means the app-side hook answered this very dump, so the capture is
+      // live by construction; the app-log process state says nothing about it.
       active: true,
       state: 'active',
       backend: result.backend,

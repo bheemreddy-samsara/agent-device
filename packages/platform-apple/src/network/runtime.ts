@@ -2,11 +2,11 @@ import type { NetworkDump } from '@agent-device/contracts/network-traffic';
 import type { NetworkDumpInput, NetworkDumpResult } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import {
-  captureNetworkProviderTraffic,
   mergeNetworkScans,
   readRecentNetworkTrafficFromText,
   type NetworkScan,
 } from '@agent-device/capture-kit';
+import { captureNetworkProviderTraffic } from '@agent-device/capture-kit/network-provider-capture';
 import { isIosFamily, type DeviceInfo } from '@agent-device/kernel/device';
 import { scopeSimctlArgsForDevice } from '../core/simctl.ts';
 import { backendForAppleDevice } from '../logs/backend.ts';

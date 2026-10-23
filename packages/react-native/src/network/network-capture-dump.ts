@@ -11,13 +11,9 @@ import {
   listMetroInspectorTargets,
   selectReactNativeTarget,
 } from '../react-devtools/metro-inspector.ts';
+import { captureBufferNotes, projectCapturedNetworkEntries } from './network-capture-entries.ts';
 import {
-  captureBufferNotes,
-  projectCapturedNetworkEntries,
-  type CaptureStats,
-} from './network-capture-entries.ts';
-import {
-  NETWORK_CAPTURE_BODY_CHARS,
+  NETWORK_CAPTURE_HEADER_CHARS,
   NETWORK_CAPTURE_MAX_ENTRIES,
   NETWORK_CAPTURE_RUNTIME_GLOBAL,
   NETWORK_CAPTURE_RUNTIME_SOURCE,
@@ -51,7 +47,16 @@ function readJsonResult(value: unknown, method: string): Record<string, unknown>
       { reason: 'network-capture-result-unreadable' },
     );
   }
-  const parsed: unknown = JSON.parse(value);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new AppError(
+      'COMMAND_FAILED',
+      `The app network capture returned unparseable JSON for ${method}.`,
+      { reason: 'network-capture-result-unreadable' },
+    );
+  }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new AppError(
       'COMMAND_FAILED',
@@ -62,12 +67,9 @@ function readJsonResult(value: unknown, method: string): Record<string, unknown>
   return parsed as Record<string, unknown>;
 }
 
-function readStats(value: unknown): CaptureStats | undefined {
+function readBuffered(value: unknown): number | undefined {
   const stats = readJsonResult(value, 'stats');
-  const buffered = stats.buffered;
-  const dropped = stats.dropped;
-  if (typeof buffered !== 'number' || typeof dropped !== 'number') return undefined;
-  return { buffered, dropped };
+  return typeof stats.buffered === 'number' ? stats.buffered : undefined;
 }
 
 /**
@@ -95,8 +97,10 @@ export async function dumpReactNativeAppNetwork(
   });
   const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, target));
   try {
+    // The installing dump's payload budget becomes the in-app body cap, so the app-side copy is
+    // never larger than what the host would report anyway.
     const installed = await session.evaluate(
-      `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${NETWORK_CAPTURE_BODY_CHARS})`,
+      `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${input.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS})`,
     );
     const drained = readJsonResult(
       await runtimeCall(session, 'drain', String(input.maxEntries)),
@@ -112,8 +116,9 @@ export async function dumpReactNativeAppNetwork(
       input.include,
       input.maxPayloadChars,
     );
-    const stats = readStats(await runtimeCall(session, 'stats'));
-    const notes = [...captureBufferNotes(stats)];
+    const buffered = readBuffered(await runtimeCall(session, 'stats'));
+    const dropped = typeof drained.dropped === 'number' ? drained.dropped : 0;
+    const notes = [...captureBufferNotes({ buffered, dropped })];
     if (entries.length === 0) {
       notes.push(
         installed === 'installed'

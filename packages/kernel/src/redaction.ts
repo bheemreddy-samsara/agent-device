@@ -11,7 +11,7 @@ const SENSITIVE_ASSIGNMENT_RE =
  * earlier rule cannot match the same way.
  */
 const SENSITIVE_JSON_ASSIGNMENT_RE =
-  /(["'][a-z0-9_-]*(?:api[_-]?key|token|secret|password|user[_-]?code|device[_-]?code|refresh[_-]?credential)[a-z0-9_-]*["']\s*[=:]\s*)("[^"]*"|'[^']*')/gi;
+  /(["'][a-z0-9_-]*(?:api[_-]?key|token|secret|password|user[_-]?code|device[_-]?code|refresh[_-]?credential)[a-z0-9_-]*["']\s*[=:]\s*)("(?:[^"\\]|\\.)*"|'[^']*')/gi;
 const URL_RE = /https?:\/\/[^\s"'<>]+/gi;
 const REDACTED_STRING_MAX_LENGTH = 400;
 const REDACTED_STDERR_MAX_LENGTH = 8192;
@@ -29,7 +29,9 @@ export function redactDiagnosticData<T>(input: T): T {
 export function redactNetworkPayload(value: string, maxLength: number): string {
   const redacted = maskSecrets(value);
   if (redacted.length <= maxLength) return redacted;
-  return `${redacted.slice(0, maxLength)}${TRUNCATION_SUFFIX}`;
+  // The truncation marker counts against the budget, like the diagnostic bound.
+  const kept = Math.max(0, maxLength - TRUNCATION_SUFFIX.length);
+  return `${redacted.slice(0, kept)}${TRUNCATION_SUFFIX}`;
 }
 
 /**
@@ -108,8 +110,16 @@ function maskSecrets(value: string, keyHint?: string): string {
   output = output.replace(
     SENSITIVE_ASSIGNMENT_RE,
     (match, key: string, separator: string, rawValue: string, offset: number, input: string) => {
-      // A quoted key is the JSON form's job; masking it here would drop its quotes.
-      if (input[offset - 1] === '"' || input[offset - 1] === "'") return match;
+      // Only the exact JSON form (`"key":` with the key closing its quote before the separator) is
+      // the JSON rule's job; a quote merely in front of the key (`'api_key=value'`) is a shell-like
+      // assignment this rule has always masked.
+      const before = input[offset - 1];
+      if (
+        (before === '"' || before === "'") &&
+        /^["']\s*[=:]/.test(input.slice(offset + key.length))
+      ) {
+        return match;
+      }
       if (isSafeSetupUrlAssignment({ key, separator, rawValue, offset, input })) return match;
       if (isDocumentedTokenPlaceholder(rawValue)) return match;
       return `${key}${separator}[REDACTED]`;

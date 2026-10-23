@@ -1,6 +1,7 @@
 import type { NetworkIncludeMode } from '@agent-device/kernel/contracts';
 import type { NetworkProviderEntry } from '@agent-device/contracts/network-runtime';
 import { redactNetworkHeaders, redactNetworkPayload } from '@agent-device/kernel/redaction';
+import { NETWORK_CAPTURE_MAX_ENTRIES } from './network-capture-runtime.ts';
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -70,22 +71,21 @@ export function projectCapturedNetworkEntries(
 }
 
 export type CaptureStats = Readonly<{
-  buffered: number;
+  buffered: number | undefined;
   dropped: number;
 }>;
 
 /** Notes the buffer's own accounting earns: what stays buffered, what the ring evicted. */
-export function captureBufferNotes(stats: CaptureStats | undefined): readonly string[] {
-  if (!stats) return [];
+export function captureBufferNotes(stats: CaptureStats): readonly string[] {
   const notes: string[] = [];
-  if (stats.buffered > 0) {
+  if (stats.buffered !== undefined && stats.buffered > 0) {
     notes.push(
       `${stats.buffered} older captured request${stats.buffered === 1 ? '' : 's'} remain buffered; dump again or raise the limit.`,
     );
   }
   if (stats.dropped > 0) {
     notes.push(
-      `${stats.dropped} captured request${stats.dropped === 1 ? '' : 's'} were evicted from the 200-entry app buffer before this dump.`,
+      `${stats.dropped} captured request${stats.dropped === 1 ? '' : 's'} were evicted from the ${NETWORK_CAPTURE_MAX_ENTRIES}-entry app buffer before this dump.`,
     );
   }
   return notes;

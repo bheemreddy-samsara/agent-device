@@ -52,18 +52,18 @@ export default function NetworkLabRoute() {
 
   return (
     <ScrollView
-      testID="network-lab"
-      style={{ flex: 1 }}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+      style={{ flex: 1 }}
+      testID="network-lab"
     >
       <Text testID="network-lab-title">Network lab</Text>
-      <Pressable testID="network-fetch" style={styles.button} onPress={() => void runFetch()}>
+      <Pressable onPress={() => void runFetch()} style={styles.button} testID="network-fetch">
         <Text>Run fetch</Text>
       </Pressable>
-      <Pressable testID="network-post" style={styles.button} onPress={() => void runPost()}>
+      <Pressable onPress={() => void runPost()} style={styles.button} testID="network-post">
         <Text>Run post</Text>
       </Pressable>
-      <Pressable testID="network-xhr" style={styles.button} onPress={runXhr}>
+      <Pressable onPress={runXhr} style={styles.button} testID="network-xhr">
         <Text>Run XHR</Text>
       </Pressable>
       <View>

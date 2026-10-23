@@ -31,7 +31,3 @@ export {
   readRecentNetworkTrafficFromText,
   type NetworkScan,
 } from './network-traffic.ts';
-export {
-  captureNetworkProviderTraffic,
-  type NetworkProviderCapture,
-} from './network-provider-capture.ts';

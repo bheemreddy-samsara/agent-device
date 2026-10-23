@@ -2,6 +2,7 @@ import type {
   NetworkTransport,
   NetworkTransportScope,
 } from '@agent-device/contracts/network-runtime';
+import { NETWORK_MAX_PAYLOAD_CHARS } from '@agent-device/contracts/network-runtime';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import type { HostEnvironment } from '@agent-device/kernel/source-value';
 
@@ -29,7 +30,7 @@ export async function resolveReactNativeNetworkTransport(
   });
   if (runtime === undefined) return Object.freeze({ mode: 'local' });
   const stateDir = scope.stateDir;
-  const maxPayloadChars = scope.maxPayloadChars ?? 2048;
+  const maxPayloadChars = scope.maxPayloadChars ?? NETWORK_MAX_PAYLOAD_CHARS;
   return Object.freeze({
     mode: 'local',
     dump: async (input, signal) =>

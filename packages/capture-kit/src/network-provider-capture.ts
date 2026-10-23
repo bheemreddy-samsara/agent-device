@@ -5,6 +5,7 @@ import type {
 } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import type { DeviceInfo } from '@agent-device/kernel/device';
+import { redactDiagnosticData } from '@agent-device/kernel/redaction';
 
 /**
  * A provider source answers a dump with entries, with nothing yet to report, or not at all.
@@ -53,7 +54,13 @@ export async function captureNetworkProviderTraffic(
   const bounded = AbortSignal.any([signal, AbortSignal.timeout(PROVIDER_CAPTURE_BUDGET_MS)]);
   let result;
   try {
-    result = await dump({ maxEntries: input.maxEntries, include: input.include }, bounded);
+    // Racing the budget signal bounds the whole provider read: the transport's own steps can
+    // each carry longer internal timeouts, and an unbounded provider would push the dump past
+    // the command envelope while its work keeps running after capture-kit moved on.
+    result = await Promise.race([
+      dump({ maxEntries: input.maxEntries, include: input.include }, bounded),
+      abortRejection(bounded, input.sessionId),
+    ]);
   } catch (error) {
     if (signal.aborted) throw error;
     return { status: 'unavailable', notes: [providerFailureNote(error)] };
@@ -64,7 +71,28 @@ export async function captureNetworkProviderTraffic(
   return { status: 'captured', result };
 }
 
+function abortRejection(signal: AbortSignal, sessionId: string): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error(`The in-app network capture exceeded its budget for session ${sessionId}.`));
+      return;
+    }
+    signal.addEventListener(
+      'abort',
+      () =>
+        reject(
+          new Error(`The in-app network capture exceeded its budget for session ${sessionId}.`),
+        ),
+      { once: true },
+    );
+  });
+}
+
 function providerFailureNote(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+  // The message can carry text from a local dev server or the app runtime, so it passes through
+  // the diagnostic redaction owner before it reaches a response note.
+  const { message } = redactDiagnosticData({
+    message: error instanceof Error ? error.message : String(error),
+  });
   return `In-app network capture could not answer this dump: ${message} This dump reads the session app log instead.`;
 }

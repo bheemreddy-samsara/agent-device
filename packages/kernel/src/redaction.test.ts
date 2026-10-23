@@ -49,7 +49,8 @@ test('other diagnostic strings retain the 400-character limit', () => {
 
 test('a network payload keeps its own budget instead of the diagnostic limit', () => {
   const payload = 'p'.repeat(5000);
-  assert.equal(redactNetworkPayload(payload, 2048).length, 2048 + '...<truncated>'.length);
+  // The truncation marker counts against the budget, like the diagnostic bound.
+  assert.equal(redactNetworkPayload(payload, 2048).length, 2048);
   assert.ok(redactNetworkPayload(payload, 2048).endsWith('...<truncated>'));
   assert.equal(redactNetworkPayload('p'.repeat(100), 2048), 'p'.repeat(100));
 });
@@ -65,6 +66,20 @@ test('a network payload masks secrets in each field syntax it can hold', () => {
     redactNetworkPayload('{"token":"adc_agent_..."}', 2048),
     '{"token":"adc_agent_..."}',
   );
+  assert.equal(
+    redactNetworkPayload("curl --header 'api_key=sk-live-9999'", 2048),
+    "curl --header 'api_key=[REDACTED]",
+  );
+  assert.equal(
+    redactNetworkPayload(String.raw`{"apiKey":"ab\"cd-secret"}`, 2048),
+    '{"apiKey":"[REDACTED]"}',
+  );
+});
+
+test('a network payload truncation stays inside its budget', () => {
+  const redacted = redactNetworkPayload(`${'x'.repeat(3000)}token=abc123secret`, 2048);
+  assert.equal(redacted.length, 2048);
+  assert.ok(redacted.includes('truncated'));
 });
 
 test('a header with a sensitive name is replaced and its peers keep their text', () => {
