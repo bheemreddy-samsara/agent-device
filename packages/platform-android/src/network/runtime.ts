@@ -5,7 +5,10 @@ import type {
 import type { NetworkDumpInput, NetworkDumpResult } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import { mergeNetworkScans, readRecentNetworkTrafficFromText } from '@agent-device/capture-kit';
-import { captureNetworkProviderTraffic } from '@agent-device/capture-kit/network-provider-capture';
+import {
+  captureNetworkProviderTraffic,
+  scanNetworkAppLogFallback,
+} from '@agent-device/capture-kit/network-provider-capture';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { deviceShellArgv } from '@agent-device/kernel/device-shell';
 import { assertAndroidLogPackageSafe } from '../logs/package-name.ts';
@@ -25,14 +28,8 @@ export async function dumpAndroidNetworkTraffic(
   if (provider.status === 'captured') {
     return Object.freeze({ source: 'provider', ...provider.result });
   }
-  const recent = await host.appLogs.readRecent(input.sessionId, input.maxScanLines);
-  let scan = readRecentNetworkTrafficFromText(recent.text, {
-    ...input,
-    path: recent.path,
-    exists: recent.exists,
-    lineNumberOffset: recent.skippedLines,
-    backend: 'android',
-  });
+  const fallback = await scanNetworkAppLogFallback(host, input, 'android');
+  let scan = fallback.scan;
   const notes: string[] = [...provider.notes];
   const context = await recoveryContext(host, device, input, signal);
   if (context && input.appBundleId) {
@@ -41,29 +38,17 @@ export async function dumpAndroidNetworkTraffic(
     if (recovered) {
       const recoveryScan = readRecentNetworkTrafficFromText(recovered.text, {
         ...input,
-        path: `${recent.path} (adb logcat recovery)`,
+        path: `${fallback.recent.path} (adb logcat recovery)`,
         exists: true,
         backend: 'android',
       });
       if (recoveryScan.dump.entries.length > 0) {
         scan = mergeNetworkScans(recoveryScan, scan, input.maxEntries);
-        notes.push(
-          context.reason === 'stale-active'
-            ? `Session app log stream was still bound to prior Android PID ${context.trackedPid}. Recovered recent Android HTTP entries from adb logcat for PID set ${recovered.pids.join(', ')}.`
-            : `Session app log stream was inactive. Recovered recent Android HTTP entries from adb logcat for PID set ${recovered.pids.join(', ')}.`,
-        );
+        notes.push(androidRecoveryNote(context, recovered.pids));
       }
     }
   }
-  if (!input.appLogSnapshot) {
-    notes.push(
-      'Capture uses the session app log file. For fresh traffic, run logs clear --restart before reproducing requests.',
-    );
-  } else if (input.appLogSnapshot.state !== 'active' && notes.length === 0) {
-    notes.push(
-      'Session app log stream is inactive. Run logs clear --restart, reproduce the request window again, then rerun network dump.',
-    );
-  }
+  appendLifecycleNote(notes, input);
   if (scan.dump.entries.length === 0) {
     notes.push('No HTTP(s) entries were found in recent session app logs.');
   }
@@ -73,6 +58,24 @@ export async function dumpAndroidNetworkTraffic(
     dump: scan.dump,
     notes: Object.freeze(notes),
   });
+}
+
+function androidRecoveryNote(context: RecoveryContext, pids: readonly string[]): string {
+  return context.reason === 'stale-active'
+    ? `Session app log stream was still bound to prior Android PID ${context.trackedPid}. Recovered recent Android HTTP entries from adb logcat for PID set ${pids.join(', ')}.`
+    : `Session app log stream was inactive. Recovered recent Android HTTP entries from adb logcat for PID set ${pids.join(', ')}.`;
+}
+
+function appendLifecycleNote(notes: string[], input: NetworkDumpInput): void {
+  if (!input.appLogSnapshot) {
+    notes.push(
+      'Capture uses the session app log file. For fresh traffic, run logs clear --restart before reproducing requests.',
+    );
+  } else if (input.appLogSnapshot.state !== 'active' && notes.length === 0) {
+    notes.push(
+      'Session app log stream is inactive. Run logs clear --restart, reproduce the request window again, then rerun network dump.',
+    );
+  }
 }
 
 async function runOptionalRecoveryCommand(

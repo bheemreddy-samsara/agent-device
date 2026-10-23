@@ -6,7 +6,10 @@ import {
   readRecentNetworkTrafficFromText,
   type NetworkScan,
 } from '@agent-device/capture-kit';
-import { captureNetworkProviderTraffic } from '@agent-device/capture-kit/network-provider-capture';
+import {
+  captureNetworkProviderTraffic,
+  scanNetworkAppLogFallback,
+} from '@agent-device/capture-kit/network-provider-capture';
 import { isIosFamily, type DeviceInfo } from '@agent-device/kernel/device';
 import { scopeSimctlArgsForDevice } from '../core/simctl.ts';
 import { backendForAppleDevice } from '../logs/backend.ts';
@@ -22,17 +25,17 @@ export async function dumpAppleNetworkTraffic(
   if (provider.status === 'captured') {
     return Object.freeze({ source: 'provider', ...provider.result });
   }
-  const recent = await host.appLogs.readRecent(input.sessionId, input.maxScanLines);
-  let scan = readRecentNetworkTrafficFromText(recent.text, {
-    ...input,
-    path: recent.path,
-    exists: recent.exists,
-    lineNumberOffset: recent.skippedLines,
-    backend,
-  });
+  const fallback = await scanNetworkAppLogFallback(host, input, backend);
+  let scan = fallback.scan;
   const notes: string[] = [...provider.notes];
   if (canRecoverSimulator(device, input, scan.dump)) {
-    const recovery = await recoverSimulatorTraffic(host, device, input, recent.path, signal);
+    const recovery = await recoverSimulatorTraffic(
+      host,
+      device,
+      input,
+      fallback.recent.path,
+      signal,
+    );
     if (recovery) scan = mergeRecoveredTraffic(notes, scan, recovery, input.maxEntries);
   }
   appendLifecycleNote(notes, device, input);

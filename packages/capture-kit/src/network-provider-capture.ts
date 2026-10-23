@@ -1,11 +1,14 @@
 import type {
+  NetworkAppLogRead,
   NetworkDumpInput,
   NetworkProviderDumpResult,
   NetworkTransportScope,
 } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
+import type { LogBackend } from '@agent-device/contracts/observability';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { redactDiagnosticData } from '@agent-device/kernel/redaction';
+import { readRecentNetworkTrafficFromText, type NetworkScan } from './network-traffic.ts';
 
 /**
  * A provider source answers a dump with entries, with nothing yet to report, or not at all.
@@ -95,4 +98,31 @@ function providerFailureNote(error: unknown): string {
     message: error instanceof Error ? error.message : String(error),
   });
   return `In-app network capture could not answer this dump: ${message} This dump reads the session app log instead.`;
+}
+
+/** A platform's app-log fallback window: the scan and the file identity its notes name. */
+export type NetworkAppLogFallback = Readonly<{
+  scan: NetworkScan;
+  recent: NetworkAppLogRead;
+}>;
+
+/**
+ * Reads the session app log and scans it for HTTP traffic: the fallback every platform answers
+ * from when its provider source has nothing to report. `backend` names the log family the parser
+ * applies.
+ */
+export async function scanNetworkAppLogFallback(
+  host: Pick<PlatformRuntimeHost, 'appLogs'>,
+  input: NetworkDumpInput,
+  backend: LogBackend,
+): Promise<NetworkAppLogFallback> {
+  const recent = await host.appLogs.readRecent(input.sessionId, input.maxScanLines);
+  const scan = readRecentNetworkTrafficFromText(recent.text, {
+    ...input,
+    path: recent.path,
+    exists: recent.exists,
+    lineNumberOffset: recent.skippedLines,
+    backend,
+  });
+  return { scan, recent };
 }

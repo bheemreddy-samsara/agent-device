@@ -20,7 +20,7 @@ import {
   NETWORK_CAPTURE_RUNTIME_VERSION,
 } from './network-capture-runtime.ts';
 
-export const NETWORK_CAPTURE_BACKEND = 'react-native-app';
+const NETWORK_CAPTURE_BACKEND = 'react-native-app';
 
 export type ReactNativeNetworkDumpInput = Readonly<{
   stateDir: string;

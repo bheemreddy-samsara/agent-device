@@ -20,6 +20,42 @@ function readHeaders(value: unknown): Record<string, string> | undefined {
   return Object.keys(headers).length > 0 ? redactNetworkHeaders(headers) : undefined;
 }
 
+/** Metadata a drained entry earns beyond its request fields: the transport it ran on, its error. */
+function readMetadata(
+  entry: Record<string, unknown>,
+  maxPayloadChars: number,
+): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {};
+  const transport = readString(entry.transport);
+  if (transport) metadata.transport = transport;
+  const error = readString(entry.error);
+  if (error) metadata.error = redactNetworkPayload(error, maxPayloadChars);
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function detailFields(
+  entry: Record<string, unknown>,
+  include: NetworkIncludeMode,
+  maxPayloadChars: number,
+): Record<string, unknown> {
+  const detail: Record<string, unknown> = {};
+  if (includesHeaders(include)) {
+    const requestHeaders = readHeaders(entry.requestHeaders);
+    const responseHeaders = readHeaders(entry.responseHeaders);
+    if (requestHeaders) detail.requestHeaders = requestHeaders;
+    if (responseHeaders) detail.responseHeaders = responseHeaders;
+  }
+  if (includesBody(include)) {
+    const requestBody = readString(entry.requestBody);
+    const responseBody = readString(entry.responseBody);
+    if (requestBody !== undefined)
+      detail.requestBody = redactNetworkPayload(requestBody, maxPayloadChars);
+    if (responseBody !== undefined)
+      detail.responseBody = redactNetworkPayload(responseBody, maxPayloadChars);
+  }
+  return detail;
+}
+
 /**
  * Projects the raw entries one app runtime drained into the provider dump shape the
  * `network dump` response carries. Each entry crosses the debugger boundary as untrusted JSON, so
@@ -39,32 +75,15 @@ export function projectCapturedNetworkEntries(
     const entry = value as Record<string, unknown>;
     const url = readString(entry.url);
     if (url === undefined) continue;
-    const metadata: Record<string, unknown> = {};
-    const transport = readString(entry.transport);
-    if (transport) metadata.transport = transport;
-    const error = readString(entry.error);
-    if (error) metadata.error = redactNetworkPayload(error, maxPayloadChars);
-    const requestBody = readString(entry.requestBody);
-    const responseBody = readString(entry.responseBody);
+    const metadata = readMetadata(entry, maxPayloadChars);
     projected.push({
       timestamp: readString(entry.timestamp),
       method: readString(entry.method),
       url,
       status: readNumber(entry.status),
       durationMs: readNumber(entry.durationMs),
-      ...(includesHeaders(include)
-        ? {
-            requestHeaders: readHeaders(entry.requestHeaders),
-            responseHeaders: readHeaders(entry.responseHeaders),
-          }
-        : {}),
-      ...(includesBody(include) && requestBody !== undefined
-        ? { requestBody: redactNetworkPayload(requestBody, maxPayloadChars) }
-        : {}),
-      ...(includesBody(include) && responseBody !== undefined
-        ? { responseBody: redactNetworkPayload(responseBody, maxPayloadChars) }
-        : {}),
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      ...detailFields(entry, include, maxPayloadChars),
+      ...(metadata ? { metadata } : {}),
     });
   }
   return projected.reverse();
