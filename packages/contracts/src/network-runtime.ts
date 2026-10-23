@@ -15,6 +15,8 @@ export type NetworkDumpInput = Readonly<{
   sessionId: string;
   appBundleId?: string;
   appLogSnapshot?: NetworkAppLogSnapshot;
+  /** Daemon state dir (parent of `sessions/`), so an in-app capture can find this session's Metro hints. */
+  stateDir?: string;
   maxEntries: number;
   include: NetworkIncludeMode;
   maxPayloadChars: number;
@@ -38,6 +40,12 @@ export type NetworkProviderDumpResult = Readonly<{
   backend: string;
   entries: readonly NetworkProviderEntry[];
   notes?: readonly string[];
+  /**
+   * The provider installed its capture during this call and its buffer was still empty, so this
+   * call arms later traffic instead of reporting this one. A caller with a second capture source
+   * answers the current window from that source and says so.
+   */
+  armed?: boolean;
 }>;
 
 export type NetworkDumpResult =
@@ -57,6 +65,16 @@ export type NetworkProviderDump = (
   input: Readonly<{ maxEntries: number; include: NetworkIncludeMode }>,
   signal?: AbortSignal,
 ) => Promise<NetworkProviderDumpResult>;
+
+/** Session facts a transport may need to reach one session's app-side traffic source. */
+export type NetworkTransportScope = Readonly<{
+  sessionId: string;
+  /** Daemon state dir (parent of `sessions/`), where a session's Metro binding is recorded. */
+  stateDir?: string;
+  appBundleId?: string;
+  /** Payload budget the dump will apply; a transport may pre-bound what it reads with it. */
+  maxPayloadChars?: number;
+}>;
 
 export type NetworkTransport = Readonly<{
   mode: Extract<RuntimeProviderMode, 'local' | 'transport-composed'>;
@@ -81,6 +99,6 @@ export type NetworkRuntimeHost = Readonly<{
     readProcessMarker(sessionId: string): Promise<AppLogProcessMarkerReadOutcome>;
   }>;
   networkTransports: Readonly<{
-    resolve(device: DeviceInfo): Promise<NetworkTransport>;
+    resolve(device: DeviceInfo, scope?: NetworkTransportScope): Promise<NetworkTransport>;
   }>;
 }>;

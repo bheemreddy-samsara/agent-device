@@ -1,5 +1,9 @@
 import { expect, test, vi } from 'vitest';
-import type { NetworkDumpInput } from '@agent-device/contracts/network-runtime';
+import type {
+  NetworkDumpInput,
+  NetworkProviderDumpResult,
+  NetworkTransport,
+} from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { dumpAppleNetworkTraffic } from './runtime.ts';
@@ -13,6 +17,100 @@ const simulator: DeviceInfo = {
   target: 'mobile',
   booted: true,
 };
+
+const providerResult: NetworkProviderDumpResult = {
+  backend: 'react-native-app',
+  entries: [
+    {
+      url: 'https://api.example.test/v1/items?page=2',
+      method: 'POST',
+      status: 201,
+      durationMs: 41,
+    },
+  ],
+};
+
+test('in-app capture answers with the full URL and status, and the app log is not read', async () => {
+  const readRecent = vi.fn(async () => {
+    throw new Error('the app log must not be read once the provider answered');
+  });
+  const runtimeHost = host({ runSimctl: vi.fn() });
+  const result = await dumpAppleNetworkTraffic(
+    {
+      ...runtimeHost,
+      appLogs: { ...runtimeHost.appLogs, readRecent },
+      networkTransports: {
+        resolve: async (_device, scope) => {
+          expect(scope).toMatchObject({
+            sessionId: 'one',
+            appBundleId: 'com.example.app',
+            maxPayloadChars: 2048,
+          });
+          return {
+            mode: 'transport-composed',
+            dump: async () => providerResult,
+          };
+        },
+      },
+    },
+    simulator,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+
+  expect(result).toEqual({ source: 'provider', ...providerResult });
+  expect(readRecent).not.toHaveBeenCalled();
+});
+
+test('the dump that only arms the in-app capture still reports the app log window', async () => {
+  const armingNote = 'In-app network capture was installed by this dump.';
+  const result = await dumpAppleNetworkTraffic(
+    host({
+      text: '2026-08-10T10:00:00Z GET https://from-log.example.test status=200\n',
+      runSimctl: vi.fn(),
+      transport: {
+        mode: 'transport-composed',
+        dump: async () => ({
+          backend: 'react-native-app',
+          entries: [],
+          armed: true,
+          notes: [armingNote],
+        }),
+      },
+    }),
+    simulator,
+    input({ appLogSnapshot: { state: 'active', startedAt: 1_000 } }),
+    new AbortController().signal,
+  );
+
+  if (result.source !== 'app-log') throw new Error('expected app-log result');
+  expect(result.dump.entries).toEqual([
+    expect.objectContaining({ url: 'https://from-log.example.test' }),
+  ]);
+  expect(result.notes).toContain(armingNote);
+});
+
+test('an in-app capture that cannot answer falls back to the app log with its reason', async () => {
+  const result = await dumpAppleNetworkTraffic(
+    host({
+      text: '2026-08-10T10:00:00Z GET https://from-log.example.test status=200\n',
+      runSimctl: vi.fn(),
+      transport: {
+        mode: 'transport-composed',
+        dump: async () => {
+          throw new Error('No React Native runtime is connected to the dev server.');
+        },
+      },
+    }),
+    simulator,
+    input({ appLogSnapshot: { state: 'active', startedAt: 1_000 } }),
+    new AbortController().signal,
+  );
+
+  if (result.source !== 'app-log') throw new Error('expected app-log result');
+  expect(result.dump.entries).toHaveLength(1);
+  expect(result.notes[0]).toContain('In-app network capture could not answer');
+});
 
 test('recovers an empty iOS simulator dump from bounded simctl log history', async () => {
   const runSimctl = vi.fn(async () => ({
@@ -142,6 +240,7 @@ function input(overrides: Partial<NetworkDumpInput> = {}): NetworkDumpInput {
 function host(options: {
   text?: string;
   runSimctl: PlatformRuntimeHost['appleTools']['run'];
+  transport?: NetworkTransport;
 }): PlatformRuntimeHost {
   return {
     ...unusedAppLogHost(),
@@ -161,7 +260,7 @@ function host(options: {
       }),
       readProcessMarker: async () => ({ status: 'missing' }),
     },
-    networkTransports: { resolve: async () => ({ mode: 'local' }) },
+    networkTransports: { resolve: async () => options.transport ?? { mode: 'local' } },
   };
 }
 

@@ -59,6 +59,7 @@ export async function handleNetworkCommand(params: NetworkHandlerParams): Promis
     const result = await runtime.operations.networkDump({
       sessionId: params.sessionName,
       appBundleId: session.appBundleId,
+      stateDir: params.sessionStore.resolveDaemonStateDir(),
       ...(appLog ? { appLogSnapshot: { state: appLog.state, startedAt: appLog.startedAt } } : {}),
       maxEntries: request.maxEntries,
       include: plan.include,
@@ -155,6 +156,7 @@ function networkDumpResponse(
       ok: true,
       data: {
         ...result.dump,
+        source: 'app-log',
         active,
         state: state ?? 'inactive',
         backend: result.backend,
@@ -167,6 +169,7 @@ function networkDumpResponse(
     ok: true,
     data: {
       entries: result.entries,
+      source: 'provider',
       active: true,
       state: 'active',
       backend: result.backend,

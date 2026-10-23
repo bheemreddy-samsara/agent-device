@@ -2,6 +2,7 @@ import type { NetworkDump } from '@agent-device/contracts/network-traffic';
 import type { NetworkDumpInput, NetworkDumpResult } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import {
+  captureNetworkProviderTraffic,
   mergeNetworkScans,
   readRecentNetworkTrafficFromText,
   type NetworkScan,
@@ -17,6 +18,10 @@ export async function dumpAppleNetworkTraffic(
   signal: AbortSignal,
 ): Promise<NetworkDumpResult> {
   const backend = backendForAppleDevice(device);
+  const provider = await captureNetworkProviderTraffic(host, device, input, signal);
+  if (provider.status === 'captured') {
+    return Object.freeze({ source: 'provider', ...provider.result });
+  }
   const recent = await host.appLogs.readRecent(input.sessionId, input.maxScanLines);
   let scan = readRecentNetworkTrafficFromText(recent.text, {
     ...input,
@@ -25,7 +30,7 @@ export async function dumpAppleNetworkTraffic(
     lineNumberOffset: recent.skippedLines,
     backend,
   });
-  const notes: string[] = [];
+  const notes: string[] = [...provider.notes];
   if (canRecoverSimulator(device, input, scan.dump)) {
     const recovery = await recoverSimulatorTraffic(host, device, input, recent.path, signal);
     if (recovery) scan = mergeRecoveredTraffic(notes, scan, recovery, input.maxEntries);

@@ -1,6 +1,10 @@
 import { expect, test, vi } from 'vitest';
 import type { HostCommandRequest } from '@agent-device/contracts/platform-runtime-host';
-import type { NetworkDumpInput } from '@agent-device/contracts/network-runtime';
+import type {
+  NetworkDumpInput,
+  NetworkProviderDumpResult,
+  NetworkTransport,
+} from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { dumpAndroidNetworkTraffic } from './runtime.ts';
@@ -13,6 +17,103 @@ const device: DeviceInfo = {
   target: 'mobile',
   booted: true,
 };
+
+const providerResult: NetworkProviderDumpResult = {
+  backend: 'react-native-app',
+  entries: [
+    {
+      url: 'https://api.example.test/v1/items?page=2',
+      method: 'POST',
+      status: 201,
+      durationMs: 41,
+    },
+  ],
+};
+
+test('in-app capture answers with the full URL and status, and the app log is not read', async () => {
+  const runtimeHost = host({
+    marker: { status: 'missing' },
+    command: () => {
+      throw new Error('an in-app capture answer must not run adb');
+    },
+    logcat: '',
+    transport: {
+      mode: 'transport-composed',
+      dump: async (dumpInput) => {
+        expect(dumpInput).toEqual({ maxEntries: 25, include: 'summary' });
+        return providerResult;
+      },
+    },
+  });
+  const readRecent = vi.fn(runtimeHost.appLogs.readRecent);
+  const result = await dumpAndroidNetworkTraffic(
+    { ...runtimeHost, appLogs: { ...runtimeHost.appLogs, readRecent } },
+    device,
+    input({ stateDir: '/state' }),
+    new AbortController().signal,
+  );
+
+  expect(result).toEqual({ source: 'provider', ...providerResult });
+  expect(readRecent).not.toHaveBeenCalled();
+});
+
+test('the dump that only arms the in-app capture still reports the app log window', async () => {
+  const armingNote = 'In-app network capture was installed by this dump.';
+  const result = await dumpAndroidNetworkTraffic(
+    host({
+      marker: { status: 'missing' },
+      command: () => {
+        throw new Error('an in-app capture answer must not run adb');
+      },
+      appLogText: '01-01 00:00:00.000 D/App (222): GET https://from-log.example.test status=200',
+      logcat: '',
+      transport: {
+        mode: 'transport-composed',
+        dump: async () => ({
+          backend: 'react-native-app',
+          entries: [],
+          armed: true,
+          notes: [armingNote],
+        }),
+      },
+    }),
+    device,
+    input({ appLogSnapshot: { state: 'active', startedAt: 1 } }),
+    new AbortController().signal,
+  );
+
+  if (result.source !== 'app-log') throw new Error('expected app-log result');
+  expect(result.dump.entries).toEqual([
+    expect.objectContaining({ url: 'https://from-log.example.test' }),
+  ]);
+  expect(result.notes).toContain(armingNote);
+});
+
+test('an in-app capture that cannot answer falls back to the app log with its reason', async () => {
+  const result = await dumpAndroidNetworkTraffic(
+    host({
+      marker: { status: 'missing' },
+      command: () => {
+        throw new Error('an in-app capture answer must not run adb');
+      },
+      appLogText: '01-01 00:00:00.000 D/App (222): GET https://from-log.example.test status=200',
+      logcat: '',
+      transport: {
+        mode: 'transport-composed',
+        dump: async () => {
+          throw new Error('No React Native runtime is connected to the dev server.');
+        },
+      },
+    }),
+    device,
+    input({ appLogSnapshot: { state: 'active', startedAt: 1 } }),
+    new AbortController().signal,
+  );
+
+  if (result.source !== 'app-log') throw new Error('expected app-log result');
+  expect(result.dump.entries).toHaveLength(1);
+  expect(result.notes[0]).toContain('In-app network capture could not answer');
+});
 
 test('recovers inactive Android traffic for current and previous package pids before stale entries', async () => {
   const result = await dumpAndroidNetworkTraffic(
@@ -122,6 +223,7 @@ function host(options: {
   command(request: HostCommandRequest): { stdout: string; stderr: string; exitCode: number };
   appLogText?: string;
   logcat: string | Error;
+  transport?: NetworkTransport;
 }): PlatformRuntimeHost {
   return {
     ...unusedAppLogHost(),
@@ -149,7 +251,7 @@ function host(options: {
       }),
       readProcessMarker: async () => options.marker,
     },
-    networkTransports: { resolve: async () => ({ mode: 'local' }) },
+    networkTransports: { resolve: async () => options.transport ?? { mode: 'local' } },
   };
 }
 

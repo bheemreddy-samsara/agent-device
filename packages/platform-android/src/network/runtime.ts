@@ -4,7 +4,11 @@ import type {
 } from '@agent-device/contracts/platform-runtime-host';
 import type { NetworkDumpInput, NetworkDumpResult } from '@agent-device/contracts/network-runtime';
 import type { PlatformRuntimeHost } from '@agent-device/contracts/platform-runtime-operations';
-import { mergeNetworkScans, readRecentNetworkTrafficFromText } from '@agent-device/capture-kit';
+import {
+  captureNetworkProviderTraffic,
+  mergeNetworkScans,
+  readRecentNetworkTrafficFromText,
+} from '@agent-device/capture-kit';
 import type { DeviceInfo } from '@agent-device/kernel/device';
 import { deviceShellArgv } from '@agent-device/kernel/device-shell';
 import { assertAndroidLogPackageSafe } from '../logs/package-name.ts';
@@ -20,6 +24,10 @@ export async function dumpAndroidNetworkTraffic(
   input: NetworkDumpInput,
   signal: AbortSignal,
 ): Promise<NetworkDumpResult> {
+  const provider = await captureNetworkProviderTraffic(host, device, input, signal);
+  if (provider.status === 'captured') {
+    return Object.freeze({ source: 'provider', ...provider.result });
+  }
   const recent = await host.appLogs.readRecent(input.sessionId, input.maxScanLines);
   let scan = readRecentNetworkTrafficFromText(recent.text, {
     ...input,
@@ -28,7 +36,7 @@ export async function dumpAndroidNetworkTraffic(
     lineNumberOffset: recent.skippedLines,
     backend: 'android',
   });
-  const notes: string[] = [];
+  const notes: string[] = [...provider.notes];
   const context = await recoveryContext(host, device, input, signal);
   if (context && input.appBundleId) {
     assertAndroidLogPackageSafe(input.appBundleId);
