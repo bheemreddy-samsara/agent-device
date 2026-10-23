@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3926/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3926/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3926/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3926/static/js/index.9d08b087ca.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3926/static/js/index.be49e223d1.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -795,7 +795,7 @@ hardware keys) still start a stopped app.</li>
 <li>Name one area: <code>frames</code>, <code>memory</code>, <code>cpu</code>, or <code>trace</code>. Bare <code>perf</code>, <code>perf sample</code>, <code>perf metrics</code>, and the <code>metrics</code> alias fail with guidance to the focused replacements.</li>
 <li><code>perf frames</code> returns frame/jank health (<code>droppedFramePercent</code>, <code>worstWindows</code>). <code>perf memory sample</code> returns a compact process memory sample in kilobytes. <code>perf memory snapshot</code> writes a heap or memgraph artifact and returns its path.</li>
 <li><code>perf cpu profile</code> and <code>perf trace</code> record Apple (<code>--kind xctrace</code>) or Android (<code>--kind simpleperf</code>, <code>--kind perfetto</code>) profiles and traces, and return artifact paths plus compact metadata; raw contents stay on disk.</li>
-<li><code>perf trace stop</code> interprets the capture: Apple reports hangs, hitches, and hotspots; Android reports main-thread freezes when <code>trace_processor</code> is installed on the host. Every entry includes bounded <code>nextSteps</code> guidance.</li>
+<li><code>perf trace stop</code> interprets the capture: Apple reports hangs, hitches, and hotspots; Android reports main-thread hangs when <code>trace_processor</code> is installed on the host. Each hang carries bounded <code>nextSteps</code> guidance; the CLI text prints at most five entries per list and JSON carries the full list. <code>perf trace</code> records with the Time Profiler template by default, so hitch tables need <code>--template &quot;Animation Hitches&quot;</code>.</li>
 <li><code>cdp</code> samples and snapshots the React Native JavaScript heap through Metro CDP; see <a href="/agent-device/pr-preview/pr-3926/docs/debugging-profiling#react-native-js-memory-through-cdp" class="rp-link">Debugging &amp; Profiling</a>.</li>
 <li>App startup duration is returned in <code>open</code>&#x27;s <code>startup</code> result.</li>
 <li>Perf commands need an app session with a package or bundle ID; run <code>open &lt;app&gt;</code> first.</li>

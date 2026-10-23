@@ -537,8 +537,13 @@ Some resource operations cannot run as bounded steps. The failed step returns
 `details.reason: bounded_composite_resource_unsupported`, `details.shape`,
 `details.dispatched: no`, and `details.standaloneCommandName` for a known public command. The name
 is not a complete command. Affected commands include `perf`, `audio`, `record`, `trace`, and some
-`logs` operations. Run the original step separately with its original arguments and options, the
-same `--session` value, and the same private CLI context. Inspect `details.partialResults` and
+`logs` operations. A `close` that would dispose an owned resource or release a provider lease, and
+acquisition that would recover another session's durable resources, can also be refused. Opening
+another app in the same session keeps its owned resource handles. An Android test IME alone is
+restored by ordinary `close`, including a bounded step. Restoration may settle after the remaining
+batch time. If it fails, the session retires and the device claim stays for recovery; inspect the
+device and claim before acting. Run a refused step separately with its original arguments and options, the same `--session` value, and
+the same private CLI context. Inspect `details.partialResults` and
 `details.dispatchedSteps` before retrying the batch: earlier steps may already have changed the app.
 The batch still authenticates and renews its own lease while it runs.
 
@@ -2553,7 +2558,7 @@ agent-device perf trace stop --kind perfetto --out app.perfetto-trace
 - Name one area: `frames`, `memory`, `cpu`, or `trace`. Bare `perf`, `perf sample`, `perf metrics`, and the `metrics` alias fail with guidance to the focused replacements.
 - `perf frames` returns frame/jank health (`droppedFramePercent`, `worstWindows`). `perf memory sample` returns a compact process memory sample in kilobytes. `perf memory snapshot` writes a heap or memgraph artifact and returns its path.
 - `perf cpu profile` and `perf trace` record Apple (`--kind xctrace`) or Android (`--kind simpleperf`, `--kind perfetto`) profiles and traces, and return artifact paths plus compact metadata; raw contents stay on disk.
-- `perf trace stop` interprets the capture: Apple reports hangs, hitches, and hotspots; Android reports main-thread freezes when `trace_processor` is installed on the host. Every entry includes bounded `nextSteps` guidance.
+- `perf trace stop` interprets the capture: Apple reports hangs, hitches, and hotspots; Android reports main-thread hangs when `trace_processor` is installed on the host. Each hang carries bounded `nextSteps` guidance; the CLI text prints at most five entries per list and JSON carries the full list. `perf trace` records with the Time Profiler template by default, so hitch tables need `--template "Animation Hitches"`.
 - `cdp` samples and snapshots the React Native JavaScript heap through Metro CDP; see [Debugging & Profiling](/agent-device/pr-preview/pr-3926/docs/debugging-profiling.md#react-native-js-memory-through-cdp).
 - App startup duration is returned in `open`'s `startup` result.
 - Perf commands need an app session with a package or bundle ID; run `open <app>` first.
@@ -3261,7 +3266,7 @@ agent-device perf trace stop --kind perfetto --out app.perfetto-trace
 - `perf memory snapshot` escalates to file artifacts. Android supports Java HPROF capture for active app processes when the build/device allows heap dumping. iOS simulator and macOS app sessions support memgraph capture. On physical iOS devices, memgraph capture reports unavailable with a hint.
 - Heap and memgraph artifacts are returned as paths plus compact metadata. Example default output: `Memory artifact (android-hprof): /tmp/app.hprof (42MB)`. They are not printed or embedded in JSON by default. Native allocation tracing (heapprofd) is not supported.
 - `perf cpu profile ... --kind xctrace` collects an Apple native `.trace`; `report` aggregates every run, returns at most ten weighted top functions in JSON, and prints five. `perf trace ... --kind xctrace` keeps trace data as an artifact.
-- `perf trace stop` interprets the finished trace before it returns. Apple captures report hangs with start offset, duration, thread, and top symbol, plus hitches and hotspots; Android Perfetto captures report main-thread freezes and deadline-missed frames. Each hang carries rule-based `nextSteps`. CLI text prints at most five entries per list; JSON carries the full list. Android interpretation uses the host `trace_processor` tool; without it on PATH the stop result keeps the artifact and adds a note with install steps.
+- `perf trace stop` interprets the finished trace before it returns. Apple captures report hangs with start offset, duration, thread, and top symbol, plus hitches and hotspots; Android Perfetto captures report main-thread hangs: contiguous busy windows where the main thread does not return to idle. Each hang carries rule-based `nextSteps`. CLI text prints at most five entries per list; JSON carries the full list. Android interpretation uses the host `trace_processor` tool; without it on PATH the stop result keeps the artifact and adds a note with install steps.
 - On iOS simulators and macOS, process sampling and captures target the resolved app executable. Other running copies with the same executable name are excluded, including copies installed on another simulator.
 - Android native profiling uses `perf cpu profile ... --kind simpleperf`; its report likewise returns at most ten top functions and prints five. Android native trace capture uses `perf trace ... --kind perfetto`. These commands require an active Android app session and return artifact paths/summaries instead of dumping profile or trace contents.
 - Use the compact result as evidence. For example, a successful Perfetto stop may return `state: "stopped"`, `outPath: "/tmp/app.perfetto-trace"`, `sizeBytes: 5392410`, and `method: "adb-shell-perfetto"` while the 5.3 MB raw trace remains on disk as the artifact.
@@ -4564,11 +4569,15 @@ runs keep their own timeout behavior.
 If a resource step cannot run within replay's budget, the error includes
 `details.reason: bounded_composite_resource_unsupported`, `details.shape`,
 `details.dispatched: no` for that step, and `details.standaloneCommandName` for a known public
-command. This can affect `perf`, `audio`, `record`, `trace`, and some `logs` operations. The name is
-not a complete command. Inspect the failed script path and line, then run that original operation
-separately with its original arguments and options, the same `--session`
-value, and the same private CLI context. If steps remain and the report offers
-`resume.alternateFrom`, use it with `planDigest` after completing the refused step directly.
+command. This can affect `perf`, `audio`, `record`, `trace`, and some `logs` operations. It also
+affects `close` when it would dispose owned resources or release a provider lease, and acquisition
+that would recover another session's durable resources. Opening another app in the same session
+keeps its owned resource handles. An Android test IME alone is restored by authored `close`, even
+when restoration settles after the remaining replay time. A failed restore retires the session and
+retains the device claim for recovery; inspect both before acting. The name is not a complete command. Inspect the failed
+script path and line, then run that original operation separately with its original arguments and
+options, the same `--session` value, and the same private CLI context. If steps remain and the
+report offers `resume.alternateFrom`, use it with `planDigest` after completing the refused step directly.
 `resume.from` retries the same bounded step and refuses it again. A final
 unrecorded `logs` or `audio` step leaves no replay tail to resume. Inspect completed steps before
 retrying; earlier steps may have changed the app. A nested `test` with an attempt timeout or
