@@ -96,6 +96,69 @@ test('devices without a logical id are told apart by their target ids, not their
   assert.equal(selectReactNativeTarget(targets, { device: 'sim-a' }).id, 'sim-a-1');
 });
 
+test('device aliases narrow two devices to the session own runtime', () => {
+  const targets = [
+    target('sim-a-1', { appId: 'com.app', deviceName: 'rn-net ios' }),
+    target('pixel-1', { appId: 'com.app', deviceName: 'sdk_gphone64_arm64 - 15 - API 35' }),
+  ];
+  // The dev server reports an Android runtime as `<model> - <release> - API <level>`, so the
+  // model name the inventory probe knows matches it as a prefix.
+  assert.equal(
+    selectReactNativeTarget(targets, {
+      appId: 'com.app',
+      deviceAliases: ['rn-net ios', 'com.apple.CoreSimulator.42'],
+      requireDeviceMatch: true,
+    }).id,
+    'sim-a-1',
+  );
+  assert.equal(
+    selectReactNativeTarget(targets, {
+      appId: 'com.app',
+      deviceAliases: ['ReactNative API 35', 'emulator-5554', 'sdk_gphone64_arm64'],
+      requireDeviceMatch: true,
+    }).id,
+    'pixel-1',
+  );
+});
+
+test('requireDeviceMatch fails closed when no runtime reports the session device', () => {
+  const targets = [target('pixel-1', { appId: 'com.app', deviceName: 'Pixel 9' })];
+  assert.throws(
+    () =>
+      selectReactNativeTarget(targets, {
+        appId: 'com.app',
+        deviceAliases: ['rn-net ios'],
+        requireDeviceMatch: true,
+      }),
+    (error: { code: string; details: { reason: string } }) => {
+      assert.equal(error.code, 'COMMAND_FAILED');
+      assert.equal(error.details.reason, 'metro-device-mismatch');
+      return true;
+    },
+  );
+  // Without the requirement — where the name mapping is not trusted — the app-id match still wins.
+  assert.equal(
+    selectReactNativeTarget(targets, { appId: 'com.app', deviceAliases: ['rn-net ios'] }).id,
+    'pixel-1',
+  );
+});
+
+test('targets that report no device identity fall back to the several-devices guard', () => {
+  const targets = [
+    target('a-1', { appId: 'com.app', reactNative: {} }),
+    target('b-1', { appId: 'com.app', reactNative: {} }),
+  ];
+  assert.throws(
+    () =>
+      selectReactNativeTarget(targets, {
+        appId: 'com.app',
+        deviceAliases: ['rn-net ios'],
+        requireDeviceMatch: true,
+      }),
+    /Several React Native apps|several devices/,
+  );
+});
+
 test('distinct apps need --app; older dev servers report the app id as the description', () => {
   const targets = [
     target('a-1', { appId: 'com.one' }),
