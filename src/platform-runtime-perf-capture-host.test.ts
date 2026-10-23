@@ -158,6 +158,15 @@ test('starts, retargets, finishes, and cleans a Simpleperf profile through one l
 
 test('starts and finishes an Android Perfetto trace', async () => {
   const capture = androidCapture({ kind: 'perfetto', type: 'trace' });
+  const hang = {
+    startOffsetMs: 2_100,
+    durationMs: 4_000,
+    thread: 'main (com.example.app)',
+    runningMs: 3_900,
+    blockedMs: 100,
+    source: 'thread_state',
+    nextSteps: ['Run perf cpu profile around the interaction.'],
+  };
   androidNative.startAndroidPerfettoTrace.mockResolvedValue(capture);
   androidNative.stopAndroidPerfettoTrace.mockResolvedValue({
     ...capture,
@@ -165,7 +174,7 @@ test('starts and finishes an Android Perfetto trace', async () => {
     state: 'stopped',
     stoppedAt: 3,
     durationMs: 2,
-    summary: { packets: 4 },
+    summary: { packets: 4, hangs: [hang] },
   });
 
   const started = await startAndroidPerfCapture(
@@ -173,10 +182,17 @@ test('starts and finishes an Android Perfetto trace', async () => {
     localRuntimeOwner('android'),
     captureInput({ kind: 'perfetto', mode: 'trace' }),
   );
-  await expect(started.pendingHandle.transfer().finish()).resolves.toMatchObject({
-    status: 'completed',
-    result: { kind: 'perfetto', mode: 'trace', state: 'stopped' },
+  const finished = await started.pendingHandle.transfer().finish();
+  expect(finished.status).toBe('completed');
+  if (finished.status !== 'completed') return;
+  expect(finished.result).toMatchObject({
+    kind: 'perfetto',
+    mode: 'trace',
+    state: 'stopped',
+    summary: { packets: 4, hangs: [hang] },
   });
+  // Hangs ride on the summary only; the snapshot must not mirror them.
+  expect(finished.result as unknown as Record<string, unknown>).not.toHaveProperty('hangs');
   expect(androidNative.startAndroidPerfettoTrace).toHaveBeenCalledWith(
     device,
     'com.example.app',

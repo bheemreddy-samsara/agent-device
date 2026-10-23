@@ -150,10 +150,16 @@ function formatTraceHangSection(hangs: Array<Record<string, unknown>>): string |
 function formatTraceAnalysisUnavailable(
   summary: Record<string, unknown> | undefined,
 ): string | undefined {
+  // Both platforms spread the analysis envelope onto the stop summary, so the
+  // unavailable case is always summary.available === false with the typed reason.
+  // The hint rides along so the CLI text carries the actionable steps (for
+  // example the trace_processor install note), not just the reason token.
   if (!isRecord(summary) || summary.available !== false) return undefined;
   const message = readString(summary.message);
   if (!message) return undefined;
-  return `Trace analysis: unavailable - ${readString(summary.reason) ?? message}`;
+  const head = `Trace analysis: unavailable - ${readString(summary.reason) ?? message}`;
+  const hint = readString(summary.hint);
+  return hint ? `${head} ${hint}` : head;
 }
 
 function formatAppleTraceSections(summary: Record<string, unknown>): string[] {

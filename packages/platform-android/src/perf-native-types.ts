@@ -1,5 +1,6 @@
 import type { AndroidAdbExecutor } from './adb-executor.ts';
 import type { AndroidAdbFileHost } from './adb-host.ts';
+import type { AndroidTraceAnalysis } from './perf-trace-processor.ts';
 
 export const ANDROID_SIMPLEPERF_METHOD = 'adb-shell-simpleperf';
 export const ANDROID_PERFETTO_METHOD = 'adb-shell-perfetto';
@@ -63,7 +64,12 @@ export type AndroidNativePerfStopSummary = {
   };
   frameHealth?: AndroidNativePerfFrameHealthSummary;
   notes: string[];
-};
+} & (
+  | { available?: undefined }
+  // Trace-analysis envelope spread onto the summary (same placement as Apple's
+  // stop summary); trace captures only.
+  | AndroidTraceAnalysis
+);
 
 export type AndroidNativePerfFrameHealthSummary =
   | {

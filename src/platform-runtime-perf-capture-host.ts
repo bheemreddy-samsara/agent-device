@@ -320,7 +320,12 @@ function compactAndroidCapture(
     remotePath: result.remotePath,
     method: result.method,
     message: result.message,
-    ...(result.action === 'stop' ? { durationMs: result.durationMs, summary: result.summary } : {}),
+    ...(result.action === 'stop'
+      ? {
+          durationMs: result.durationMs,
+          summary: result.summary,
+        }
+      : {}),
   };
   return result.kind === 'simpleperf'
     ? { ...common, kind: 'simpleperf', mode: 'cpu-profile' }

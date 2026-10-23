@@ -158,6 +158,7 @@ Diagnostics and traces:
     agent-device perf trace start --kind perfetto --out /tmp/app.perfetto-trace
     agent-device perf trace stop --kind perfetto
   Treat native perf output as the agent evidence: for example, state=stopped, outPath=/tmp/app.perfetto-trace, sizeBytes=5392410, method=adb-shell-perfetto. The 5.3 MB raw trace stays in the artifact.
+  perf trace stop interprets the Perfetto trace with the host trace_processor tool and reports main-thread hangs with next steps; without that tool the stop result keeps the artifact and prints an install hint.
   CPU reports return at most ten top functions in structured data and print five in default CLI output.
   Use explicit perf frames, perf memory, perf cpu, or perf trace forms. Aggregate perf was removed in 0.21: bare perf, perf sample, perf metrics, and metrics fail with exact replacements.
   Startup duration belongs to the open command's startup result; read it there.
