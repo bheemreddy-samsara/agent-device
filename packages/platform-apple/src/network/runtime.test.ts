@@ -340,11 +340,20 @@ function host(options: {
         readText: async () =>
           JSON.stringify({
             result: {
-              devices: physicalNames.map((name) => ({
-                name,
-                hardwareProperties: { platform: 'iOS', udid: `phys-${name}` },
-                connectionProperties: { tunnelState: 'connected' },
-              })),
+              devices: [
+                // CoreDevice registers the booted session simulator itself as a connected device.
+                {
+                  name: 'iPhone',
+                  hardwareProperties: { platform: 'iOS', udid: 'sim-1', reality: 'simulated' },
+                  deviceProperties: { name: 'iPhone' },
+                  connectionProperties: { tunnelState: 'connected' },
+                },
+                ...physicalNames.map((name) => ({
+                  name,
+                  hardwareProperties: { platform: 'iOS', udid: `phys-${name}` },
+                  connectionProperties: { tunnelState: 'connected' },
+                })),
+              ],
             },
           }),
         writeText: async () => {},

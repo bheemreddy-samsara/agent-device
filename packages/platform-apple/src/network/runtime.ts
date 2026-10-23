@@ -63,9 +63,9 @@ async function metroDeviceIdentity(
     sameName.push(...names.filter((name) => name === device.name));
   }
   if (sameName.length !== 1) return undefined;
-  const physicalNames = await connectedPhysicalDeviceNames(host, signal);
-  if (physicalNames === undefined) return undefined;
-  if (physicalNames.some((name) => name === device.name)) return undefined;
+  const otherNames = await connectedOtherDeviceNames(host, device, signal);
+  if (otherNames === undefined) return undefined;
+  if (otherNames.some((name) => name === device.name)) return undefined;
   return device.name;
 }
 
@@ -87,13 +87,15 @@ async function identitySetPaths(
 }
 
 /**
- * The names of physical iOS devices devicectl currently reports as connected — a same-named one
- * could attach to the same dev server and answer to this session's identity. A devicectl that
- * fails, times out, or whose answer cannot be read returns undefined: unknown physical devices
- * fail the identity closed.
+ * The names of connected devices devicectl reports under another udid than the session's — a
+ * same-named physical device could attach to the same dev server, and CoreDevice also registers
+ * booted simulators, so a same-named simulator this host's set listings never showed still shows
+ * here. A devicectl that fails, times out, or whose answer cannot be read returns undefined:
+ * unknown devices fail the identity closed.
  */
-async function connectedPhysicalDeviceNames(
+async function connectedOtherDeviceNames(
   host: PlatformRuntimeHost,
+  device: DeviceInfo,
   signal: AbortSignal,
 ): Promise<readonly string[] | undefined> {
   let file;
@@ -121,7 +123,8 @@ async function connectedPhysicalDeviceNames(
       .filter(
         (entry) =>
           isSupportedAppleDevicectlDevice(entry) &&
-          entry.connectionProperties?.tunnelState === 'connected',
+          entry.connectionProperties?.tunnelState === 'connected' &&
+          (entry.hardwareProperties?.udid ?? entry.identifier) !== device.id,
       )
       .map((entry) => entry.name ?? entry.deviceProperties?.name ?? '');
   } catch {

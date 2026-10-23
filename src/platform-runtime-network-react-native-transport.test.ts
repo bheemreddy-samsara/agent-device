@@ -95,8 +95,9 @@ test('the identity resolver runs only inside the dump and its answer joins the d
   assert.equal(resolved, 0);
   await transport.dump({ maxEntries: 25, include: 'summary' }, new AbortController().signal);
   assert.equal(resolved, 1);
+  const [dumpInput] = dumps.mock.calls[0] ?? [];
   assert.equal(
-    (dumps.mock.calls[0]?.[0] as { metroDeviceIdentity?: string }).metroDeviceIdentity,
+    (dumpInput as { metroDeviceIdentity?: string }).metroDeviceIdentity,
     'sdk_gphone64_arm64 - 15 - API 35',
   );
 });
