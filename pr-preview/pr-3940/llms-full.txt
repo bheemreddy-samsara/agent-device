@@ -756,7 +756,6 @@ Optional device features:
 --provider-network-profile 4g-lte-advanced-good              # (alias --network-profile)
 --provider-custom-network 1000                               # (alias --custom-network)
 --provider-no-resign-app                                     # iOS only
---provider-network-logs                                      # capture session traffic as a HAR
 ```
 
 agent-device sends these values to BrowserStack as `bstack:options` capabilities when it creates the hosted session.
@@ -765,9 +764,6 @@ agent-device sends these values to BrowserStack as `bstack:options` capabilities
 - `--provider-appium-version` pins the Appium server BrowserStack runs for the session. Without it, BrowserStack runs its default Appium 1.x, and `mobile:` commands such as `deepLink` and `pressButton` need Appium 2.x or newer.
 - `--provider-network-profile` and `--provider-custom-network` are mutually exclusive.
 - `--provider-no-resign-app` applies to iOS only. BrowserStack re-signs uploaded iOS apps with its provisioning profile, which strips entitlements. Pass this flag when you test features that need entitlements, such as push notifications.
-- `--provider-network-logs` asks BrowserStack to capture session traffic through its mitmproxy. It is not a live source: `network dump` stays unavailable for the session. `disconnect` ends the BrowserStack session, and `close` alone does not. After `disconnect`, `artifacts` lists the HAR as `Network traffic (HAR)`; BrowserStack publishes it about half a minute later, so the listing can stay `pending` and the printed retry command fetches it then.
-
-  BrowserStack's capture is a proxy the app must trust, so an app that does not trust the mitmproxy CA is never captured and the artifact reports why. Android 7 and newer ignore user CAs unless a debug build's network security config trusts them, and an app that pins certificates excludes its own hosts from capture. BrowserStack requires a paid plan for this feature. See BrowserStack's [network logs guide](https://www.browserstack.com/docs/app-automate/appium/debug-failed-tests/network-logs) for the app-side setup.
 
 ## Run a session from the CLI
 
@@ -1768,7 +1764,7 @@ iOS Simulator launch behavior:
 - An `open` that launches an app reports `timing.postOpenObservation`. When it is present and not `"observable"`, the next command that reads the screen waits briefly until two reads agree, so a `click` lands where the element comes to rest. If the screen is still moving after that wait, the command proceeds and warns that the surface was still changing.
 - If CoreSimulator never answers a URL hand-off, `open` fails within 20 seconds with `details.reason: ios-simulator-openurl-timeout`. The Simulator may still have received the URL; retry the open or answer the prompt with `alert accept`.
 - When `open <app> --launch-url <url>` raises an `Open in "<App>"?` prompt and the URL's scheme belongs to the session app, `open` taps **Open** and returns `launchConfirmation: "accepted"`. If the app still never starts, `open` hands over the URL once more.
-- When that prompt stays unanswered, `open` returns `launchConfirmation: "unanswered"` with `launchConfirmationReason`: `alert-unrecognized` for a prompt it did not recognize (such as a non-English Simulator), or `url-owner-unresolved` when no single installed app owns the URL's scheme or that lookup failed. The prompt stays on screen; `warnings` name the next step. Inspect with `alert get`, then answer with `alert accept`.
+- When that prompt stays unanswered, `open` returns `launchConfirmation: "unanswered"` with `launchConfirmationReason`: `alert-unrecognized` for a prompt it did not recognize (such as a non-English Simulator), or `url-owner-unresolved` when no single installed app owns the URL's scheme or that lookup failed. The prompt stays on screen; `warnings` name the next step. For `url-owner-unresolved`, answer the prompt with `alert accept`. For `alert-unrecognized`, read the alert with `alert get` first: it can be the app's own alert, such as a permission prompt, rather than a translated launch confirmation. Answer with `alert accept` only when it is the launch confirmation.
 - When `open` could not read whether a prompt is up at all (the alert read, the accept, or the runner itself failed), `open` succeeds with `launchConfirmationProbeFailure` set to `alert-read`, `alert-accept`, or `runner` and no `launchConfirmation`, plus a warning to check with `alert get` before retrying.
 - `details.reason: launch_confirmation_unanswered` means the app never started after the prompt was accepted, or the prompt stayed visible after a failed tap. Answer it with `alert accept` or `alert dismiss` before continuing.
 - `details.reason: launch_confirmation_foreign_app` means another installed app owns the scheme (`details.foreignAppBundleId`). Close the prompt with `alert dismiss` and pass a URL your app handles.
@@ -3229,7 +3225,7 @@ agent-device network dump 25 --include all
 - On iOS, `network dump` can return zero entries for real traffic when the app does not log request metadata to Unified Logging. The response notes tell an empty repro window apart from a log window with no network lines.
 - On iOS, the system logs a request URL only when it opens a connection. Requests that reuse a keep-alive connection are reported against that connection's origin with `pathUnavailable: true`, their status, and timing. Requests whose connection opened before the scanned window are only counted in `unnamedRequests`. Treat an endpoint missing from an iOS dump as unproven, not as never called.
 - On web, request and response bodies are not available; use `agent-browser` HAR capture directly when you need them.
-- On the BrowserStack and TestMu AI providers, `network dump` reports `network-capture-post-session` and refuses: those providers capture traffic through their own proxy and publish a HAR only after their session ends, which `disconnect` does and `close` alone does not. Start the session with `--provider-network-logs` and read the HAR from `artifacts` after `disconnect`. See [BrowserStack](/agent-device/pr-preview/pr-3940/docs/browserstack.md) and [TestMu AI](/agent-device/pr-preview/pr-3940/docs/testmu.md).
+- On a hosted device cloud, `network dump` refuses with `UNSUPPORTED_OPERATION` and `details.reason: "network-capture-post-session"`. The cloud owns the network path, so the session has no live source to read. Where the provider records traffic at all, it publishes the report on its own dashboard after its session ends. See [Device clouds](/agent-device/pr-preview/pr-3940/docs/device-clouds.md).
 - For the alias and scan limits, see [Media and logs](/agent-device/pr-preview/pr-3940/docs/commands.md#media-and-logs).
 
 ### Audio probes
@@ -3308,16 +3304,16 @@ Use a device cloud or farm when an agent needs to drive a hosted mobile device w
 
 ## Compare providers
 
-|                         | BrowserStack                                                                                                | AWS Device Farm                                                                                                       | TestMu AI                                                                                        | Limrun                                                                                      |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Devices                 | Android and iOS real devices                                                                                | Android and iOS real devices                                                                                          | Android emulators and iOS simulators by default; real devices with `--provider-device-type real` | Android emulators and iOS simulators                                                        |
-| Ships as                | Built in                                                                                                    | Built in; needs the AWS CLI                                                                                           | The `@agent-device/testmu` plugin                                                                | Built in                                                                                    |
-| Credentials             | `BROWSERSTACK_USERNAME`, `BROWSERSTACK_ACCESS_KEY`                                                          | The AWS CLI credential chain, such as `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` | `LT_USERNAME`, `LT_ACCESS_KEY`                                                                   | `LIMRUN_API_KEY` (optional `LIMRUN_REGION`), or `LIM_*_INSTANCE_*` for an existing instance |
-| Device allocated on     | `open`                                                                                                      | `open`                                                                                                                | `open`                                                                                           | First device command, such as `install` or `open`                                           |
-| App source              | `--provider-app`: `bs://` reference, HTTP(S) URL, or local path                                             | `--aws-app-arn` upload ARN; no install after allocation                                                               | `--provider-app`: `lt://` reference, HTTP(S) URL, or local path                                  | `install <id> <path-or-url>`, or `open <asset-name>` for an uploaded asset                  |
-| Artifacts after `close` | Video, Appium and device logs, dashboard and public links, and a traffic HAR with `--provider-network-logs` | Video and log files, once AWS finalizes them                                                                          | Video, Appium, device, command, and traffic logs, screenshots, dashboard link                    | None                                                                                        |
-| Port reverse            | No; use BrowserStack Local                                                                                  | No                                                                                                                    | No                                                                                               | Android over ADB; not on iOS                                                                |
-| Live `network dump`     | No; the provider publishes a HAR after `close`                                                              | No                                                                                                                    | No; the provider publishes a HAR after `close`                                                   | Yes                                                                                         |
+|                         | BrowserStack                                                    | AWS Device Farm                                                                                                       | TestMu AI                                                                                        | Limrun                                                                                      |
+| ----------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Devices                 | Android and iOS real devices                                    | Android and iOS real devices                                                                                          | Android emulators and iOS simulators by default; real devices with `--provider-device-type real` | Android emulators and iOS simulators                                                        |
+| Ships as                | Built in                                                        | Built in; needs the AWS CLI                                                                                           | The `@agent-device/testmu` plugin                                                                | Built in                                                                                    |
+| Credentials             | `BROWSERSTACK_USERNAME`, `BROWSERSTACK_ACCESS_KEY`              | The AWS CLI credential chain, such as `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` | `LT_USERNAME`, `LT_ACCESS_KEY`                                                                   | `LIMRUN_API_KEY` (optional `LIMRUN_REGION`), or `LIM_*_INSTANCE_*` for an existing instance |
+| Device allocated on     | `open`                                                          | `open`                                                                                                                | `open`                                                                                           | First device command, such as `install` or `open`                                           |
+| App source              | `--provider-app`: `bs://` reference, HTTP(S) URL, or local path | `--aws-app-arn` upload ARN; no install after allocation                                                               | `--provider-app`: `lt://` reference, HTTP(S) URL, or local path                                  | `install <id> <path-or-url>`, or `open <asset-name>` for an uploaded asset                  |
+| Artifacts after `close` | Video, Appium and device logs, dashboard and public links       | Video and log files, once AWS finalizes them                                                                          | Video, Appium, device, network, and command logs, screenshots, dashboard link                    | None                                                                                        |
+| Port reverse            | No; use BrowserStack Local                                      | No                                                                                                                    | No                                                                                               | Android over ADB; not on iOS                                                                |
+| Live `network dump`     | No; the provider owns the network path                          | No; the provider owns the network path                                                                                | No; the provider owns the network path                                                           | Yes                                                                                         |
 
 ## Shared workflow
 
@@ -3356,7 +3352,7 @@ After `close`, run `agent-device artifacts --json` to check for the artifacts yo
 agent-device artifacts <provider-session-id> --provider <provider> --json
 ```
 
-Video and log URLs are already available while the session runs. A traffic HAR appears only after the hosted provider session ends, which happens at `disconnect`, not at `close`. If a lookup reports artifacts as pending right after `disconnect`, retry it a little later.
+Providers finalize video and log URLs after the session ends. If the lookup reports artifacts as pending right after `close`, retry it a little later.
 
 
 
@@ -5986,7 +5982,6 @@ Optional device features:
 --provider-appium-version 2.16.2                             # (alias --appium-version)
 --provider-language fr                                       # (alias --language)
 --provider-locale fr_FR                                      # (alias --locale)
---provider-network-logs                                      # capture session traffic as a HAR
 ```
 
 agent-device sends these values to TestMu AI as `lt:options` capabilities when it creates the
@@ -5994,12 +5989,6 @@ hosted session.
 
 - Without `--provider-appium-version`, TestMu AI starts its default Appium server for the device.
   Pin a version when your suite depends on one.
-- `--provider-network-logs` asks TestMu AI to capture session traffic through its proxy. It is not a
-  live source: `network dump` stays unavailable for the session. `disconnect` ends the TestMu AI
-  session, and `close` alone does not. After `disconnect`, `artifacts` lists the HAR as
-  `Network traffic (HAR)`. TestMu AI needs the app to trust its capture
-  proxy; an app that does not is not captured. TestMu AI documents this capture as a
-  Real Device Plus plan feature.
 - `--provider-network-profile`, `--provider-custom-network`, and `--provider-no-resign-app` are
   BrowserStack-only. `connect testmu` and TestMu AI session creation fail with the flag name
   instead of ignoring them.
