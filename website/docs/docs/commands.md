@@ -1076,6 +1076,8 @@ agent-device events 50 100              # Page 50 events starting at cursor 100
 agent-device network dump 25            # Parse recent HTTP(s) requests (method/url/status)
 agent-device network dump 25 --include all # Include parsed headers/body when available (truncated)
 agent-device network dump 25 --include headers --platform web # Browser requests via managed agent-browser
+agent-device network start              # Arm one live capture source (React Native/Expo over Metro)
+agent-device network stop               # Close it; later dumps read the session app log again
 ```
 
 - `logs` works on iOS simulators, iOS physical devices, Android, and macOS (app-scoped Unified Logging). On iOS, capture relies on Unified Logging (`os_log`); plain stdout/stderr may be limited.
@@ -1084,6 +1086,7 @@ agent-device network dump 25 --include headers --platform web # Browser requests
 - `events` reads the session timeline, which leaves out user-entered content; `--no-record` suppresses `action.recorded` entries. `events.ndjson` rotates at 5 MB (`AGENT_DEVICE_EVENT_LOG_MAX_BYTES`) and keeps one generation. Cursors stay valid across rotation; a cursor older than the retained window fails with `details.reason: "EVENT_LOG_CURSOR_EXPIRED"` and `details.earliestCursor`. If the retained files were edited or deleted, `events` fails with `details.reason: "EVENT_LOG_WINDOW_UNVERIFIED"`.
 - `network dump [limit] [summary|headers|body|all]` parses recent HTTP(s) entries from `app.log`, or from managed `agent-browser` request history on web; `network log` is an alias. Prefer `--include` over the positional detail level. It scans up to 4000 log lines, returns up to 200 entries, and truncates fields at 2048 characters. Web does not expose bodies.
 - On iOS, `network dump` can miss requests the app does not log and cannot name every request on a reused connection, so treat a missing endpoint as unproven. See [Network inspection](/docs/debugging-profiling#network-inspection) for per-platform behavior.
+- `network start` arms one live capture source for the session and reports it; `network dump` reads only that source and names it in `source`, and `network stop` closes it. For a React Native/Expo development build loading its bundle from a Metro dev server, start uses the runtime's CDP `Network` domain on React Native 0.83+ (`source: metro-cdp`) or an in-app fetch/XHR hook on older runtimes (`source: metro-js-hook`, with `requiresRelaunch: true`). Run it from the machine that runs Metro; `--metro-host`/`--metro-port`/`--bundle-url` name the dev server and `--device`/`--app` narrow its runtime list. Bodies are opt-in at start; headers are always kept with secret values redacted.
 
 **Crash symbols:** `debug symbols` symbolicates an Apple crash artifact against local dSYMs, writes the symbolicated artifact to `--out`, and prints a compact crash report. See [Crash symbolication](/docs/debugging-profiling#crash-symbolication).
 

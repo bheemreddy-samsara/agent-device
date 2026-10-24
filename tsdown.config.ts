@@ -110,6 +110,8 @@ export default defineConfig({
     'ai-sdk': 'src/ai-sdk/index.ts',
     'internal/bin': 'src/bin.ts',
     'internal/companion-tunnel': 'packages/react-native/src/companion/companion-tunnel.ts',
+    'internal/network-capture-holder':
+      'packages/react-native/src/network/network-capture-holder.ts',
     'internal/daemon': 'src/daemon.ts',
     'internal/run-script-http-child': 'packages/maestro/src/daemon-port/run-script-http-child.ts',
     'internal/png-worker': 'packages/capture-kit/src/png-worker.ts',

@@ -184,6 +184,21 @@ async function runCliOnHost(argv: string[], deps: CliDeps, host: HostEnvironment
           await exitAfterFlush(await runReactDevtoolsCli(ctx));
           return;
         }
+        if (command === 'network') {
+          if (
+            await (
+              await import('./cli/commands/network.ts')
+            ).runNetworkCaptureCommand({
+              positionals,
+              flags: ctx.effectiveFlags,
+              sessionName: ctx.sessionName,
+              stateDir: ctx.daemonPaths.baseDir,
+            })
+          ) {
+            await exitAfterFlush(0);
+            return;
+          }
+        }
         if (command === 'web') {
           const { runWebCommand } = await import('./cli/commands/web.ts');
           await exitAfterFlush(

@@ -30,7 +30,11 @@ export type EventsOptions = AgentDeviceRequestOverrides & {
 };
 
 export type NetworkOptions = DeviceCommandBaseOptions & {
-  action?: 'dump' | 'log';
+  /**
+   * `start` and `stop` arm and close a live capture, which only the host that can reach the app's
+   * dev server can do; a daemon on another host refuses them with `network-capture-cli-required`.
+   */
+  action?: 'dump' | 'log' | 'start' | 'stop';
   limit?: number;
   include?: NetworkIncludeMode;
 };

@@ -15,6 +15,8 @@ const PROCESS_ENTRIES = new Set([
   'packages/capture-kit/src/png-worker.ts',
   'packages/react-native/src/companion/companion-tunnel.ts',
   'packages/react-native/src/companion/client-companion-tunnel-worker.ts',
+  // The detached network-capture holder's own entry: it ends its process when its capture ends.
+  'packages/react-native/src/network/network-capture-holder.ts',
   'packages/maestro/src/daemon-port/run-script-http-child.ts',
   // Released SDK defaults; #3759 removes these captures in 0.22.
   'src/io.ts',

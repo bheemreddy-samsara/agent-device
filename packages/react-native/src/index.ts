@@ -7,6 +7,10 @@ import type { PrepareMetroRuntimeResult, ReloadMetroResult } from '@agent-device
 import { AppError } from '@agent-device/kernel/errors';
 import type { ReactDevtoolsCommandOptions } from './react-devtools/react-devtools-connection.ts';
 import type { ReactDevtoolsOutput } from './react-devtools/react-devtools-output.ts';
+import type {
+  NetworkCaptureCommandOptions,
+  StartedNetworkCapture,
+} from './network/network-capture-command.ts';
 
 export type { PrepareMetroRuntimeOptions, ReloadMetroOptions } from './metro/client-metro.ts';
 export type { PrepareMetroRuntimeResult, ReloadMetroResult } from '@agent-device/contracts/remote';
@@ -14,7 +18,6 @@ export type { MetroBridgeDescriptor } from './metro/metro-types.ts';
 export type { ReactDevtoolsCommandOptions } from './react-devtools/react-devtools-connection.ts';
 export type { ReactDevtoolsOutput } from './react-devtools/react-devtools-output.ts';
 export type { MetroSessionOptions, MetroSessionOpenInput } from './metro/metro-session-hints.ts';
-
 export type StopMetroTunnelOptions = {
   projectRoot: string;
   profileKey?: string;
@@ -99,4 +102,34 @@ export async function readMetroSessionRuntime(
 export async function clearMetroSessionHintsQuietly(options: MetroSessionOptions): Promise<void> {
   const session = await import('./metro/metro-session-hints.ts');
   session.clearMetroSessionHintsQuietly(options);
+}
+
+export type {
+  NetworkCaptureCommandOptions,
+  StartedNetworkCapture,
+} from './network/network-capture-command.ts';
+
+export async function readArmedNetworkCapture(options: NetworkCaptureCommandOptions) {
+  const capture = await import('./network/network-capture-command.ts');
+  return capture.readArmedNetworkCapture(options);
+}
+
+export async function runNetworkCaptureStart(
+  options: NetworkCaptureCommandOptions,
+): Promise<StartedNetworkCapture> {
+  const capture = await import('./network/network-capture-command.ts');
+  return await capture.runNetworkCaptureStart(options);
+}
+
+export async function runNetworkCaptureDump(
+  options: NetworkCaptureCommandOptions,
+  input: Readonly<{ maxEntries: number }>,
+) {
+  const capture = await import('./network/network-capture-command.ts');
+  return await capture.runNetworkCaptureDump(options, input);
+}
+
+export async function runNetworkCaptureStop(options: NetworkCaptureCommandOptions) {
+  const capture = await import('./network/network-capture-command.ts');
+  return await capture.runNetworkCaptureStop(options);
 }

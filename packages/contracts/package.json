@@ -320,6 +320,10 @@
       "types": "./src/navigation.ts",
       "default": "./src/navigation.ts"
     },
+    "./network-capture": {
+      "types": "./src/network-capture.ts",
+      "default": "./src/network-capture.ts"
+    },
     "./network-runtime": {
       "types": "./src/network-runtime.ts",
       "default": "./src/network-runtime.ts"

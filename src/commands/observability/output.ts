@@ -58,6 +58,7 @@ type NetworkCliEntry = (BackendNetworkEntry | NetworkEntry) & {
 
 type NetworkCliResult = {
   path?: string;
+  source?: string;
   active?: boolean;
   state?: string;
   backend?: string;
@@ -65,6 +66,12 @@ type NetworkCliResult = {
   scannedLines?: number;
   matchedLines?: number;
   entries?: readonly NetworkCliEntry[];
+  /** `network start`: the source it armed and what the caller still has to do. */
+  started?: boolean;
+  requiresRelaunch?: boolean;
+  bodies?: boolean;
+  /** `network stop`. */
+  stopped?: boolean;
   notes?: readonly string[];
 };
 

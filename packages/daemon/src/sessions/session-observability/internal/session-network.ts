@@ -1,4 +1,5 @@
 import type { DaemonPlatformServices } from '../../../core/platform-services.ts';
+import { NETWORK_CAPTURE_TYPED_REASONS } from '@agent-device/contracts/network-capture';
 import type { NetworkDumpResult } from '@agent-device/contracts/network-runtime';
 import {
   networkAdmissionUse,
@@ -19,6 +20,14 @@ import type { DaemonRequest } from '../../../core/daemon-request.ts';
 
 const NETWORK_ACTIONS = ['dump', 'log'] as const;
 const NETWORK_ACTIONS_MESSAGE = `network requires ${NETWORK_ACTIONS.join(' or ')}`;
+/**
+ * A live capture is armed in the process that can reach the app's dev server, which for a React
+ * Native app is the CLI host rather than this daemon, so this surface names the CLI instead of
+ * pretending it could arm one.
+ */
+const NETWORK_CAPTURE_ACTIONS = ['start', 'stop'] as const;
+const NETWORK_CAPTURE_CLI_MESSAGE =
+  'network start and network stop arm a live capture in the CLI process that can reach the app dev server, so run them with the agent-device CLI on that host';
 const NETWORK_INCLUDE_MESSAGE = `network include mode must be one of: ${NETWORK_INCLUDE_MODES.join(', ')}`;
 const NETWORK_MAX_PAYLOAD_CHARS = 2048;
 const NETWORK_MAX_SCAN_LINES = 4000;
@@ -100,6 +109,17 @@ function resolveNetworkAction(
   req: DaemonRequest,
 ): { ok: true; action: (typeof NETWORK_ACTIONS)[number] } | DaemonFailureResponse {
   const action = (req.positionals?.[0] ?? 'dump').toLowerCase();
+  if (NETWORK_CAPTURE_ACTIONS.includes(action as (typeof NETWORK_CAPTURE_ACTIONS)[number])) {
+    return {
+      ok: false,
+      error: {
+        code: 'UNSUPPORTED_OPERATION',
+        message: NETWORK_CAPTURE_CLI_MESSAGE,
+        hint: 'network dump answers from this session app log on any host.',
+        details: { reason: NETWORK_CAPTURE_TYPED_REASONS.cliRequired },
+      },
+    };
+  }
   if (!NETWORK_ACTIONS.includes(action as (typeof NETWORK_ACTIONS)[number])) {
     return errorResponse('INVALID_ARGS', NETWORK_ACTIONS_MESSAGE);
   }
@@ -145,6 +165,7 @@ function networkDumpResponse(
       ok: true,
       data: {
         ...result.dump,
+        source: 'app-log',
         active,
         state: state ?? 'inactive',
         backend: result.backend,
@@ -157,6 +178,7 @@ function networkDumpResponse(
     ok: true,
     data: {
       entries: result.entries,
+      source: result.source,
       active: true,
       state: 'active',
       backend: result.backend,

@@ -10,6 +10,7 @@ When UI automation is not enough, use these commands to collect runtime evidence
 
 - Session app logs for targeted debugging windows
 - Network inspection from recent HTTP(s) entries in app logs via `network dump`
+- Live network capture for React Native/Expo apps over Metro with `network start` / `network dump` / `network stop`
 - Audio-level probes for browser media elements and host-rendered simulator/emulator audio
 - Focused performance evidence with `perf frames`, `perf memory`, and native profile reports
 - Apple crash symbolication with `debug symbols`
@@ -216,7 +217,7 @@ agent-device network dump 25 --include headers
 agent-device network dump 25 --include all
 ```
 
-- `network dump` parses recent HTTP(s) entries from the session app log for app/device sessions and from managed `agent-browser` request history for web sessions.
+- With no capture armed, `network dump` parses recent HTTP(s) entries from the session app log for app/device sessions and from managed `agent-browser` request history for web sessions, and reports `source: app-log`.
 - For app/device sessions, results depend on what the app writes to the platform log.
 - On Android, results include logcat timestamps, and status and duration can be filled in from adjacent GIBSDK packet lines when the URL is logged separately. Log streaming reattaches to the app's new process after a restart.
 - On iOS simulators, logs stream from inside the simulator, and `network dump` reads recent simulator log history when the live window is sparse.
@@ -225,6 +226,19 @@ agent-device network dump 25 --include all
 - On web, request and response bodies are not available; use `agent-browser` HAR capture directly when you need them.
 - On BrowserStack, AWS Device Farm, and TestMu AI sessions, `network dump` refuses with `UNSUPPORTED_OPERATION` and `details.reason: "network-capture-post-session"`. Those providers own the network path, so the session has no live source to read. Where the provider records traffic at all, it publishes the report on its own dashboard after its session ends. Limrun keeps live `network dump`. See [Device clouds](/docs/device-clouds).
 - For the alias and scan limits, see [Media and logs](/docs/commands#media-and-logs).
+
+### Live network capture
+
+```bash
+agent-device network start                      # arms one live source and reports which one
+agent-device network dump 25 --include headers  # reads the armed source and names it
+agent-device network stop
+```
+
+- `network start` chooses one source for the session and `network dump` reads only that source; every dump reports its `source`. A dump never installs instrumentation and never switches sources. `network stop` closes the capture, and later dumps read the session app log again as `source: app-log`.
+- For React Native and Expo apps with a development build loading its bundle from a Metro (or Expo/Re.Pack) dev server, start uses the runtime's Chrome DevTools Protocol `Network` domain on React Native 0.83 and newer (`source: metro-cdp`), which sees every request the app makes through the platform network stack. Older runtimes fall back to an in-app fetch/XHR hook (`source: metro-js-hook`) and report `requiresRelaunch: true`, because the hook sees no request made before it was installed.
+- Run `network start` from the machine that runs Metro, even when the daemon is remote. When the session recorded no dev server binding, name one with `--metro-host`/`--metro-port` or `--bundle-url`. When several app runtimes are connected to the dev server, narrow with `--device` or `--app`.
+- Request bodies are opt-in: pass `--include body` or `--include all` to `network start`, and later dumps answer with them. Headers are always kept with secret values redacted, so any dump can ask for them. A JS reload of the app is followed once and reported as a note; a second reload ends the capture, and `network start` again rebinds it.
 
 ### Audio probes
 

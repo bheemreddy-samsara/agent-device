@@ -148,6 +148,49 @@ function deviceSelectors(devices: MetroInspectorTarget[]): string[] {
   );
 }
 
+function matchesDeviceKey(target: MetroInspectorTarget, device: string): boolean {
+  return matchesFilter(target, { device });
+}
+
+/**
+ * The one app runtime to capture network traffic from, chosen from the dev server's own target
+ * list. Exactly one runtime for the app wins; several devices narrow by the caller's device name,
+ * and anything still ambiguous fails closed as `metro-runtime-ambiguous` and lists the candidates.
+ * A capture keeps the chosen target's identity, so unlike profiling it must never fall back to a
+ * same-app runtime on another device.
+ */
+export function selectReactNativeCaptureTarget(
+  targets: MetroInspectorTarget[],
+  filter: { appId?: string; device?: string } = {},
+): MetroInspectorTarget {
+  const runtimes = targets.filter(isAppRuntime);
+  const matching =
+    filter.appId === undefined
+      ? runtimes
+      : runtimes.filter((target) => targetAppId(target) === filter.appId);
+  if (matching.length === 0) throw noMatchingRuntime(runtimes, filter);
+  const devices = mainRuntimePerDevice(matching);
+  if (devices.length === 1) return devices[0]!;
+  const device = filter.device;
+  const narrowed =
+    device === undefined ? [] : devices.filter((target) => matchesDeviceKey(target, device));
+  if (narrowed.length === 1) return narrowed[0]!;
+  const candidates = narrowed.length > 0 ? narrowed : devices;
+  const seen = candidates.map(
+    (target) => `${targetAppId(target)} on ${target.deviceName ?? deviceKey(target)}`,
+  );
+  throw new AppError(
+    'INVALID_ARGS',
+    'Several React Native app runtimes are connected to the dev server, and nothing narrows them to one.',
+    {
+      reason: 'metro-runtime-ambiguous',
+      runtimes: [...new Set(seen)],
+      deviceSelectors: deviceSelectors(candidates),
+      hint: `Pass --app with one of: ${[...new Set(candidates.map(targetAppId))].join(', ')}, or --device with one of: ${deviceSelectors(candidates).join(', ')}.`,
+    },
+  );
+}
+
 /**
  * Picks the one React Native runtime to profile. Pages without the `reactNative` field are not app
  * runtimes, and worklet runtimes render no React tree. Several apps or several devices fail
@@ -194,10 +237,15 @@ const WebSocketWithHeaders = WebSocket as unknown as new (
 
 type PendingCall = { resolve: (value: unknown) => void; reject: (error: Error) => void };
 
+/** One id-less CDP notification the app runtime pushed to this session. */
+export type InspectorEvent = { method: string; params: Record<string, unknown> };
+
 /** Minimal Chrome DevTools Protocol client over the dev server's inspector proxy. */
 export class InspectorSession {
   #nextId = 1;
   #pending = new Map<number, PendingCall>();
+  #events: Array<(event: InspectorEvent) => void> = [];
+  #closing = false;
   readonly #socket: WebSocket;
 
   private constructor(socket: WebSocket) {
@@ -264,7 +312,36 @@ export class InspectorSession {
     return result.result?.value;
   }
 
+  /** Sends one CDP request and waits for its response. */
+  send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+    return this.#send(method, params);
+  }
+
+  /**
+   * Receives the id-less CDP notifications the app runtime pushes while the connection stays open,
+   * such as the `Network.*` events a domain emits after it is enabled. Returns the unsubscribe.
+   */
+  onEvent(listener: (event: InspectorEvent) => void): () => void {
+    this.#events.push(listener);
+    return () => {
+      this.#events = this.#events.filter((candidate) => candidate !== listener);
+    };
+  }
+
+  /** Runs `listener` once when the app runtime or the dev server ends this debugger connection. */
+  onClose(listener: () => void): void {
+    this.#socket.addEventListener(
+      'close',
+      () => {
+        if (this.#closing) return;
+        listener();
+      },
+      { once: true },
+    );
+  }
+
   close(): void {
+    this.#closing = true;
     this.#socket.close();
   }
 
@@ -290,13 +367,29 @@ export class InspectorSession {
   }
 
   #onMessage(raw: string): void {
-    let message: { id?: number; result?: unknown; error?: { message?: string } };
+    let message: {
+      id?: number;
+      method?: string;
+      params?: unknown;
+      result?: unknown;
+      error?: { message?: string };
+    };
     try {
       message = JSON.parse(raw);
     } catch {
       return;
     }
-    if (typeof message.id !== 'number') return;
+    if (typeof message.id !== 'number') {
+      // An id-less message is a notification the app runtime pushed, not an answer to a request.
+      if (typeof message.method === 'string') {
+        const event: InspectorEvent = {
+          method: message.method,
+          params: (message.params ?? {}) as Record<string, unknown>,
+        };
+        for (const listener of this.#events) listener(event);
+      }
+      return;
+    }
     const pending = this.#pending.get(message.id);
     if (!pending) return;
     this.#pending.delete(message.id);
