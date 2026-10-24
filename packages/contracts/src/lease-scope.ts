@@ -254,6 +254,8 @@ const LEASE_ALLOCATE_PROVIDER_FLAG_KEYS = [
   'providerNetworkProfile',
   'providerCustomNetwork',
   'providerNoResignApp',
+  'providerNetworkLogs',
+  'providerNetworkHosts',
   'awsProjectArn',
   'awsDeviceArn',
   'awsAppArn',

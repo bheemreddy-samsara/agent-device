@@ -22,6 +22,8 @@ export function readCloudDeviceFeatureProfileFields(
   | 'providerNetworkProfile'
   | 'providerCustomNetwork'
   | 'providerNoResignApp'
+  | 'providerNetworkLogs'
+  | 'providerNetworkHosts'
 > {
   return {
     providerDeviceOrientation: flags.providerDeviceOrientation,
@@ -33,6 +35,8 @@ export function readCloudDeviceFeatureProfileFields(
     providerNetworkProfile: flags.providerNetworkProfile,
     providerCustomNetwork: flags.providerCustomNetwork,
     providerNoResignApp: flags.providerNoResignApp,
+    providerNetworkLogs: flags.providerNetworkLogs,
+    providerNetworkHosts: flags.providerNetworkHosts,
   };
 }
 
