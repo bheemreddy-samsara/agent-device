@@ -4,11 +4,7 @@ import {
 } from '@agent-device/contracts/network-capture';
 import type { NetworkIncludeMode } from '@agent-device/kernel/contracts';
 import type { HostEnvironment } from '@agent-device/kernel/source-value';
-import {
-  networkCaptureHolderLogPath,
-  readNetworkCaptureState,
-  type NetworkCaptureScope,
-} from './network-capture-state.ts';
+import { readNetworkCaptureState, type NetworkCaptureScope } from './network-capture-state.ts';
 import {
   startMetroNetworkCapture,
   dumpMetroNetworkCapture,
@@ -53,6 +49,7 @@ export function readArmedNetworkCapture(
 
 /** The whole `network start` answer: the one source now serving this session, and how to read it. */
 export type StartedNetworkCapture = Readonly<{
+  started: true;
   source: NetworkDumpSource;
   binding: unknown;
   requiresRelaunch: boolean;
@@ -76,6 +73,7 @@ export async function runNetworkCaptureStart(
     spawnHolder: (scope) => spawnNetworkCaptureHolder(scope, options.host),
   });
   return {
+    started: true,
     source: started.source,
     binding: started.state.binding,
     requiresRelaunch: started.requiresRelaunch,
@@ -115,7 +113,6 @@ export async function runNetworkCaptureStop(options: NetworkCaptureCommandOption
   Readonly<{
     stopped: true;
     source?: NetworkDumpSource;
-    logPath?: string;
     notes: readonly string[];
   }>
 > {
@@ -135,9 +132,4 @@ export async function runNetworkCaptureStop(options: NetworkCaptureCommandOption
       'Later network dump calls read the session app log again and label it source=app-log.',
     ],
   };
-}
-
-/** Where a stopped or lost holder's own output lives, for a report that has to point at it. */
-export function networkCaptureHolderLog(options: NetworkCaptureCommandOptions): string {
-  return networkCaptureHolderLogPath(options.scope);
 }

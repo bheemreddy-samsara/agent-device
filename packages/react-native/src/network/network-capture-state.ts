@@ -4,6 +4,7 @@ import path from 'node:path';
 import { AppError } from '@agent-device/kernel/errors';
 import { safeSessionName } from '@agent-device/host-kit/session-paths';
 import {
+  NETWORK_CAPTURE_SOURCES,
   NETWORK_CAPTURE_STATE_DIR,
   NETWORK_CAPTURE_TYPED_REASONS,
   type NetworkCaptureSource,
@@ -44,7 +45,7 @@ export type NetworkCaptureHolderStatus = Readonly<{
  * address the same capture by name and a collision would hand one session another's traffic. The
  * bound also keeps the socket path inside the 104-byte limit a unix socket address has on macOS.
  */
-export function networkCaptureFileBase(session: string): string {
+function networkCaptureFileBase(session: string): string {
   const safe = safeSessionName(session);
   if (safe.length <= NETWORK_CAPTURE_FILE_BASE_MAX) return safe;
   return `${safe.slice(0, 23)}-${createHash('sha256').update(safe).digest('hex').slice(0, 16)}`;
@@ -60,7 +61,7 @@ export function networkCaptureStatePath(scope: NetworkCaptureScope): string {
   );
 }
 
-export function networkCaptureHolderPath(scope: NetworkCaptureScope): string {
+function networkCaptureHolderPath(scope: NetworkCaptureScope): string {
   return path.join(
     scope.stateDir,
     NETWORK_CAPTURE_STATE_DIR,
@@ -238,5 +239,5 @@ function readCaptureState(value: unknown): NetworkCaptureState | undefined {
 }
 
 function isCaptureSource(value: unknown): value is NetworkCaptureSource {
-  return value === 'metro-cdp' || value === 'metro-js-hook';
+  return NETWORK_CAPTURE_SOURCES.includes(value as NetworkCaptureSource);
 }

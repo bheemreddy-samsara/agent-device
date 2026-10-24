@@ -186,13 +186,6 @@ export async function stopMetroNetworkCapture(scope: NetworkCaptureScope): Promi
   clearNetworkCaptureState(scope);
 }
 
-/** Reports which React Native source one session can capture on, without arming anything. */
-export async function readMetroNetworkCaptureSource(
-  scope: NetworkCaptureScope,
-): Promise<NetworkCaptureSource | undefined> {
-  return readNetworkCaptureState(scope)?.source;
-}
-
 /** Whether the caller named a dev server, which stands in for the session's recorded binding. */
 function namesDevServer(metro: MetroReloadTargetInput | undefined): boolean {
   return (
@@ -248,8 +241,12 @@ async function drainHookRuntime(
   input: Readonly<{ maxEntries: number; include: NetworkIncludeMode; maxPayloadChars: number }>,
 ): Promise<NetworkProviderDumpResult> {
   const serverUrl = new URL(state.binding.serverUrl);
-  const { readBoundCaptureTarget, boundTargetLost } = await import('./network-capture-target.ts');
+  const { readBoundCaptureTarget, boundRuntimeReloaded, boundTargetLost } =
+    await import('./network-capture-target.ts');
   const resolved = await readBoundCaptureTarget(state.binding);
+  // The hook's buffer lives in the runtime, so the reload that replaced the target already
+  // discarded it: no follow can recover what the CDP source could, and the dump says so.
+  if (resolved.status === 'reloaded') throw boundRuntimeReloaded();
   if (resolved.status !== 'bound') throw boundTargetLost(resolved);
   const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, resolved.target));
   try {

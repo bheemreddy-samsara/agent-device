@@ -109,6 +109,24 @@ test('headers are kept as the runtime reported them and absent when it sent none
   assert.equal(withoutHeaders?.requestHeaders, undefined);
 });
 
+test('a request re-emitted under a completed id does not duplicate until the connection reopens', () => {
+  // Hermes re-sends requests it already completed when a new debugger client attaches, under the
+  // same request id. The buffer ignores that until the holder reopens the connection.
+  const buffer = new CdpNetworkBuffer(10);
+  buffer.add(requestWillBeSent('r1', 'https://api.test/a', 100));
+  buffer.add(loadingFinished('r1', 100.25));
+  assert.equal(finishedEntries(buffer).length, 1);
+
+  buffer.add(requestWillBeSent('r1', 'https://api.test/a', 200));
+  buffer.add(loadingFinished('r1', 200.25));
+  assert.equal(finishedEntries(buffer).length, 0, 'a re-emitted completed id must not replay');
+
+  buffer.reopened();
+  buffer.add(requestWillBeSent('r1', 'https://api.test/a', 300));
+  buffer.add(loadingFinished('r1', 300.25));
+  assert.equal(finishedEntries(buffer).length, 1, 'a new connection settles the reused id');
+});
+
 test('a drain hands each entry over once and reports only its own eviction window', () => {
   const buffer = new CdpNetworkBuffer(2);
   for (const [index, id] of ['r1', 'r2', 'r3'].entries()) {

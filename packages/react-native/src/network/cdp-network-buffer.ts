@@ -1,4 +1,5 @@
 import type { MetroInspectorTarget } from '../react-devtools/metro-inspector.ts';
+import { asRecord, readHeaders, readNumber, readString } from './network-capture-json.ts';
 
 /** One request the CDP `Network` domain reported, merged from its events. */
 export type CapturedCdpRequest = Readonly<{
@@ -36,12 +37,19 @@ type InflightRequest = {
  * difference of two CDP `timestamp` values from one connection, which that runtime reports on a
  * monotonic clock; the wall-clock stamp an entry carries is the host clock at receipt, so an entry
  * stays comparable with the rest of a session's evidence.
+ *
+ * A Hermes runtime re-reports a completed request — the same `requestId` with the same event
+ * sequence can arrive more than once on one connection. A completed id is therefore remembered:
+ * its events never produce a second entry. The memory is per connection, because a re-armed
+ * connection starts a fresh id space and may reuse a number for a genuinely new request.
  */
 export class CdpNetworkBuffer {
   readonly #limit: number;
   #inflight = new Map<string, InflightRequest>();
   #startedAt = new Map<string, number>();
   #finished: InflightRequest[] = [];
+  #completed: string[] = [];
+  #completedIds = new Set<string>();
   #dropped = 0;
   #failedBodyReads = 0;
 
@@ -96,7 +104,7 @@ export class CdpNetworkBuffer {
 
   #onRequest(params: Record<string, unknown>): void {
     const requestId = readString(params.requestId);
-    if (requestId === undefined) return;
+    if (requestId === undefined || this.#completedIds.has(requestId)) return;
     const request = asRecord(params.request);
     this.#inflight.set(requestId, {
       requestId,
@@ -119,22 +127,45 @@ export class CdpNetworkBuffer {
   }
 
   #onFinished(params: Record<string, unknown>): void {
-    const requestId = readString(params.requestId) ?? '';
-    const entry = this.#inflight.get(requestId);
-    if (!entry) return;
-    this.#inflight.delete(requestId);
-    entry.durationMs = this.#durationMs(requestId, params.timestamp);
-    this.#push(entry);
+    this.#settle(params, undefined);
   }
 
   #onFailed(params: Record<string, unknown>): void {
+    this.#settle(params, readString(params.errorText) ?? 'Request failed');
+  }
+
+  /** Ends one in-flight request: finished or failed, its entry leaves the map and joins the buffer. */
+  #settle(params: Record<string, unknown>, error: string | undefined): void {
     const requestId = readString(params.requestId) ?? '';
     const entry = this.#inflight.get(requestId);
     if (!entry) return;
     this.#inflight.delete(requestId);
-    entry.error = readString(params.errorText) ?? 'Request failed';
+    if (error !== undefined) entry.error = error;
     entry.durationMs = this.#durationMs(requestId, params.timestamp);
     this.#push(entry);
+    this.#rememberCompleted(requestId);
+  }
+
+  /** Keeps the completed ids of one connection, bounded to what the buffer itself can hold. */
+  #rememberCompleted(requestId: string): void {
+    this.#completedIds.add(requestId);
+    this.#completed.push(requestId);
+    while (this.#completed.length > this.#limit) {
+      const oldest = this.#completed.shift();
+      if (oldest !== undefined) this.#completedIds.delete(oldest);
+    }
+  }
+
+  /**
+   * Called when the debugger connection is opened anew: request ids belong to a connection, so
+   * neither an id left in flight on a dead connection nor a completed id from an older one may
+   * hold back a request the new connection reports.
+   */
+  reopened(): void {
+    this.#inflight.clear();
+    this.#startedAt.clear();
+    this.#completedIds.clear();
+    this.#completed = [];
   }
 
   #durationMs(requestId: string, finishedAt: unknown): number | undefined {
@@ -185,29 +216,5 @@ export function logicalDeviceFromTargetId(id: string): string {
 
 /** CDP `timestamp` is monotonic seconds since an origin the app runtime chose. */
 function readTimestamp(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function readHeaders(value: unknown): Record<string, string> | undefined {
-  const record = asRecord(value);
-  if (!record) return undefined;
-  const headers: Record<string, string> = {};
-  for (const [name, entry] of Object.entries(record)) {
-    if (typeof entry === 'string') headers[name] = entry;
-  }
-  return Object.keys(headers).length > 0 ? headers : undefined;
+  return readNumber(value);
 }

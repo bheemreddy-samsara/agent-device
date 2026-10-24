@@ -170,12 +170,15 @@ export function selectReactNativeCaptureTarget(
       : runtimes.filter((target) => targetAppId(target) === filter.appId);
   if (matching.length === 0) throw noMatchingRuntime(runtimes, filter);
   const devices = mainRuntimePerDevice(matching);
-  if (devices.length === 1) return devices[0]!;
+  // A named device must match, even when exactly one device is connected: a capture that armed on
+  // another device would report that device's traffic as this session's, which is worse than an
+  // error. A name narrows first; one match wins outright.
   const device = filter.device;
   const narrowed =
-    device === undefined ? [] : devices.filter((target) => matchesDeviceKey(target, device));
+    device === undefined ? devices : devices.filter((target) => matchesDeviceKey(target, device));
+  if (device !== undefined && narrowed.length === 0) throw noMatchingRuntime(devices, filter);
   if (narrowed.length === 1) return narrowed[0]!;
-  const candidates = narrowed.length > 0 ? narrowed : devices;
+  const candidates = narrowed;
   const seen = candidates.map(
     (target) => `${targetAppId(target)} on ${target.deviceName ?? deviceKey(target)}`,
   );

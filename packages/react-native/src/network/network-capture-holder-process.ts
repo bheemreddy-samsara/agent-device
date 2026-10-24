@@ -181,6 +181,9 @@ export class NetworkCaptureHolder {
     }
     const previous = this.#state;
     if (reading.status === 'reloaded') this.#follow(reading.target);
+    // Request ids belong to one debugger connection: what was in flight on the dead one can never
+    // settle, and a completed id from it must not hold back a new request that reuses the id.
+    this.#buffer.reopened();
     try {
       await this.#connect(reading.target);
     } catch (error) {
@@ -429,10 +432,24 @@ export async function runNetworkCaptureHolderProcess(
   });
   let stop = async () => {};
   const shutdown = async () => {
+    // SIGTERM and the lifetime bound have no reader waiting on a socket: without a recorded
+    // ending, the holder's status would keep claiming a capture that had stopped, indistinguishable
+    // from one killed outright. A socket `stop` needs no record — `network stop` deletes the
+    // capture's files as it answers.
+    await holder.end('holder-terminated');
     await stop();
     host.exit(0);
   };
-  stop = await serveNetworkCaptureHolder(holder, scope, shutdown, shutdown);
+  stop = await serveNetworkCaptureHolder(
+    holder,
+    scope,
+    () => {
+      host.exit(0);
+    },
+    () => {
+      host.exit(0);
+    },
+  );
   const timer = setTimeout(() => {
     void shutdown();
   }, HOLDER_MAX_LIFETIME_MS);

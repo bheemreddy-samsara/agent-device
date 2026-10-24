@@ -119,9 +119,9 @@ function eventsCliOutput(data: EventsCliResult): CliOutput {
 function networkCliOutput(data: NetworkCliResult): CliOutput {
   const lines: string[] = [];
   const entries = data.entries ?? [];
-  if (data.path) lines.push(data.path);
+  lines.push(...networkCliActionLines(data));
   if (entries.length === 0) {
-    lines.push('No recent HTTP(s) entries found.');
+    if (!data.started && !data.stopped) lines.push('No recent HTTP(s) entries found.');
   } else {
     for (const entry of entries) {
       lines.push(...formatNetworkEntry(entry));
@@ -132,16 +132,34 @@ function networkCliOutput(data: NetworkCliResult): CliOutput {
     text: lines.join('\n'),
     stderr: joinDefinedLines([
       formatKeyValueFields(data, [
+        'source',
         'active',
         'state',
         'backend',
         'include',
+        'requiresRelaunch',
         'scannedLines',
         'matchedLines',
       ] as const),
       formatNotes(data.notes),
     ]),
   };
+}
+
+function networkCliActionLines(data: NetworkCliResult): string[] {
+  // `network start` names the source it armed; `network stop` names the one it closed; a dump
+  // leads with the report path the way it always did.
+  if (data.started) {
+    const lines = [`Network capture armed: source=${data.source ?? 'unknown'}`];
+    if (data.bodies) lines.push('  bodies: included');
+    return lines;
+  }
+  if (data.stopped) {
+    const lines = [`Network capture stopped: source=${data.source ?? 'unknown'}`];
+    if (data.path) lines.push(`  report: ${data.path}`);
+    return lines;
+  }
+  return data.path ? [data.path] : [];
 }
 
 function audioCliOutput(data: AudioCliResult): CliOutput {

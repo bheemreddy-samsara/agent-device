@@ -38,7 +38,7 @@ export async function runNetworkCaptureCommand(
     await writeCaptureResult(params.flags, await capture.runNetworkCaptureStop(options));
     return true;
   }
-  if (!capture.readArmedNetworkCapture(options)) return false;
+  if (!(await capture.readArmedNetworkCapture(options))) return false;
   await writeCaptureResult(
     params.flags,
     await capture.runNetworkCaptureDump(options, {
@@ -57,7 +57,8 @@ function captureOptions(
     host: captureHostEnvironment(process),
     ...(params.flags.targetApp ? { appBundleId: params.flags.targetApp } : {}),
     // `--device` names the device to capture on, which is how the dev server's runtime list narrows
-    // when more than one app runtime is connected to it.
+    // when more than one app runtime is connected to it. The parser allows it on `start` only: the
+    // binding chosen there is what `dump` and `stop` read, so they never re-narrow.
     ...(params.flags.device ? { metroDevice: params.flags.device } : {}),
     ...(params.flags.networkInclude ? { include: params.flags.networkInclude } : {}),
     // The dev server flags name the server directly, so a session that never recorded one can still

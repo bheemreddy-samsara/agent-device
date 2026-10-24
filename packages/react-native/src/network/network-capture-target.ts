@@ -28,10 +28,7 @@ export async function resolveNetworkCaptureTarget(
   return { target, binding: bindingForTarget(serverUrl, target) };
 }
 
-export function bindingForTarget(
-  serverUrl: URL,
-  target: MetroInspectorTarget,
-): NetworkCaptureBinding {
+function bindingForTarget(serverUrl: URL, target: MetroInspectorTarget): NetworkCaptureBinding {
   return {
     serverUrl: serverUrl.toString(),
     appId: targetAppId(target),

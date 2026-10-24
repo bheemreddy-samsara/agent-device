@@ -3,24 +3,7 @@ import type { NetworkProviderEntry } from '@agent-device/contracts/network-runti
 import { redactDiagnosticData, redactNetworkPayload } from '@agent-device/kernel/redaction';
 import { NETWORK_CAPTURE_MAX_ENTRIES } from './network-capture-runtime.ts';
 
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function readHeaders(value: unknown): Record<string, string> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const headers: Record<string, string> = {};
-  for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof entry === 'string') headers[name] = entry;
-  }
-  return Object.keys(headers).length > 0
-    ? (redactDiagnosticData(headers) as Record<string, string>)
-    : undefined;
-}
+import { readHeaders, readNumber, readString } from './network-capture-json.ts';
 
 /** Metadata a captured entry earns beyond its request fields: the transport it ran on, its error. */
 function readMetadata(
@@ -44,8 +27,9 @@ function detailFields(
   if (includesHeaders(include)) {
     const requestHeaders = readHeaders(entry.requestHeaders);
     const responseHeaders = readHeaders(entry.responseHeaders);
-    if (requestHeaders) detail.requestHeaders = requestHeaders;
-    if (responseHeaders) detail.responseHeaders = responseHeaders;
+    // Redaction happens here, at the read: the buffer keeps what the runtime reported.
+    if (requestHeaders) detail.requestHeaders = redactDiagnosticData(requestHeaders);
+    if (responseHeaders) detail.responseHeaders = redactDiagnosticData(responseHeaders);
   }
   if (includesBody(include)) {
     const requestBody = readString(entry.requestBody);

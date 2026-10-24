@@ -411,6 +411,34 @@ test('the in-app hook is drained from the runtime the capture bound to and repor
   assert.ok(evaluations >= 3, 'the hook is checked, drained, and read its stats on every dump');
 });
 
+test('a hook capture ends at a JS reload, because the buffer lived in the runtime it replaced', async () => {
+  const server = await harness([PIXEL]);
+  server.refuseMethod('Network.enable');
+  const scope = await scopeFor(server.serverUrl);
+  await startMetroNetworkCapture({
+    scope,
+    includesBodies: false,
+    maxPayloadChars: 2048,
+    spawnHolder: async () => {
+      throw new Error('the hook source needs no holder');
+    },
+  });
+  // The same app on the same device registers a fresh target id: a JS reload, which discarded
+  // the in-app buffer along with the runtime that held it.
+  server.removeTarget('pixel-1');
+  server.addTarget({ ...PIXEL, id: 'pixel-2' });
+
+  await assert.rejects(
+    dumpMetroNetworkCapture(scope, { maxEntries: 25, include: 'summary', maxPayloadChars: 2048 }),
+    (error: { code: string; details: { reason: string }; message: string }) => {
+      assert.equal(error.code, 'UNSUPPORTED_OPERATION');
+      assert.equal(error.details.reason, 'metro-runtime-gone');
+      assert.match(error.message, /reloaded its JavaScript/);
+      return true;
+    },
+  );
+});
+
 test('a capture whose runtime is gone mid-window is refused rather than followed', async () => {
   const server = await harness([PIXEL]);
   const scope = await scopeFor(server.serverUrl);
