@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3940/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3940/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3940/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3940/static/js/index.5b86337933.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3940/static/js/index.9a6cd9486c.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -220,7 +220,7 @@ request id, and the reason — never a path on the daemon host.</p>
 <li>On iOS, <code>network dump</code> can return zero entries for real traffic when the app does not log request metadata to Unified Logging. The response notes tell an empty repro window apart from a log window with no network lines.</li>
 <li>On iOS, the system logs a request URL only when it opens a connection. Requests that reuse a keep-alive connection are reported against that connection&#x27;s origin with <code>pathUnavailable: true</code>, their status, and timing. Requests whose connection opened before the scanned window are only counted in <code>unnamedRequests</code>. Treat an endpoint missing from an iOS dump as unproven, not as never called.</li>
 <li>On web, request and response bodies are not available; use <code>agent-browser</code> HAR capture directly when you need them.</li>
-<li>On a hosted device cloud, <code>network dump</code> refuses with <code>UNSUPPORTED_OPERATION</code> and <code>details.reason: &quot;network-capture-post-session&quot;</code>. The cloud owns the network path, so the session has no live source to read. Where the provider records traffic at all, it publishes the report on its own dashboard after its session ends. See <a href="/agent-device/pr-preview/pr-3940/docs/device-clouds" class="rp-link">Device clouds</a>.</li>
+<li>On BrowserStack, AWS Device Farm, and TestMu AI sessions, <code>network dump</code> refuses with <code>UNSUPPORTED_OPERATION</code> and <code>details.reason: &quot;network-capture-post-session&quot;</code>. Those providers own the network path, so the session has no live source to read. Where the provider records traffic at all, it publishes the report on its own dashboard after its session ends. Limrun keeps live <code>network dump</code>. See <a href="/agent-device/pr-preview/pr-3940/docs/device-clouds" class="rp-link">Device clouds</a>.</li>
 <li>For the alias and scan limits, see <a href="/agent-device/pr-preview/pr-3940/docs/commands#media-and-logs" class="rp-link">Media and logs</a>.</li>
 </ul>
 <h3 class="rp-toc-include" id="audio-probes"><a href="#audio-probes" class="rp-header-anchor rp-link" aria-hidden="true">#</a>Audio probes</h3>
