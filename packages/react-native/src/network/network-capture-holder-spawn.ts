@@ -15,7 +15,7 @@ import { HOLDER_ENV_SESSION, HOLDER_ENV_STATE_DIR } from './network-capture-hold
 import { askNetworkCaptureHolder } from './network-capture-socket.ts';
 
 /** The entry the detached holder runs, without its extension. */
-export const HOLDER_ENTRYPOINT = 'network-capture-holder';
+const HOLDER_ENTRYPOINT = 'network-capture-holder';
 
 /**
  * Whether a command line names a network capture holder by its entry file with its extension. The

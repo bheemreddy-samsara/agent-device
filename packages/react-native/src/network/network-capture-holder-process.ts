@@ -395,15 +395,10 @@ export async function serveNetworkCaptureHolder(
         // The window belongs to this answer from the moment it leaves the buffer: an undelivered
         // reply hands it back below, and a throw anywhere else hands it back in the catch.
         heldEntries = drained.entries;
-        if (await deliver(connection, { ok: true, ...drained })) {
-          heldEntries = undefined;
-          holder.commitDrain();
-        } else {
-          // The reader went away (it gave up waiting, or its process died): hand the window back so
-          // the next dump reports it instead of reporting a quiet one that was never watched.
-          holder.reattachUndelivered(drained.entries);
-          heldEntries = undefined;
-        }
+        const delivered = await deliver(connection, { ok: true, ...drained });
+        heldEntries = undefined;
+        if (delivered) holder.commitDrain();
+        else holder.reattachUndelivered(drained.entries);
         return;
       }
       if (request.action === 'stats') {
@@ -422,22 +417,34 @@ export async function serveNetworkCaptureHolder(
         reason: 'network-capture-request-unknown',
       });
     } catch (error) {
-      if (heldEntries !== undefined) {
-        // A drain whose answer never formed still owes its window to the next read.
-        holder.reattachUndelivered(heldEntries);
-      }
-      const reason =
-        error instanceof AppError && typeof error.details?.reason === 'string'
-          ? error.details.reason
-          : NETWORK_CAPTURE_TYPED_REASONS.captureLost;
-      await deliver(connection, { ok: false, reason, message: messageOf(error) });
-      if (holder.ended) {
-        // The holder has nothing left to watch, so it stops serving. Who ends the process decides
-        // for itself: the detached holder exits, because a pid left behind would read as a live
-        // capture to the next reader's probe.
-        await stopServing();
-        onGaveUp?.();
-      }
+      await answerFailure(connection, error, heldEntries);
+    }
+  }
+
+  /**
+   * Answers a request whose handling threw. The reader hears the typed reason; a drain that had
+   * already taken its window hands it back, so the next read still reports it.
+   */
+  async function answerFailure(
+    connection: net.Socket,
+    error: unknown,
+    heldEntries: readonly CapturedCdpRequest[] | undefined,
+  ): Promise<void> {
+    if (heldEntries !== undefined) {
+      // A drain whose answer never formed still owes its window to the next read.
+      holder.reattachUndelivered(heldEntries);
+    }
+    const reason =
+      error instanceof AppError && typeof error.details?.reason === 'string'
+        ? error.details.reason
+        : NETWORK_CAPTURE_TYPED_REASONS.captureLost;
+    await deliver(connection, { ok: false, reason, message: messageOf(error) });
+    if (holder.ended) {
+      // The holder has nothing left to watch, so it stops serving. Who ends the process decides
+      // for itself: the detached holder exits, because a pid left behind would read as a live
+      // capture to the next reader's probe.
+      await stopServing();
+      onGaveUp?.();
     }
   }
   /** Writes one reply and answers whether it actually crossed the socket. */

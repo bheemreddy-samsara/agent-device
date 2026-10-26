@@ -287,47 +287,60 @@ async function armReactNativeRuntime(
   const installed = await session.evaluate(
     `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${options.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS}, ${options.includesBodies ? 'true' : 'false'})`,
   );
+  if (installed !== 'ready') {
+    return {
+      source: 'metro-js-hook',
+      includesBodies: options.includesBodies,
+      bodiesSetByExistingHook: false,
+      notes: [],
+    };
+  }
+  const adopted = await adoptExistingHook(session, options);
+  return { source: 'metro-js-hook', ...adopted };
+}
+
+/**
+ * Adopts the hook an earlier run installed on this runtime. Its buffered traffic belongs to no
+ * window this capture watched and is discarded; its body rule, read from its own stats, is the rule
+ * the app now runs until it reloads, whatever this caller asked for.
+ */
+async function adoptExistingHook(
+  session: InspectorSession,
+  options: Readonly<{ includesBodies: boolean }>,
+): Promise<
+  Readonly<{ includesBodies: boolean; bodiesSetByExistingHook: boolean; notes: readonly string[] }>
+> {
   const notes: string[] = [];
-  let includesBodies = options.includesBodies;
-  let bodiesSetByExistingHook = false;
-  if (installed === 'ready') {
-    // A hook from an earlier capture is still patched and still holding its buffer. That traffic
-    // belongs to no window this capture watched, so it is discarded here rather than handed to the
-    // first dump as if it did.
-    const discarded = readJson(
-      await session.evaluate(
-        `${NETWORK_CAPTURE_RUNTIME_GLOBAL}.drain(${NETWORK_CAPTURE_MAX_ENTRIES})`,
-      ),
-      'drain',
-    );
-    const count = Array.isArray(discarded.entries) ? discarded.entries.length : 0;
+  const discarded = readJson(
+    await session.evaluate(
+      `${NETWORK_CAPTURE_RUNTIME_GLOBAL}.drain(${NETWORK_CAPTURE_MAX_ENTRIES})`,
+    ),
+    'drain',
+  );
+  const count = Array.isArray(discarded.entries) ? discarded.entries.length : 0;
+  notes.push(
+    count > 0
+      ? `The app runtime still held a capture from an earlier run; its ${count} unread entr${count === 1 ? 'y' : 'ies'} were discarded so this window starts clean.`
+      : 'The app runtime already held the capture hook from an earlier run, so this window starts at that install.',
+  );
+  // The state must record what the runtime actually does, not what this caller asked for. A hook
+  // predating the stats field reports no answer, and recording it as body-off would hide bodies the
+  // dump does carry, so its rule is left as this start asked for and only the truth goes in the state.
+  const stats = readJson(
+    await session.evaluate(`${NETWORK_CAPTURE_RUNTIME_GLOBAL}.stats()`),
+    'stats',
+  );
+  if (typeof stats.captureBodies !== 'boolean') {
+    return { includesBodies: options.includesBodies, bodiesSetByExistingHook: false, notes };
+  }
+  if (options.includesBodies && !stats.captureBodies) {
     notes.push(
-      count > 0
-        ? `The app runtime still held a capture from an earlier run; its ${count} unread entr${count === 1 ? 'y' : 'ies'} were discarded so this window starts clean.`
-        : 'The app runtime already held the capture hook from an earlier run, so this window starts at that install.',
+      'Bodies were requested, but the app runtime already held a capture hook installed without them; reload the app to install a hook that captures bodies.',
     );
-    // A hook already installed decides its own body rule at its own install; the state must record
-    // what the runtime actually does, not what this caller asked for. A hook predating the stats
-    // field reports no answer, and recording it as body-off would hide bodies the dump does carry,
-    // so its rule is left as this start asked for and only the truth goes in the state.
-    const stats = readJson(
-      await session.evaluate(`${NETWORK_CAPTURE_RUNTIME_GLOBAL}.stats()`),
-      'stats',
-    );
-    if (typeof stats.captureBodies === 'boolean') {
-      includesBodies = stats.captureBodies;
-      bodiesSetByExistingHook = true;
-      if (options.includesBodies && !stats.captureBodies) {
-        notes.push(
-          'Bodies were requested, but the app runtime already held a capture hook installed without them; reload the app to install a hook that captures bodies.',
-        );
-      }
-    }
   }
   return {
-    source: 'metro-js-hook',
-    includesBodies,
-    bodiesSetByExistingHook,
+    includesBodies: stats.captureBodies,
+    bodiesSetByExistingHook: true,
     notes: Object.freeze(notes),
   };
 }

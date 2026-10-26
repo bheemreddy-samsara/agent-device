@@ -190,6 +190,67 @@ test('a holder whose own error handling fails still answers the next request', a
   }
 });
 
+test('a reply the reader abandons mid-write hands its window back instead of spending it', async () => {
+  // The proof a drain needs is that its bytes crossed the socket. A reader that dies mid-write of a
+  // large reply must not count as delivered, or the buffer spends a window nobody received and the
+  // next dump reports a quiet one that was never watched.
+  const stateDir = mkdtempForTestSync('agent-device-network-holder-abandon-');
+  tempDirs.push(stateDir);
+  const scope: NetworkCaptureScope = { stateDir, session: 'abandon-test' };
+  const calls = { committed: 0, reattached: 0 };
+  const holder = {
+    drain: async () => ({
+      entries: [{ requestId: 'r1', url: 'https://api.test/a' }],
+      dropped: 1,
+      buffered: 0,
+      // Large enough that no socket buffer holds it: the write is still in flight when the
+      // reader goes away.
+      notes: ['x'.repeat(16 * 1024 * 1024)],
+    }),
+    commitDrain: () => {
+      calls.committed += 1;
+    },
+    reattachUndelivered: (entries: readonly unknown[]) => {
+      calls.reattached += entries.length;
+    },
+    stats: () => ({ capturing: true, buffered: 1 }),
+    ended: false,
+    close: async () => {},
+    end: async () => {},
+  };
+  const stop = await serveNetworkCaptureHolder(
+    holder as unknown as NetworkCaptureHolder,
+    scope,
+    () => {},
+    () => {},
+  );
+  try {
+    await new Promise<void>((resolve) => {
+      const socket = net.createConnection(networkCaptureSocketPath(scope));
+      socket.on('error', () => resolve());
+      socket.on('connect', () => {
+        socket.write(`${JSON.stringify({ action: 'drain', limit: 25 })}\n`);
+        // Abandon before reading: the reply's write is refused while still in flight.
+        socket.destroy();
+        resolve();
+      });
+    });
+    await sleepUntil(() => calls.reattached > 0 || calls.committed > 0);
+    assert.equal(calls.committed, 0, 'a reply nobody read is not a delivery');
+    assert.equal(calls.reattached, 1, 'the window goes back to the buffer');
+  } finally {
+    await stop();
+  }
+});
+
+async function sleepUntil(done: () => boolean, timeoutMs = 3_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!done()) {
+    if (Date.now() >= deadline) throw new Error('the holder never settled its delivery');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 /** One request-response line over the holder's real socket. */
 async function ask(
   scope: NetworkCaptureScope,
