@@ -271,10 +271,10 @@ export class NetworkCaptureHolder {
   /**
    * Reads each drained entry's response body through `Network.getResponseBody`, which the runtime
    * serves from its own bounded preview buffer. A body the runtime already gave up is counted as
-   * missing, never guessed at. This phase runs inside one deadline short of the reader's own, so a
-   * slow runtime keeps most of the drain budget for answering. A drain that overruns the reader's
-   * deadline anyway costs nothing permanent: the reply is destroyed in flight, the undelivered
-   * entries go back into the buffer, and the next dump reports them.
+   * missing, never guessed at. The whole phase — including the read of a single hung entry — runs
+   * inside one deadline short of the reader's own, so a slow runtime keeps most of the drain budget
+   * for answering. A drain that overruns the reader's deadline anyway costs nothing permanent: an
+   * undelivered reply hands its window back, and the next dump reports it.
    */
   async #readResponseBodies(
     entries: readonly CapturedCdpRequest[],
@@ -284,13 +284,18 @@ export class NetworkCaptureHolder {
     if (!session) return;
     const deadline = Date.now() + BODY_READ_BUDGET_MS;
     const counts = { body: 0, binary: 0, missing: 0 };
-    for (const entry of entries) {
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]!;
       if (entry.error !== undefined || entry.status === undefined) continue;
-      if (Date.now() >= deadline) {
-        counts.missing += 1;
-        continue;
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        // Everything from here on is unaccounted for, not just the entry the clock ran out on.
+        counts.missing += entries.length - index;
+        break;
       }
-      counts[await readOneBody(session, entry)] += 1;
+      // The per-entry timeout shares the phase's deadline, so no single hung read can push the
+      // drain past it into the reader's own timeout.
+      counts[await readOneBody(session, entry, Math.min(CDP_TIMEOUT_MS, left))] += 1;
     }
     if (counts.missing > 0) {
       notes.push(
@@ -306,17 +311,19 @@ export class NetworkCaptureHolder {
 }
 
 /**
- * Reads one entry's response body onto the entry. A binary body has no text form to report; a body
- * the runtime dropped or refused is missing, never guessed at.
+ * Reads one entry's response body onto the entry, within the drain's remaining budget. A binary body
+ * has no text form to report; a body the runtime dropped or refused is missing, never guessed at.
  */
 async function readOneBody(
   session: InspectorSession,
   entry: CapturedCdpRequest,
+  timeoutMs: number,
 ): Promise<'body' | 'binary' | 'missing'> {
   try {
     const body = (await within(
       session.send('Network.getResponseBody', { requestId: entry.requestId }),
       'The app runtime did not answer Network.getResponseBody in time.',
+      timeoutMs,
     )) as { body?: string; base64Encoded?: boolean };
     if (typeof body?.body !== 'string') return 'missing';
     if (body.base64Encoded === true) return 'binary';
@@ -381,15 +388,21 @@ export async function serveNetworkCaptureHolder(
       );
       return;
     }
+    let heldEntries: readonly CapturedCdpRequest[] | undefined;
     try {
       if (request.action === 'drain') {
         const drained = await holder.drain(request.limit ?? 25);
+        // The window belongs to this answer from the moment it leaves the buffer: an undelivered
+        // reply hands it back below, and a throw anywhere else hands it back in the catch.
+        heldEntries = drained.entries;
         if (await deliver(connection, { ok: true, ...drained })) {
+          heldEntries = undefined;
           holder.commitDrain();
         } else {
           // The reader went away (it gave up waiting, or its process died): hand the window back so
           // the next dump reports it instead of reporting a quiet one that was never watched.
           holder.reattachUndelivered(drained.entries);
+          heldEntries = undefined;
         }
         return;
       }
@@ -409,6 +422,10 @@ export async function serveNetworkCaptureHolder(
         reason: 'network-capture-request-unknown',
       });
     } catch (error) {
+      if (heldEntries !== undefined) {
+        // A drain whose answer never formed still owes its window to the next read.
+        holder.reattachUndelivered(heldEntries);
+      }
       const reason =
         error instanceof AppError && typeof error.details?.reason === 'string'
           ? error.details.reason
@@ -435,9 +452,14 @@ export async function serveNetworkCaptureHolder(
         failed = true;
       };
       connection.once('error', onError);
-      connection.end(`${JSON.stringify(payload)}\n`, () => {
+      // `write`'s callback is error-first and `end`'s counterpart is not, so the flush proof comes
+      // from `write` and the half-close follows it. A reader that vanished mid-write reports through
+      // the callback's error or the error event; either way the reply must read as undelivered, or
+      // the drain spends a window nobody received.
+      connection.write(`${JSON.stringify(payload)}\n`, (error?: Error | null) => {
         connection.removeListener('error', onError);
-        resolve(!failed);
+        connection.end();
+        resolve(!failed && !error);
       });
     });
   }
@@ -453,7 +475,11 @@ export async function serveNetworkCaptureHolder(
     } catch {
       // A server already closed has nothing left to refuse.
     }
-    fs.rmSync(socketPath, { force: true });
+    try {
+      fs.rmSync(socketPath, { force: true });
+    } catch {
+      // An unlink the host refuses leaves the path named; the next holder removes it before bind.
+    }
   }
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -467,11 +493,11 @@ function messageOf(error: unknown): string | undefined {
   return error instanceof Error ? error.message : undefined;
 }
 
-function within<T>(promise: Promise<T>, message: string): Promise<T> {
+function within<T>(promise: Promise<T>, message: string, timeoutMs = CDP_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new AppError('COMMAND_FAILED', message, { reason: 'network-capture-timeout' }));
-    }, CDP_TIMEOUT_MS);
+    }, timeoutMs);
     timer.unref?.();
     promise.then(
       (value) => {

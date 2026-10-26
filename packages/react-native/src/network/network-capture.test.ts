@@ -1,5 +1,6 @@
 import { afterEach, test } from 'vitest';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { mkdtempForTestSync } from '@agent-device/test-kit';
 import { NETWORK_CAPTURE_STATE_DIR } from '@agent-device/contracts/network-capture';
 import fs from 'node:fs';
@@ -29,6 +30,7 @@ import {
 const APP_ID = 'com.example.app';
 const openHarnesses: MetroCdpHarness[] = [];
 const tempDirs: string[] = [];
+const openChildren: Readonly<{ kill: () => void }>[] = [];
 
 async function harness(
   targets: Parameters<typeof startMetroCdpHarness>[0],
@@ -51,6 +53,7 @@ const PIXEL = { id: 'pixel-1', appId: APP_ID, deviceName: 'Pixel 9', logicalDevi
 
 afterEach(async () => {
   while (openHarnesses.length > 0) await openHarnesses.pop()?.close();
+  for (const child of openChildren.splice(0)) child.kill();
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -446,6 +449,11 @@ test('a start that adopts an existing hook records the body rule that hook actua
     },
   });
   assert.equal(started.source, 'metro-js-hook');
+  assert.match(
+    started.notes.join(' '),
+    /Bodies were requested, but the app runtime already held a capture hook installed without them/,
+    'the start itself says the request did not take effect',
+  );
   assert.equal(
     readNetworkCaptureState(scope)?.includesBodies,
     false,
@@ -597,6 +605,61 @@ test('stop closes the capture so the next dump is the daemon app-log read again'
       return true;
     },
   );
+});
+
+test('the holder identity recognizes only the holder entry, not tooling that names it', async () => {
+  const { isNetworkCaptureHolderCommand } = await import('./network-capture-holder-spawn.ts');
+  assert.equal(
+    isNetworkCaptureHolderCommand(
+      'node /repo/dist/src/internal/network-capture-holder.js --flag /some/path',
+    ),
+    true,
+  );
+  assert.equal(
+    isNetworkCaptureHolderCommand(
+      'node --experimental-strip-types packages/react-native/src/network/network-capture-holder.ts',
+    ),
+    true,
+  );
+  // A data file named beside the entry is not the entry.
+  assert.equal(
+    isNetworkCaptureHolderCommand('node /repo/dist/src/internal/network-capture-holder.json'),
+    false,
+  );
+  // The stop path may never signal these: they name the source file without running it.
+  assert.equal(
+    isNetworkCaptureHolderCommand(
+      'node /repo/node_modules/vitest/vitest.mjs run packages/react-native/src/network/network-capture-holder.test.ts',
+    ),
+    false,
+  );
+  assert.equal(isNetworkCaptureHolderCommand('rg network-capture-holder src'), false);
+  assert.equal(isNetworkCaptureHolderCommand('/bin/sleep 30'), false);
+});
+
+test('a stop aimed at a recycled pid never signals the innocent process', async () => {
+  // The recorded pid is signaled only when its command names the holder entry. A mismatch proves
+  // the holder is gone, the stop reports nothing retained, and the recycled process is untouched.
+  const server = await harness([PIXEL]);
+  const scope = await scopeFor(server.serverUrl);
+  await startMetroNetworkCapture({
+    scope,
+    includesBodies: false,
+    maxPayloadChars: 2048,
+    spawnHolder: async () => process.pid,
+  });
+  // A live process that is demonstrably not a holder, standing in for a recycled pid.
+  const sleeper = spawn('sleep', ['30'], { stdio: 'ignore' });
+  openChildren.push(sleeper);
+  const state = readNetworkCaptureState(scope);
+  assert.ok(state);
+  writeNetworkCaptureState(scope, { ...state, pid: sleeper.pid });
+
+  const stopped = await stopMetroNetworkCapture(scope);
+
+  assert.equal(stopped.holderRetained, false);
+  assert.equal(sleeper.exitCode, null, 'the innocent process is left alone');
+  assert.equal(readNetworkCaptureState(scope), undefined, 'the capture state goes away either way');
 });
 
 /** Serves the production holder on this process, as the detached holder would, on the real socket. */

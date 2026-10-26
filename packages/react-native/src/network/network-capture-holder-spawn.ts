@@ -17,6 +17,15 @@ import { askNetworkCaptureHolder } from './network-capture-socket.ts';
 /** The entry the detached holder runs, without its extension. */
 export const HOLDER_ENTRYPOINT = 'network-capture-holder';
 
+/**
+ * Whether a command line names a network capture holder by its entry file with its extension. The
+ * extension matters: a test runner, editor, or search process naming the source file is not a holder,
+ * and the stop path may only signal a process this package started as one.
+ */
+export function isNetworkCaptureHolderCommand(command: string): boolean {
+  return /network-capture-holder\.(?:js|ts)(?![\w.])/.test(command);
+}
+
 const HOLDER_READY_TIMEOUT_MS = 15_000;
 const HOLDER_READY_POLL_MS = 100;
 

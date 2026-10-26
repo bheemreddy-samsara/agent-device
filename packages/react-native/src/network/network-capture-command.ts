@@ -75,7 +75,8 @@ export async function runNetworkCaptureStart(
     source: started.source,
     binding: started.state.binding,
     requiresRelaunch: started.requiresRelaunch,
-    bodies: includesBodies,
+    // What the runtime will actually record, which an adopted hook can decide against this call.
+    bodies: started.state.includesBodies,
     notes: started.notes,
   };
 }
@@ -115,16 +116,18 @@ export async function runNetworkCaptureStop(options: NetworkCaptureCommandOption
   }>
 > {
   const state = readNetworkCaptureState(options.scope);
-  await stopMetroNetworkCapture(options.scope);
+  const { holderRetained } = await stopMetroNetworkCapture(options.scope);
   return {
     stopped: true,
     ...(state ? { source: state.source } : {}),
     notes: [
       ...(state
         ? [
-            state.source === 'metro-cdp'
-              ? 'The metro-cdp capture is closed and its holder is stopped.'
-              : 'The metro-js-hook capture is closed; the app keeps no capture of its own once it reloads.',
+            holderRetained
+              ? "The metro-cdp holder did not confirm its exit, so it may still hold the app runtime's debugger connection; a later network start can refuse until it is gone."
+              : state.source === 'metro-cdp'
+                ? 'The metro-cdp capture is closed and its holder is stopped.'
+                : 'The metro-js-hook capture is closed; the app keeps no capture of its own once it reloads.',
           ]
         : ['This session had no armed capture, so nothing was capturing.']),
       'Later network dump calls read the session app log again and label it source=app-log.',

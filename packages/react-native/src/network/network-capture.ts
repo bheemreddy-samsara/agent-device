@@ -23,7 +23,7 @@ import {
   type NetworkCaptureScope,
 } from './network-capture-state.ts';
 import { askNetworkCaptureHolder } from './network-capture-socket.ts';
-import { HOLDER_ENTRYPOINT } from './network-capture-holder-spawn.ts';
+import { isNetworkCaptureHolderCommand } from './network-capture-holder-spawn.ts';
 import {
   resolveNetworkCaptureTarget,
   type ResolvedCaptureTarget,
@@ -205,8 +205,11 @@ export async function dumpMetroNetworkCapture(
 }
 
 /** Stops the live holder and clears the session's capture state. */
-export async function stopMetroNetworkCapture(scope: NetworkCaptureScope): Promise<void> {
+export async function stopMetroNetworkCapture(
+  scope: NetworkCaptureScope,
+): Promise<Readonly<{ holderRetained: boolean }>> {
   const state = readNetworkCaptureState(scope);
+  let holderRetained = false;
   if (state && state.source === 'metro-cdp' && networkCaptureHolderAlive(state)) {
     const answered = await askNetworkCaptureHolder(scope, { action: 'stop' }, 5_000).then(
       () => true,
@@ -216,24 +219,27 @@ export async function stopMetroNetworkCapture(scope: NetworkCaptureScope): Promi
       // A holder busy in a long drain never reads its socket in time. Leaving it alive would hold
       // the runtime's one debugger connection with no reachable owner — a later start would arm a
       // second holder on the same runtime — so the recorded pid is stopped directly.
-      await retireHolderProcess(state.pid);
+      holderRetained = !(await retireHolderProcess(state.pid));
     }
   }
   clearNetworkCaptureState(scope);
+  return { holderRetained };
 }
 
-async function retireHolderProcess(pid: number): Promise<void> {
+/** Whether the process is gone (or was never there). A retained pid is the caller's to report. */
+async function retireHolderProcess(pid: number): Promise<boolean> {
   try {
     const { stopProcessAndConfirmExit } = await import('@agent-device/host-kit/process');
     // Identity by content, not by a start time read at signal time: a timestamp sampled after the
-    // pid could change hands always agrees with itself and proves nothing. The entry file name can
-    // only name a network capture holder, so the signal cannot land on a recycled pid.
-    await stopProcessAndConfirmExit(
-      { pid, identity: { matches: (command) => command.includes(HOLDER_ENTRYPOINT) } },
+    // pid could change hands always agrees with itself and proves nothing. Only a process running
+    // this package's holder entry is ever signaled.
+    const stop = await stopProcessAndConfirmExit(
+      { pid, identity: { matches: isNetworkCaptureHolderCommand } },
       { termTimeoutMs: 2_000, killTimeoutMs: 2_000 },
     );
+    return stop.status === 'stopped';
   } catch {
-    // Nothing left to prove: the caller clears every file that names this capture either way.
+    return false;
   }
 }
 
@@ -311,6 +317,11 @@ async function armReactNativeRuntime(
     if (typeof stats.captureBodies === 'boolean') {
       includesBodies = stats.captureBodies;
       bodiesSetByExistingHook = true;
+      if (options.includesBodies && !stats.captureBodies) {
+        notes.push(
+          'Bodies were requested, but the app runtime already held a capture hook installed without them; reload the app to install a hook that captures bodies.',
+        );
+      }
     }
   }
   return {

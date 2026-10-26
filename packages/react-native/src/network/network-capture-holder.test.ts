@@ -153,21 +153,25 @@ test('a holder that gave up stops serving, so its socket cannot answer a later r
   }
 });
 
-test('a holder that answers one request badly keeps answering the next', async () => {
-  // The socket serves requests from one promise queue. A rejected answer must not become the queue's
-  // settled state: every later request would run its `then` on that rejection and the holder would go
-  // deaf while its pid still reads as a live capture.
+test('a holder whose own error handling fails still answers the next request', async () => {
+  // The socket serves requests from one promise queue. A rejection escaping one answer must not
+  // become the queue's settled state: every later request would run on that rejection and the holder
+  // would go deaf while its pid still reads as a live capture. The failure is thrown where the
+  // answer's own guard cannot catch it — inside the error handler's next step.
   const stateDir = mkdtempForTestSync('agent-device-network-holder-deaf-');
   tempDirs.push(stateDir);
   const scope: NetworkCaptureScope = { stateDir, session: 'deaf-test' };
   const failing = {
     drain: async () => {
-      throw new Error('a defect in the holder, not a gave-up answer');
+      throw new Error('the drain behind this answer is broken');
     },
     commitDrain: () => {},
     reattachUndelivered: () => {},
     stats: () => ({ capturing: true, buffered: 0 }),
-    ended: false,
+    get ended(): boolean {
+      // The error handler reads this after answering, outside every guard respond runs under.
+      throw new Error('the gave-up check is broken');
+    },
     close: async () => {},
     end: async () => {},
   };
@@ -178,7 +182,7 @@ test('a holder that answers one request badly keeps answering the next', async (
     () => {},
   );
   try {
-    await assert.rejects(ask(scope, { action: 'drain', limit: 5 }), /defect in the holder/);
+    await assert.rejects(ask(scope, { action: 'drain', limit: 5 }), /drain behind this answer/);
     const answered = await ask(scope, { action: 'stats' });
     assert.equal(answered.buffered, 0, 'the queue still serves the read that follows the failure');
   } finally {
