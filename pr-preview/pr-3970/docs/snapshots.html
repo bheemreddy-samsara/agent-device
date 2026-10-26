@@ -9,7 +9,7 @@
 <script defer src="/agent-device/pr-preview/pr-3970/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3970/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/pr-preview/pr-3970/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/pr-preview/pr-3970/static/js/index.1e2ae56ce6.js"></script>
+<script defer src="/agent-device/pr-preview/pr-3970/static/js/index.9485b0755c.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -338,7 +338,9 @@ when every listed window was read. When it names an input method window, the cap
 keyboard band as unmeasurable rather than absent. An older helper omits it.</p>
 <p>The response-level <code>keyboard</code> field tells you what the capture observed:</p>
 <ul>
-<li><code>visible</code> carries a directly measured <code>frame</code> in the same coordinates as node bounds.</li>
+<li><code>visible</code> carries a <code>frame</code> observed by the producer in the same coordinates as node bounds.
+On iOS XCTest, it comes from the capture&#x27;s complete pre-projection root snapshot, includes the input
+assistant bar, and uses the same coordinate normalization as the nodes.</li>
 <li><code>derived</code> carries a <code>frame</code> inferred from a docked keyboard tree, with <code>derivation: &quot;docked-tree&quot;</code>.</li>
 <li><code>visibility-only</code> carries a boolean <code>visible</code> from a provider probe, without a frame.</li>
 <li><code>tree-rejected</code> means the full tree was checked with a usable viewport but could not establish a
@@ -351,16 +353,22 @@ the rejected geometry.</li>
 or the capture before <code>fill</code>, adds one sequential probe with a 500 ms timeout. A timeout leaves the
 probe unknown; it does not discard the tree. Appium iOS and limrun iOS can also report a derived docked
 band during capture. Android Appium can derive the band when a tap resolves the tree&#x27;s viewport.</p>
-<p>Missing keyboard nodes never mean the keyboard is hidden. A positive probe establishes presence but
+<p>On iOS XCTest, a successful scan of the complete pre-projection root snapshot with no keyboard
+is the explicit observation that establishes <code>absent</code>. A failed or timed-out capture does not
+establish absence. Missing keyboard nodes in a projected or partial tree never mean the keyboard is hidden. A positive probe establishes presence but
 cannot locate the covered area. A negative probe establishes absence only when the tree also resolves
 no docked band. Neither probe result overrides a resolvable docked tree. Element taps use measured or
-derived frames to refuse an app target whose dispatched tap point is behind the keyboard.
+derived frames to refuse an app target whose dispatched tap point is behind the keyboard. Keyboard
+chrome and app controls hosted on the keyboard surface remain tappable; those app controls still
+participate in settle observations.
 Run <code>snapshot -i</code> again after ending editing before retrying a refused target.</p>
 <p>Android Appium nodes carry the reported native package in <code>bundleId</code>.
-Provider snapshot nodes include <code>keyboardOwned</code>: <code>true</code> identifies a keyboard-owned node; <code>false</code>
-means capture evaluated the node and found no keyboard ownership. Both decisions survive filtering
-and scoping. An omitted field means ownership was not evaluated. App-filled assistant hosts do not
-pass keyboard ownership to their descendants.</p>
+Snapshot nodes can include <code>keyboardOwned</code>: <code>true</code> means the node belongs to the keyboard tap
+surface, including app controls hosted there; <code>false</code> means capture evaluated the node and found
+no membership. Both decisions survive filtering and scoping. An omitted field means membership
+was not evaluated. On native XCTest captures, an <code>Other</code> node identified as
+<code>SystemInputAssistantView</code> and its descendants belong to that surface even when the tree has no
+<code>Keyboard</code> node. App controls in the assistant remain part of settle observations.</p>
 <p>The Android keyboard band is the input method window&#x27;s bounds, the box around the area it takes
 touches in. On Android 13 (API 33) and later the helper also checks that this area is one rectangle.
 A floating keyboard&#x27;s is not (the panel plus the gesture strip, with app content between them), so the
