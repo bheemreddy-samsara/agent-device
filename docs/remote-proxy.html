@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.d57f91b7c6.js"></script>
+<script defer src="/agent-device/static/js/index.00eb6496a6.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -189,6 +189,18 @@ stop that daemon first. A denied request fails with <code>UNAUTHORIZED</code> an
 <code>details.reason: &quot;DAEMON_POLICY_DENIED&quot;</code>.</p>
 <h2 class="rp-toc-include" id="what-the-proxy-exposes"><a href="#what-the-proxy-exposes" class="rp-header-anchor rp-link" aria-hidden="true">#</a>What the proxy exposes</h2>
 <p>The proxy serves only the daemon HTTP contract: <code>/health</code>, <code>/rpc</code>, <code>/upload</code> plus resumable <code>/upload/*</code> routes, and <code>/artifacts/*</code>, with the same routes also available under <code>/agent-device/*</code>. Health checks are unauthenticated; command, upload, and artifact routes require the bearer token. <code>GET /artifacts</code> lists the caller tenant&#x27;s downloadable artifacts. An entry has <code>sessionName</code> when the daemon registered it outside a request reply, for example a recording kept when its leased session ended.</p>
+<p>The proxy passes the daemon&#x27;s HTTP status through. Most failed upload and artifact requests answer
+a JSON body <code>{ &quot;ok&quot;: false, &quot;error&quot;: &quot;...&quot;, &quot;code&quot;: &quot;...&quot; }</code>. When the daemon writes this body, it
+also carries a <code>hint</code>, and <code>reason</code> when the error has one. An artifact, upload, or materialized-path
+id that was already consumed, has expired, or never existed answers <code>404</code> with
+<code>code: &quot;COMMAND_FAILED&quot;</code> and <code>reason: &quot;RESOURCE_EXPIRED&quot;</code>. A <code>/rpc</code> call that names the same id
+answers <code>404</code> when it does not stream progress. A call that streams progress, as the CLI does
+without <code>--json</code>, can already have answered <code>200</code>; its final envelope carries the failure.</p>
+<p>Other failures answer a <code>4xx</code> or <code>5xx</code> status that depends on the route and the error. For example,
+invalid arguments answer <code>400</code>, a bad token answers <code>401</code>, and a human-control hold answers <code>423</code>.
+The proxy answers its own failures, such as an unreachable daemon, with <code>500</code> and no <code>reason</code>. The
+daemon and the proxy share error codes. Read <code>code</code> and <code>reason</code> to interpret an error. Do not use
+them to tell whether the daemon or the proxy answered.</p>
 <p>The proxy checks the client token and forwards authorized requests with the local daemon token. Remote clients never see the daemon token.</p>
 <p>The proxy does not forward <code>/admin/*</code>, including human-control holds. A caller on the device host
 must use the daemon&#x27;s loopback port and local daemon token.</p>
