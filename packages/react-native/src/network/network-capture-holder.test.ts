@@ -1,5 +1,6 @@
 import { afterEach, test } from 'vitest';
 import assert from 'node:assert/strict';
+import net from 'node:net';
 import { mkdtempForTestSync } from '@agent-device/test-kit';
 import fs from 'node:fs';
 import { writeMetroSessionHints } from '../metro/metro-session-hints.ts';
@@ -9,6 +10,7 @@ import {
   serveNetworkCaptureHolder,
 } from './network-capture-holder-process.ts';
 import {
+  networkCaptureSocketPath,
   readNetworkCaptureHolderStatus,
   readNetworkCaptureState,
   type NetworkCaptureScope,
@@ -150,6 +152,67 @@ test('a holder that gave up stops serving, so its socket cannot answer a later r
     await stop();
   }
 });
+
+test('a holder that answers one request badly keeps answering the next', async () => {
+  // The socket serves requests from one promise queue. A rejected answer must not become the queue's
+  // settled state: every later request would run its `then` on that rejection and the holder would go
+  // deaf while its pid still reads as a live capture.
+  const stateDir = mkdtempForTestSync('agent-device-network-holder-deaf-');
+  tempDirs.push(stateDir);
+  const scope: NetworkCaptureScope = { stateDir, session: 'deaf-test' };
+  const failing = {
+    drain: async () => {
+      throw new Error('a defect in the holder, not a gave-up answer');
+    },
+    commitDrain: () => {},
+    reattachUndelivered: () => {},
+    stats: () => ({ capturing: true, buffered: 0 }),
+    ended: false,
+    close: async () => {},
+    end: async () => {},
+  };
+  const stop = await serveNetworkCaptureHolder(
+    failing as unknown as NetworkCaptureHolder,
+    scope,
+    () => {},
+    () => {},
+  );
+  try {
+    await assert.rejects(ask(scope, { action: 'drain', limit: 5 }), /defect in the holder/);
+    const answered = await ask(scope, { action: 'stats' });
+    assert.equal(answered.buffered, 0, 'the queue still serves the read that follows the failure');
+  } finally {
+    await stop();
+  }
+});
+
+/** One request-response line over the holder's real socket. */
+async function ask(
+  scope: NetworkCaptureScope,
+  request: Readonly<{ action: string; limit?: number }>,
+): Promise<{ ok: boolean; buffered?: number; reason?: string; message?: string }> {
+  const socketPath = networkCaptureSocketPath(scope);
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(socketPath);
+    let buffer = '';
+    socket.on('error', reject);
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      const newline = buffer.indexOf('\n');
+      if (newline < 0) return;
+      socket.destroy();
+      const reply = JSON.parse(buffer.slice(0, newline)) as {
+        ok: boolean;
+        buffered?: number;
+        reason?: string;
+        message?: string;
+      };
+      if (!reply.ok) reject(new Error(reply.message ?? reply.reason ?? 'refused'));
+      else resolve(reply);
+    });
+    socket.on('connect', () => socket.write(`${JSON.stringify(request)}\n`));
+  });
+}
 
 /**
  * Arms one capture and serves the production holder in-process, so the socket, the buffering, and

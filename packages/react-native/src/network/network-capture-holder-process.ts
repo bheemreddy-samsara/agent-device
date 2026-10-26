@@ -1,5 +1,6 @@
 import net from 'node:net';
 import fs from 'node:fs';
+import path from 'node:path';
 import { AppError } from '@agent-device/kernel/errors';
 import type { NetworkCaptureState } from '@agent-device/contracts/network-capture';
 import { NETWORK_CAPTURE_TYPED_REASONS } from '@agent-device/contracts/network-capture';
@@ -339,7 +340,8 @@ export async function serveNetworkCaptureHolder(
   onStop?: () => void,
 ): Promise<() => Promise<void>> {
   const socketPath = networkCaptureSocketPath(scope);
-  fs.mkdirSync(scope.stateDir, { recursive: true });
+  // The socket lives in the capture's own subdirectory, so that is the directory this must own.
+  fs.mkdirSync(path.dirname(socketPath), { recursive: true });
   fs.rmSync(socketPath, { force: true });
   // Replies carry captured headers and bodies the runtime reported unredacted; the redaction rules
   // belong to the reader that owns them. The socket is therefore owner-only, stated here as an
