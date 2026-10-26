@@ -7,7 +7,7 @@ import {
   targetAppId,
   type MetroInspectorTarget,
 } from '../react-devtools/metro-inspector.ts';
-import { logicalDeviceFromTargetId } from './cdp-network-buffer.ts';
+import { bindingMatchesTarget, logicalDeviceFromTargetId } from './cdp-network-buffer.ts';
 
 /** The runtime one capture owns, chosen from the dev server's own target list. */
 export type ResolvedCaptureTarget = Readonly<{
@@ -58,7 +58,7 @@ export async function readBoundCaptureTarget(
   binding: NetworkCaptureBinding,
 ): Promise<BoundTargetReading> {
   const targets = await listMetroInspectorTargets(new URL(binding.serverUrl));
-  const bound = targets.find((target) => target.id === binding.targetId);
+  const bound = targets.find((target) => bindingMatchesTarget(binding, target));
   if (bound) {
     return targetAppId(bound) === binding.appId
       ? { status: 'bound', target: bound }
