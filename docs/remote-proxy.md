@@ -235,7 +235,7 @@ stop that daemon first. A denied request fails with `UNAUTHORIZED` and
 
 ## What the proxy exposes
 
-The proxy serves only the daemon HTTP contract: `/health`, `/rpc`, `/upload` plus resumable `/upload/*` routes, and `/artifacts/*`, with the same routes also available under `/agent-device/*`. Health checks are unauthenticated; command, upload, and artifact routes require the bearer token.
+The proxy serves only the daemon HTTP contract: `/health`, `/rpc`, `/upload` plus resumable `/upload/*` routes, and `/artifacts/*`, with the same routes also available under `/agent-device/*`. Health checks are unauthenticated; command, upload, and artifact routes require the bearer token. `GET /artifacts` lists the caller tenant's downloadable artifacts. An entry has `sessionName` when the daemon registered it outside a request reply, for example a recording kept when its leased session ended.
 
 The proxy checks the client token and forwards authorized requests with the local daemon token. Remote clients never see the daemon token.
 

@@ -9,7 +9,7 @@
 <script defer src="/agent-device/static/js/lib-react.e84adf13b9.js"></script>
 <script defer src="/agent-device/static/js/lib-router.270f17bfa6.js"></script>
 <script defer src="/agent-device/static/js/476.52ed165336.js"></script>
-<script defer src="/agent-device/static/js/index.a16759f7fb.js"></script>
+<script defer src="/agent-device/static/js/index.d57f91b7c6.js"></script>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="generator" content="Rspress v2.0.12">
 <meta property="og:url" content="https://oss.callstack.com/agent-device">
@@ -927,6 +927,7 @@ hardware keys) still start a stopped app.</li>
 <li>Limrun sessions always record the whole screen and refuse <code>--fps</code> and <code>--hide-touches</code> with <code>INVALID_ARGS</code>. A failed download is retried by the next <code>record stop</code>; nothing survives a daemon restart.</li>
 <li>A busy iOS simulator recording slot returns non-retriable <code>DEVICE_IN_USE</code> with <code>details.reason: apple_simulator_recording_busy</code>. Run <code>record stop</code> in the session that owns the recording; if no recording is active, ask the host operator to restart the CoreSimulator stream service.</li>
 <li><code>record stop</code> is safe to repeat. If the request window ends during export, a second <code>record stop</code> in the same session returns the finished recording. A recording whose video file is gone reports <code>no active recording</code>.</li>
+<li>On a remote daemon, if a leased session ends while a recording runs (lease expiry, release, or <code>close</code>), the daemon finishes the recording. It keeps the video and telemetry downloadable by the lease&#x27;s tenant: <code>GET /artifacts</code> lists them with <code>sessionName</code>, and <code>GET /artifacts/&lt;id&gt;</code> downloads them. Each file is deleted after its download, or after 15 minutes.</li>
 <li><code>record stop</code> may also report <code>recorder</code> (<code>confirmed</code> or <code>lost</code>) and <code>nativePathDisposition</code> (<code>retirable</code> or <code>retired</code>). See <code>agent-device help record</code> and <a href="https://github.com/callstack/agent-device/blob/main/docs/adr/0024-screen-recording-provable-signal.md" target="_blank" rel="noopener noreferrer" class="rp-link">ADR 0024</a>.</li>
 <li><code>record contact-sheet &lt;video.mp4&gt; [--out &lt;sheet.png&gt;]</code> turns an exported MP4 into one PNG grid of the frames where the screen visibly changed, each labeled with its elapsed time. It needs no session or device. The default output is <code>&lt;recording&gt;.contact-sheet.png</code>, and <code>--out</code> cannot point at the recording itself. <code>--json</code> adds per-cell times and change shares plus <code>sampledFrameCount</code>, <code>decodedFrameCount</code>, and <code>skippedSampleCount</code>.</li>
 <li>A contact sheet samples at most 48 times across the clip (every 250ms for short clips) and prints at most 24 cells, so a transient between samples can be missing; <code>warning</code> says when cells were thinned or samples skipped. It runs only on macOS hosts (<code>details.reason: contact_sheet_unsupported_host</code> elsewhere) and refuses WebM with <code>contact_sheet_container_unsupported</code>.</li>
