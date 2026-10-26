@@ -59,8 +59,13 @@ extension RunnerTests {
   ) -> CoordinateTextInputResolution {
     let probed = containingTextInputProbeIssues(fallback: CoordinateTextInputResolution.unavailable) {
       shouldStop -> CoordinateTextInputResolution in
-      guard let input = queryTextInputs(
-        app: app, point: CGPoint(x: x, y: y), contentTranslation: contentTranslation, shouldStop: shouldStop
+      let enumerated = enumerateTextInputQueries(app: app, shouldStop: shouldStop)
+      // A degraded XCTest channel is known to fail enumerating some simulator UI trees while direct
+      // gestures still work. An enumeration that read nothing cannot claim the point holds no
+      // input, so only a reading that saw some element makes absence a fact about the screen.
+      guard !enumerated.isEmpty else { return .unavailable }
+      guard let input = filterTextInputCandidates(
+        enumerated, point: CGPoint(x: x, y: y), contentTranslation: contentTranslation, shouldStop: shouldStop
       ).first else {
         return .absent
       }
@@ -160,30 +165,53 @@ extension RunnerTests {
     contentTranslation: TextEntryContentTranslation,
     shouldStop: () -> Bool
   ) -> [ResolvedTextEntryInput] {
+    filterTextInputCandidates(
+      enumerateTextInputQueries(app: app, shouldStop: shouldStop),
+      point: point,
+      contentTranslation: contentTranslation,
+      shouldStop: shouldStop
+    )
+  }
+
+  /// Filters enumerated candidates to the inputs that contain `point`, smallest first.
+  private func filterTextInputCandidates(
+    _ candidates: [XCUIElement],
+    point: CGPoint,
+    contentTranslation: TextEntryContentTranslation,
+    shouldStop: () -> Bool
+  ) -> [ResolvedTextEntryInput] {
     var inputs: [ResolvedTextEntryInput] = []
+    for element in candidates {
+      if shouldStop() { break }
+      guard let candidate = ResolvedTextEntryInput(readingListed: element, contentTranslation: contentTranslation) else { continue }
+      // Matching dispatches nothing, so a read with no screen box compares its live frame.
+      let frame = candidate.frameOnScreen ?? candidate.element.frame
+      if isCoordinateTextInputCandidate(enabled: candidate.attributes.isEnabled, frame: frame, point: point) {
+        inputs.append(candidate)
+      }
+    }
+    return inputs.sorted { smallestElementFirst($0.attributes, $1.attributes) }
+  }
+
+  /// Every element the four text-input queries enumerate, unfiltered by point. An empty result is
+  /// the channel reading nothing, which no point-filtered result can tell apart from a screen with
+  /// no inputs.
+  private func enumerateTextInputQueries(app: XCUIApplication, shouldStop: () -> Bool) -> [XCUIElement] {
+    var candidates: [XCUIElement] = []
     for query in [app.textFields, app.secureTextFields, app.searchFields, app.textViews] {
       if shouldStop() { break }
-      let candidates = query.allElementsBoundByIndex
+      candidates.append(contentsOf: query.allElementsBoundByIndex)
 #if AGENT_DEVICE_RUNNER_UNIT_TESTS
       if let issue = textInputProbeIssueForTesting {
         textInputProbeIssueForTesting = nil
         record(issue)
       }
-#endif
-      // One snapshot per candidate answers enablement, frame, and the ordering below. A candidate that
-      // cannot be snapshotted is read live, so its failure still reaches the caller's issue handling.
-      for element in candidates {
-        if shouldStop() { break }
-        guard let candidate = ResolvedTextEntryInput(readingListed: element, contentTranslation: contentTranslation) else { continue }
-        // Matching dispatches nothing, so a read with no screen box compares its live frame.
-        let frame = candidate.frameOnScreen ?? candidate.element.frame
-        if isCoordinateTextInputCandidate(enabled: candidate.attributes.isEnabled, frame: frame, point: point) {
-          inputs.append(candidate)
-        }
+      if textInputProbeBlindForTesting {
+        return []
       }
+#endif
     }
-    guard !shouldStop() else { return [] }
-    return inputs.sorted { smallestElementFirst($0.attributes, $1.attributes) }
+    return candidates
   }
 
   /// The command's one content-vector read: the resolved window's screen origin when it is placed off

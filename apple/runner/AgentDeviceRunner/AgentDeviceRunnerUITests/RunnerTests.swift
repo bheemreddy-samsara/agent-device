@@ -173,6 +173,10 @@ final class RunnerTests: XCTestCase {
   // like a field failure. Production builds compile none of this.
   var textInputProbeIssueForTesting: XCTIssue?
 
+  /// Arms the blind-channel state: the four text-input queries enumerate nothing without recording
+  /// an issue or throwing, as a degraded channel does on simulator trees it cannot walk.
+  var textInputProbeBlindForTesting = false
+
   static let injectedTapFailureFlagPathForTesting =
     "/tmp/agent-device-inject-tap-recorded-failure-for-testing"
 

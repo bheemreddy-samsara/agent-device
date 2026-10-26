@@ -441,5 +441,26 @@ extension RunnerTests {
     XCTAssertEqual(response.error?.code, "TEXT_INPUT_PROBE_UNAVAILABLE")
     XCTAssertEqual(String(describing: textField.value ?? ""), "")
   }
+
+  /// A degraded channel is known to enumerate nothing on some simulator trees while gestures still
+  /// land, and it reads as a clean empty query. An empty enumeration is not proof the point holds
+  /// no input, so the fill refuses under the probe-unavailable reason — the caller's ref may be the
+  /// input itself, and `no_text_input_at_point` would send them to re-snapshot a screen that is
+  /// fine (#1721).
+  @MainActor
+  func testSynthesizedReplacementRefusesABlindEnumerationAsUnreadableNotEmpty() throws {
+    let textField = try focusSynthesizedReplacementField()
+    defer {
+      textInputProbeBlindForTesting = false
+      tearDownSynthesizedReplacementField()
+    }
+    textInputProbeBlindForTesting = true
+
+    let response = try replaceSynthesizedFieldText(textField, text: "fresh", commandId: "fill-blind-lookup")
+
+    XCTAssertFalse(response.ok)
+    XCTAssertEqual(response.error?.code, "TEXT_INPUT_PROBE_UNAVAILABLE")
+    XCTAssertEqual(String(describing: textField.value ?? ""), "")
+  }
 #endif
 }
