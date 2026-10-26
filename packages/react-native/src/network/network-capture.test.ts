@@ -90,6 +90,11 @@ test('a runtime older than the Network domain arms the in-app hook and asks for 
   let installed = 0;
   server.answer('Runtime.evaluate', (message) => {
     const expression = String((message.params as { expression?: string })?.expression ?? '');
+    if (expression.includes('.stats()')) {
+      return {
+        result: { value: JSON.stringify({ ok: true, capturing: true, captureBodies: false }) },
+      };
+    }
     if (expression.includes('__AGENT_DEVICE_NETWORK__')) installed += 1;
     return { result: { value: 'installed' } };
   });
@@ -112,7 +117,8 @@ test('a runtime older than the Network domain arms the in-app hook and asks for 
 
 test('a dev server that refuses the domain for another reason is not read as an older runtime', async () => {
   const server = await harness([PIXEL]);
-  server.refuseMethod('Network.enable', 'Runtime is busy draining the bridge');
+  // A refusal with a code other than "Method not found" is some other failure, not an old runtime.
+  server.refuseMethod('Network.enable', 'Runtime is busy draining the bridge', -32603);
   const scope = await scopeFor(server.serverUrl);
 
   await assert.rejects(

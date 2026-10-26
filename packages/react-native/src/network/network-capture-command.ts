@@ -22,9 +22,7 @@ export type NetworkCaptureCommandOptions = Readonly<{
   host: HostEnvironment;
   /** The session's app id, when the caller knows one; it narrows the dev server's runtime list. */
   appBundleId?: string;
-  /** The session's device name, as the session reports it; it narrows the same list. */
-  sessionDevice?: string;
-  /** `network start --metro-device`, which wins over the session's own device name. */
+  /** `--device`, which narrows the dev server's runtime list to one device. */
   metroDevice?: string;
   /**
    * `--metro-host`, `--metro-port`, or `--bundle-url`, which name the dev server directly.
@@ -42,9 +40,9 @@ export type NetworkCaptureCommandOptions = Readonly<{
 /** The armed capture one session has, if any; the routing question a dump asks before it reads. */
 export function readArmedNetworkCapture(
   options: NetworkCaptureCommandOptions,
-): Readonly<{ source: NetworkDumpSource; includesBodies: boolean }> | undefined {
+): Readonly<{ source: NetworkDumpSource }> | undefined {
   const state = readNetworkCaptureState(options.scope);
-  return state ? { source: state.source, includesBodies: state.includesBodies } : undefined;
+  return state ? { source: state.source } : undefined;
 }
 
 /** The whole `network start` answer: the one source now serving this session, and how to read it. */
@@ -62,7 +60,7 @@ export async function runNetworkCaptureStart(
   options: NetworkCaptureCommandOptions,
 ): Promise<StartedNetworkCapture> {
   const includesBodies = options.include === 'body' || options.include === 'all';
-  const device = options.metroDevice ?? options.sessionDevice;
+  const device = options.metroDevice;
   const started = await startMetroNetworkCapture({
     scope: options.scope,
     ...(options.appBundleId === undefined ? {} : { appBundleId: options.appBundleId }),

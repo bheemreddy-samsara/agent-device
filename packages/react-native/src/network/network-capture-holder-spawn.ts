@@ -6,7 +6,11 @@ import type { HostEnvironment } from '@agent-device/kernel/source-value';
 import { runCmdDetached } from '@agent-device/host-kit/command';
 import { hostNodeExecutablePath, isProcessAlive } from '@agent-device/host-kit/process';
 import { NETWORK_CAPTURE_TYPED_REASONS } from '@agent-device/contracts/network-capture';
-import { networkCaptureHolderLogPath, type NetworkCaptureScope } from './network-capture-state.ts';
+import {
+  networkCaptureHolderLogPath,
+  readNetworkCaptureHolderStatus,
+  type NetworkCaptureScope,
+} from './network-capture-state.ts';
 import { HOLDER_ENV_SESSION, HOLDER_ENV_STATE_DIR } from './network-capture-holder-process.ts';
 import { askNetworkCaptureHolder } from './network-capture-socket.ts';
 
@@ -33,6 +37,9 @@ export async function spawnNetworkCaptureHolder(
   const logPath = networkCaptureHolderLogPath(scope);
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const logFd = fs.openSync(logPath, 'a');
+  // The holder's stderr lands here, and the process's umask does not carry into a file its parent
+  // opens; say the mode here.
+  fs.fchmodSync(logFd, 0o600);
   let pid = 0;
   try {
     pid = runCmdDetached(hostNodeExecutablePath(), holderExecArgs(modulePath), {
@@ -76,31 +83,62 @@ async function waitForNetworkCaptureHolder(
   scope: NetworkCaptureScope,
 ): Promise<Readonly<{ reason: string; message: string }> | undefined> {
   const deadline = Date.now() + HOLDER_READY_TIMEOUT_MS;
-  let lastError = 'the holder never answered its socket';
+  let lastFailure = unreadable('the holder never answered its socket');
   while (Date.now() < deadline) {
-    if (!isProcessAlive(pid)) {
-      return {
-        reason: NETWORK_CAPTURE_TYPED_REASONS.captureLost,
-        message: `the holder process exited before it answered (pid ${pid})`,
-      };
-    }
-    try {
-      await askNetworkCaptureHolder(scope, { action: 'stats' }, 2_000);
-      return undefined;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-      if (
-        !(error instanceof AppError) ||
-        error.details?.reason !== NETWORK_CAPTURE_TYPED_REASONS.captureLost
-      ) {
-        return { reason: NETWORK_CAPTURE_TYPED_REASONS.captureLost, message: lastError };
-      }
-    }
+    if (!isProcessAlive(pid)) return exitedBeforeAnswer(pid, scope, lastFailure);
+    const attempt = await probeNetworkCaptureHolder(scope);
+    if (attempt.answered) return undefined;
+    lastFailure = attempt;
+    // Only "nobody is listening yet" is worth polling. Every other refusal is the holder's final
+    // answer, and it is carried through with the reason the holder gave.
+    if (attempt.reason !== NETWORK_CAPTURE_TYPED_REASONS.captureLost) return attempt;
     await sleep(HOLDER_READY_POLL_MS);
   }
   return {
-    reason: NETWORK_CAPTURE_TYPED_REASONS.captureLost,
-    message: `the holder did not answer within ${HOLDER_READY_TIMEOUT_MS}ms (${lastError})`,
+    reason: lastFailure.reason,
+    message: `the holder did not answer within ${HOLDER_READY_TIMEOUT_MS}ms (${lastFailure.message})`,
+  };
+}
+
+type HolderProbeFailure = Readonly<{ reason: string; message: string }>;
+
+function unreadable(message: string): HolderProbeFailure {
+  return { reason: NETWORK_CAPTURE_TYPED_REASONS.captureLost, message };
+}
+
+/** One readiness probe of the holder's socket: an answer, or the refusal with its reason. */
+async function probeNetworkCaptureHolder(
+  scope: NetworkCaptureScope,
+): Promise<Readonly<{ answered: true }> | (Readonly<{ answered: false }> & HolderProbeFailure)> {
+  try {
+    await askNetworkCaptureHolder(scope, { action: 'stats' }, 2_000);
+    return { answered: true };
+  } catch (error) {
+    const reason =
+      error instanceof AppError && typeof error.details?.reason === 'string'
+        ? error.details.reason
+        : NETWORK_CAPTURE_TYPED_REASONS.captureLost;
+    return {
+      answered: false,
+      reason,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/** Why the wait ends when the holder's process is simply gone. */
+function exitedBeforeAnswer(
+  pid: number,
+  scope: NetworkCaptureScope,
+  lastFailure: HolderProbeFailure,
+): HolderProbeFailure {
+  // The holder records why it gave up before it exits, keyed to its own pid; a record from an
+  // older holder describes a different process. Without a matching record, all that is known is
+  // that this process is gone.
+  const ended = readNetworkCaptureHolderStatus(scope);
+  return {
+    reason: ended?.pid === pid && ended.reason !== undefined ? ended.reason : lastFailure.reason,
+    message: `the holder process exited before it answered (pid ${pid})`,
   };
 }
 

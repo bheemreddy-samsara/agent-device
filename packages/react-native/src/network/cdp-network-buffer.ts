@@ -1,3 +1,4 @@
+import { AppError } from '@agent-device/kernel/errors';
 import type { MetroInspectorTarget } from '../react-devtools/metro-inspector.ts';
 import { asRecord, readHeaders, readNumber, readString } from './network-capture-json.ts';
 
@@ -51,7 +52,6 @@ export class CdpNetworkBuffer {
   #completed: string[] = [];
   #completedIds = new Set<string>();
   #dropped = 0;
-  #failedBodyReads = 0;
 
   constructor(limit: number) {
     this.#limit = limit;
@@ -77,29 +77,29 @@ export class CdpNetworkBuffer {
 
   /**
    * Removes and returns the newest `limit` finished entries, oldest first, along with the eviction
-   * count for the same window. Like the app-side buffer, an entry is handed over once.
+   * count for the same window. Like the app-side buffer, an entry is handed over once — once the
+   * reader has actually received it. `delivered` closes the window; `reattach` reopens it when the
+   * reply never crossed the socket, so a timed-out drain is re-offered rather than lost.
    */
-  drain(limit: number): { entries: CapturedCdpRequest[]; dropped: number } {
+  take(limit: number): { entries: CapturedCdpRequest[]; dropped: number } {
     const count = Math.max(0, Math.min(limit, this.#finished.length));
     const drained = this.#finished.splice(this.#finished.length - count, count);
-    const dropped = this.#dropped;
+    return { entries: drained, dropped: this.#dropped };
+  }
+
+  /** Confirms the last `take` reached its reader; its eviction count is spent with it. */
+  delivered(): void {
     this.#dropped = 0;
-    return { entries: drained, dropped };
+  }
+
+  /** Puts an undelivered `take` back, oldest first, behind anything settled since. */
+  reattach(entries: readonly CapturedCdpRequest[]): void {
+    this.#finished.unshift(...entries);
+    this.#evictToLimit();
   }
 
   buffered(): number {
     return this.#finished.length;
-  }
-
-  /** Counts a response body that could not be read, so a dump can say what it omitted. */
-  recordFailedBodyRead(): void {
-    this.#failedBodyReads += 1;
-  }
-
-  takeFailedBodyReads(): number {
-    const count = this.#failedBodyReads;
-    this.#failedBodyReads = 0;
-    return count;
   }
 
   #onRequest(params: Record<string, unknown>): void {
@@ -179,6 +179,11 @@ export class CdpNetworkBuffer {
 
   #push(entry: InflightRequest): void {
     this.#finished.push(entry);
+    this.#evictToLimit();
+  }
+
+  /** Keeps the buffer inside its bound; what goes over joins the eviction count, oldest first. */
+  #evictToLimit(): void {
     if (this.#finished.length > this.#limit) {
       const evicted = this.#finished.length - this.#limit;
       this.#dropped += evicted;
@@ -189,12 +194,16 @@ export class CdpNetworkBuffer {
 
 /**
  * Answers whether the runtime's CDP implementation refused a method, which is how a React Native
- * runtime older than the `Network` domain reports itself. Only the protocol's own refusal counts.
+ * runtime older than the `Network` domain reports itself. The protocol's own answer is the JSON-RPC
+ * code -32601 ("Method not found"), which `InspectorSession` carries on the error it rejects with;
+ * anything without that code is some other failure and must fail closed, not pick another source.
  */
 export function cdpMethodUnsupported(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /was not found|not supported|unhandled method|method not found/i.test(message);
+  return error instanceof AppError && error.details?.protocolCode === CDP_METHOD_NOT_FOUND;
 }
+
+/** JSON-RPC's "Method not found", which the CDP protocol keeps as its own error code. */
+const CDP_METHOD_NOT_FOUND = -32601;
 
 /** The identity a capture holds on: the same target of the same device, or the capture is over. */
 export function bindingMatchesTarget(

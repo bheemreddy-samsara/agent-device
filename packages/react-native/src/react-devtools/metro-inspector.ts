@@ -1,4 +1,5 @@
 import { AppError } from '@agent-device/kernel/errors';
+import { NETWORK_CAPTURE_TYPED_REASONS } from '@agent-device/contracts/network-capture';
 
 const TARGET_LIST_TIMEOUT_MS = 3_000;
 const CONNECT_TIMEOUT_MS = 5_000;
@@ -186,7 +187,7 @@ export function selectReactNativeCaptureTarget(
     'INVALID_ARGS',
     'Several React Native app runtimes are connected to the dev server, and nothing narrows them to one.',
     {
-      reason: 'metro-runtime-ambiguous',
+      reason: NETWORK_CAPTURE_TYPED_REASONS.ambiguous,
       runtimes: [...new Set(seen)],
       deviceSelectors: deviceSelectors(candidates),
       hint: `Pass --app with one of: ${[...new Set(candidates.map(targetAppId))].join(', ')}, or --device with one of: ${deviceSelectors(candidates).join(', ')}.`,
@@ -375,7 +376,7 @@ export class InspectorSession {
       method?: string;
       params?: unknown;
       result?: unknown;
-      error?: { message?: string };
+      error?: { message?: string; code?: number };
     };
     try {
       message = JSON.parse(raw);
@@ -397,10 +398,13 @@ export class InspectorSession {
     if (!pending) return;
     this.#pending.delete(message.id);
     if (message.error) {
+      // The JSON-RPC code is the typed answer: -32601 is the protocol's own "method not found",
+      // which is how a runtime older than a domain reports itself. The message text is display-only.
       pending.reject(
         new AppError(
           'COMMAND_FAILED',
           `Debugger protocol error: ${message.error.message ?? 'unknown'}`,
+          { protocolCode: message.error.code },
         ),
       );
     } else {

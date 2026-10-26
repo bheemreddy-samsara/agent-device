@@ -39,13 +39,47 @@ export async function runNetworkCaptureCommand(
     return true;
   }
   if (!(await capture.readArmedNetworkCapture(options))) return false;
+  const positionalInclude = readPositionalInclude(
+    params.positionals[2],
+    params.flags.networkInclude,
+  );
   await writeCaptureResult(
     params.flags,
-    await capture.runNetworkCaptureDump(options, {
-      maxEntries: readDumpLimit(params.positionals[1]),
-    }),
+    await capture.runNetworkCaptureDump(
+      positionalInclude === undefined ? options : { ...options, include: positionalInclude },
+      {
+        maxEntries: readDumpLimit(params.positionals[1]),
+      },
+    ),
   );
   return true;
+}
+
+/**
+ * The positional detail level (`network dump 25 headers`) the daemon route honors, applied here
+ * too. A positional and `--include` that disagree is refused, the same conflict the daemon names.
+ */
+function readPositionalInclude(value: string | undefined, flagInclude: string | undefined) {
+  const positional = value?.toLowerCase();
+  if (positional === undefined) return undefined;
+  if (
+    positional !== 'summary' &&
+    positional !== 'headers' &&
+    positional !== 'body' &&
+    positional !== 'all'
+  ) {
+    throw new AppError(
+      'INVALID_ARGS',
+      `Unknown network include mode: ${value}. Use summary, headers, body, or all.`,
+    );
+  }
+  if (flagInclude !== undefined && flagInclude !== positional) {
+    throw new AppError(
+      'INVALID_ARGS',
+      'network include mode was provided both positionally and via --include with different values',
+    );
+  }
+  return positional as NetworkCaptureCommandOptions['include'];
 }
 
 function captureOptions(

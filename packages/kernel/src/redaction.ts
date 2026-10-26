@@ -81,6 +81,11 @@ function maskSecrets(value: string, keyHint?: string): string {
   if (keyHint && SENSITIVE_KEY_RE.test(keyHint)) return '[REDACTED]';
   let output = redactUrls(trimmed);
   output = output.replace(SECRET_TOKEN_RE, '[REDACTED]');
+  // Runs after the URL rules, before the plain assignment rule below: the plain rule's `\b` never
+  // matches a key wrapped in quotes, so without this rule a JSON payload's own secrets would stay
+  // visible. The value keeps its quotes, so a redacted payload stays valid JSON. A quoted value is
+  // never proven to be a setup URL, so this rule takes no `api-keys` carve-out — the same call the
+  // plain rule makes, which fails the URL check on a quoted value the same way.
   output = output.replace(
     SENSITIVE_JSON_ASSIGNMENT_RE,
     (match, assignment: string, rawValue: string) => {

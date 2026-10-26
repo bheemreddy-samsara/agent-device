@@ -69,8 +69,6 @@ export type NetworkCaptureState = Readonly<{
 }>;
 
 export const NETWORK_CAPTURE_TYPED_REASONS = {
-  /** No live capture source applies to this session's device and runtime. */
-  unsupported: 'network-capture-unsupported',
   /** Several app runtimes match the session and nothing narrows them. */
   ambiguous: 'metro-runtime-ambiguous',
   /** The bound target no longer registers on the dev server. */
@@ -79,6 +77,8 @@ export const NETWORK_CAPTURE_TYPED_REASONS = {
   targetReplaced: 'metro-runtime-replaced',
   /** The session has no Metro dev-server binding, so the React Native source cannot apply. */
   metroBindingMissing: 'metro-binding-missing',
+  /** The app runtime's CDP implementation has no `Network` domain, so a CDP capture cannot run. */
+  cdpNetworkUnsupported: 'metro-cdp-network-unsupported',
   /** The session has no armed capture, so a live read cannot answer. */
   captureNotStarted: 'network-capture-not-started',
   /** A capture is already armed for this session. */

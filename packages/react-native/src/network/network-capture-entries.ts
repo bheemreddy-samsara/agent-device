@@ -102,6 +102,6 @@ function includesHeaders(include: NetworkIncludeMode): boolean {
   return include === 'headers' || include === 'all';
 }
 
-function includesBody(include: NetworkIncludeMode): boolean {
+export function includesBody(include: NetworkIncludeMode): boolean {
   return include === 'body' || include === 'all';
 }

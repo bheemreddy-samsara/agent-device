@@ -27,7 +27,7 @@ export const NETWORK_CAPTURE_HEADER_CHARS = 512;
  * it.
  */
 export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
-(function (VERSION, MAX_ENTRIES, BODY_CAP, HEADER_CAP) {
+(function (VERSION, MAX_ENTRIES, BODY_CAP, HEADER_CAP, CAPTURE_BODIES) {
   var g = globalThis;
   var existing = g.__AGENT_DEVICE_NETWORK__;
   if (existing && typeof existing.drain === 'function' && typeof existing.stats === 'function') {
@@ -71,7 +71,7 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
   }
 
   function bodyValue(body) {
-    if (body == null) return undefined;
+    if (body == null || !CAPTURE_BODIES) return undefined;
     if (typeof body === 'string') return cap(body);
     try {
       if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
@@ -255,7 +255,8 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
             // size is declared, the read is skipped; when the runtime streams it, the read stops at
             // the cap. Only a body of unknown size with no stream is read as text, and the cap
             // still bounds what the buffer keeps.
-            var readable = !isBinaryContentType(contentType) &&
+            var readable = CAPTURE_BODIES &&
+              !isBinaryContentType(contentType) &&
               !(isFinite(declared) && declared > BODY_CAP);
             if (readable && (body || clone)) {
               // Record in a detached chain: the app receives its response at once, and the entry
@@ -346,7 +347,7 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
               };
               if (state.requestBody !== undefined) entry.requestBody = state.requestBody;
               var responseType = xhr.responseType;
-              if (responseType === '' || responseType === 'text') {
+              if (CAPTURE_BODIES && (responseType === '' || responseType === 'text')) {
                 try { entry.responseBody = cap(xhr.responseText); } catch (e) {}
               }
               try {
@@ -390,6 +391,7 @@ export const NETWORK_CAPTURE_RUNTIME_SOURCE = String.raw`
         capturing: true,
         fetchPatched: patchedFetch,
         xhrPatched: patchedXhr,
+        captureBodies: !!CAPTURE_BODIES,
         buffered: entries.length,
         captured: captured,
         dropped: dropped

@@ -155,9 +155,7 @@ function networkCliActionLines(data: NetworkCliResult): string[] {
     return lines;
   }
   if (data.stopped) {
-    const lines = [`Network capture stopped: source=${data.source ?? 'unknown'}`];
-    if (data.path) lines.push(`  report: ${data.path}`);
-    return lines;
+    return [`Network capture stopped: source=${data.source ?? 'unknown'}`];
   }
   return data.path ? [data.path] : [];
 }

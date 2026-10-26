@@ -27,6 +27,8 @@ import {
 
 const CDP_TIMEOUT_MS = 10_000;
 const CDP_BUFFER_ENTRIES = 200;
+/** Body reads must finish inside one budget so the drain reply still crosses the socket in time. */
+const BODY_READ_BUDGET_MS = 8_000;
 
 export type HolderDrain = Readonly<{
   entries: readonly CapturedCdpRequest[];
@@ -83,6 +85,11 @@ export class NetworkCaptureHolder {
     return this.#state;
   }
 
+  /**
+   * Reads the newest `limit` finished entries. The buffer keeps its eviction count unsettled until
+   * `commitDrain` or `reattachUndelivered`, because until the reply crosses the socket the reader
+   * has received nothing and the window must stay reportable.
+   */
   async drain(limit: number): Promise<HolderDrain> {
     const notes: string[] = [];
     if (this.#session === undefined) {
@@ -90,11 +97,8 @@ export class NetworkCaptureHolder {
       if (!rearmed.ok) throw rearmed.error;
     }
     const gap = this.#pendingGapNote;
-    if (gap !== undefined) {
-      this.#pendingGapNote = undefined;
-      notes.push(gap);
-    }
-    const drained = this.#buffer.drain(limit);
+    if (gap !== undefined) notes.push(gap);
+    const drained = this.#buffer.take(limit);
     if (this.#state.includesBodies && this.#session) {
       await this.#readResponseBodies(drained.entries, notes);
     }
@@ -104,6 +108,17 @@ export class NetworkCaptureHolder {
       buffered: this.#buffer.buffered(),
       notes,
     };
+  }
+
+  /** Confirms a drain's reply reached its reader, which spends the eviction count it reported. */
+  commitDrain(): void {
+    this.#buffer.delivered();
+    this.#pendingGapNote = undefined;
+  }
+
+  /** A reply that never crossed the socket returns its entries; the window was never handed over. */
+  reattachUndelivered(entries: readonly CapturedCdpRequest[]): void {
+    this.#buffer.reattach(entries);
   }
 
   stats(): Readonly<{ capturing: boolean; buffered: number }> {
@@ -240,7 +255,7 @@ export class NetworkCaptureHolder {
         throw new AppError(
           'UNSUPPORTED_OPERATION',
           'This app runtime does not implement the CDP Network domain, so this capture cannot keep running on it.',
-          { reason: 'metro-cdp-network-unsupported' },
+          { reason: NETWORK_CAPTURE_TYPED_REASONS.cdpNetworkUnsupported },
         );
       }
       throw error;
@@ -255,7 +270,8 @@ export class NetworkCaptureHolder {
   /**
    * Reads each drained entry's response body through `Network.getResponseBody`, which the runtime
    * serves from its own bounded preview buffer. A body the runtime already gave up is counted as
-   * missing, never guessed at.
+   * missing, never guessed at. The whole phase runs inside one deadline well short of the reader's
+   * own: a reply that overruns it would be destroyed in flight and its window reported as empty.
    */
   async #readResponseBodies(
     entries: readonly CapturedCdpRequest[],
@@ -263,26 +279,48 @@ export class NetworkCaptureHolder {
   ): Promise<void> {
     const session = this.#session;
     if (!session) return;
+    const deadline = Date.now() + BODY_READ_BUDGET_MS;
+    const counts = { body: 0, binary: 0, missing: 0 };
     for (const entry of entries) {
       if (entry.error !== undefined || entry.status === undefined) continue;
-      try {
-        const body = (await within(
-          session.send('Network.getResponseBody', { requestId: entry.requestId }),
-          'The app runtime did not answer Network.getResponseBody in time.',
-        )) as { body?: string; base64Encoded?: boolean };
-        if (typeof body?.body === 'string' && body.base64Encoded !== true) {
-          (entry as { responseBody?: string }).responseBody = body.body;
-        }
-      } catch {
-        this.#buffer.recordFailedBodyRead();
+      if (Date.now() >= deadline) {
+        counts.missing += 1;
+        continue;
       }
+      counts[await readOneBody(session, entry)] += 1;
     }
-    const failed = this.#buffer.takeFailedBodyReads();
-    if (failed > 0) {
+    if (counts.missing > 0) {
       notes.push(
-        `${failed} response bod${failed === 1 ? 'y was' : 'ies were'} no longer held by the app runtime when this dump asked for it.`,
+        `${counts.missing} response bod${counts.missing === 1 ? 'y was' : 'ies were'} not reported: the app runtime no longer held it, or reading it ran out of time.`,
       );
     }
+    if (counts.binary > 0) {
+      notes.push(
+        `${counts.binary} response bod${counts.binary === 1 ? 'y was' : 'ies were'} binary and has no text form to report.`,
+      );
+    }
+  }
+}
+
+/**
+ * Reads one entry's response body onto the entry. A binary body has no text form to report; a body
+ * the runtime dropped or refused is missing, never guessed at.
+ */
+async function readOneBody(
+  session: InspectorSession,
+  entry: CapturedCdpRequest,
+): Promise<'body' | 'binary' | 'missing'> {
+  try {
+    const body = (await within(
+      session.send('Network.getResponseBody', { requestId: entry.requestId }),
+      'The app runtime did not answer Network.getResponseBody in time.',
+    )) as { body?: string; base64Encoded?: boolean };
+    if (typeof body?.body !== 'string') return 'missing';
+    if (body.base64Encoded === true) return 'binary';
+    (entry as { responseBody?: string }).responseBody = body.body;
+    return 'body';
+  } catch {
+    return 'missing';
   }
 }
 
@@ -301,15 +339,24 @@ export async function serveNetworkCaptureHolder(
   const socketPath = networkCaptureSocketPath(scope);
   fs.mkdirSync(scope.stateDir, { recursive: true });
   fs.rmSync(socketPath, { force: true });
+  // Replies carry captured headers and bodies the runtime reported unredacted; the redaction rules
+  // belong to the reader that owns them. The socket is therefore owner-only, stated here as an
+  // invariant rather than inherited from whatever umask the spawn happened to carry.
+  // One request at a time, across every connection: the holder owns the single debugger connection
+  // the domain needs, and two concurrent drains would both find it down and open two, orphaning the
+  // first. Within one connection, pipelined requests queue in arrival order.
+  let queue: Promise<void> = Promise.resolve();
   const server = net.createServer((connection) => {
     let buffer = '';
     connection.on('data', (chunk) => {
       buffer += chunk.toString('utf8');
-      const newline = buffer.indexOf('\n');
-      if (newline < 0) return;
-      const request = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      void respond(connection, request);
+      let newline = buffer.indexOf('\n');
+      while (newline >= 0) {
+        const request = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        queue = queue.then(() => respond(connection, request));
+        newline = buffer.indexOf('\n');
+      }
     });
     connection.on('error', () => connection.destroy());
   });
@@ -326,29 +373,36 @@ export async function serveNetworkCaptureHolder(
     try {
       if (request.action === 'drain') {
         const drained = await holder.drain(request.limit ?? 25);
-        connection.end(`${JSON.stringify({ ok: true, ...drained })}\n`);
+        if (await deliver(connection, { ok: true, ...drained })) {
+          holder.commitDrain();
+        } else {
+          // The reader went away (it gave up waiting, or its process died): hand the window back so
+          // the next dump reports it instead of reporting a quiet one that was never watched.
+          holder.reattachUndelivered(drained.entries);
+        }
         return;
       }
       if (request.action === 'stats') {
-        connection.end(`${JSON.stringify({ ok: true, ...holder.stats() })}\n`);
+        await deliver(connection, { ok: true, ...holder.stats() });
         return;
       }
       if (request.action === 'stop') {
         await holder.close();
-        connection.end(`${JSON.stringify({ ok: true })}\n`);
+        await deliver(connection, { ok: true });
         await stopServing();
         onStop?.();
         return;
       }
-      connection.end(
-        `${JSON.stringify({ ok: false, reason: 'network-capture-request-unknown' })}\n`,
-      );
+      await deliver(connection, {
+        ok: false,
+        reason: 'network-capture-request-unknown',
+      });
     } catch (error) {
       const reason =
         error instanceof AppError && typeof error.details?.reason === 'string'
           ? error.details.reason
           : NETWORK_CAPTURE_TYPED_REASONS.captureLost;
-      connection.end(`${JSON.stringify({ ok: false, reason, message: messageOf(error) })}\n`);
+      await deliver(connection, { ok: false, reason, message: messageOf(error) });
       if (holder.ended) {
         // The holder has nothing left to watch, so it stops serving. Who ends the process decides
         // for itself: the detached holder exits, because a pid left behind would read as a live
@@ -357,6 +411,24 @@ export async function serveNetworkCaptureHolder(
         onGaveUp?.();
       }
     }
+  }
+  /** Writes one reply and answers whether it actually crossed the socket. */
+  function deliver(connection: net.Socket, payload: Record<string, unknown>): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      if (connection.destroyed) {
+        resolve(false);
+        return;
+      }
+      let failed = false;
+      const onError = () => {
+        failed = true;
+      };
+      connection.once('error', onError);
+      connection.end(`${JSON.stringify(payload)}\n`, () => {
+        connection.removeListener('error', onError);
+        resolve(!failed);
+      });
+    });
   }
   async function stopServing(): Promise<void> {
     await holder.close();
@@ -367,6 +439,7 @@ export async function serveNetworkCaptureHolder(
     server.once('error', reject);
     server.listen(socketPath, () => resolve());
   });
+  fs.chmodSync(socketPath, 0o600);
   return stopServing;
 }
 
@@ -424,7 +497,23 @@ export async function runNetworkCaptureHolderProcess(
     host.exit(1);
     return;
   }
-  const holder = await NetworkCaptureHolder.connect(scope, state, host.pid);
+  let holder: NetworkCaptureHolder;
+  try {
+    holder = await NetworkCaptureHolder.connect(scope, state, host.pid);
+  } catch (error) {
+    // A holder that cannot arm never serves a socket, so its status is the only channel that can
+    // carry why: record the typed reason before exiting so `network start` reports the same reason
+    // a mid-window dump would for the identical condition.
+    writeNetworkCaptureHolderStatus(scope, {
+      pid: host.pid,
+      status: 'ended',
+      reason: typedFailureReason(error) ?? NETWORK_CAPTURE_TYPED_REASONS.captureLost,
+      targetId: state.binding.targetId,
+    });
+    host.report(`${error instanceof Error ? error.message : String(error)}\n`);
+    host.exit(1);
+    return;
+  }
   writeNetworkCaptureHolderStatus(scope, {
     pid: host.pid,
     status: 'capturing',

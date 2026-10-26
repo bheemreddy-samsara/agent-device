@@ -177,7 +177,11 @@ export function networkCaptureLost(reason: string | undefined): AppError {
 function writeJsonFile(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  // One person's capture state, whatever process writes it.
+  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
   fs.renameSync(tempPath, filePath);
 }
 

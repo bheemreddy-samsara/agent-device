@@ -35,8 +35,12 @@ export type MetroCdpHarness = Readonly<{
   /** Ends the registration, which is what happens when the app closes or reloads. */
   removeTarget: (id: string) => void;
   inspectorConnections: number;
-  /** Method refusals the harness answers with the protocol's own error, keyed by method. */
-  refuseMethod: (method: string, message?: string) => void;
+  /**
+   * Method refusals the harness answers with the protocol's own error, keyed by method. The default
+   * code is JSON-RPC's -32601 "Method not found", which is how a runtime older than a domain
+   * refuses it; a test passes another code to stand in for some other refusal.
+   */
+  refuseMethod: (method: string, message?: string, code?: number) => void;
   /** Method calls the harness answers however a test decides, overriding the default answers. */
   answer: (method: string, responder: CdpResponder) => void;
   /** Pushes one CDP notification to every open inspector socket. */
@@ -87,7 +91,7 @@ export async function startMetroCdpHarness(
   preferredPort = 0,
 ): Promise<MetroCdpHarness> {
   const registered = new Map<string, HarnessTarget>(targets.map((t) => [t.id, t]));
-  const refusals = new Map<string, string>();
+  const refusals = new Map<string, Readonly<{ message: string; code: number }>>();
   const answers = new Map<string, CdpResponder>();
   const connections = new Set<Duplex>();
   let inspectorConnections = 0;
@@ -152,7 +156,11 @@ export async function startMetroCdpHarness(
         const method = String(message.method ?? '');
         const refusal = refusals.get(method);
         if (refusal !== undefined) {
-          socket.write(textFrame(JSON.stringify({ id, error: { message: refusal } })));
+          socket.write(
+            textFrame(
+              JSON.stringify({ id, error: { code: refusal.code, message: refusal.message } }),
+            ),
+          );
           continue;
         }
         const responder = answers.get(method);
@@ -181,8 +189,8 @@ export async function startMetroCdpHarness(
     get inspectorConnections() {
       return inspectorConnections;
     },
-    refuseMethod: (method, message = `'${method}' was not found`) => {
-      refusals.set(method, message);
+    refuseMethod: (method, message = `'${method}' was not found`, code = -32601) => {
+      refusals.set(method, { message, code });
     },
     answer: (method, responder) => {
       answers.set(method, responder);

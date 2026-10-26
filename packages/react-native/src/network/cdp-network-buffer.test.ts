@@ -1,5 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
+import { AppError } from '@agent-device/kernel/errors';
 import {
   bindingMatchesTarget,
   cdpMethodUnsupported,
@@ -41,7 +42,9 @@ function loadingFinished(requestId: string, timestamp: number) {
 }
 
 function finishedEntries(buffer: CdpNetworkBuffer, limit = 25): CapturedCdpRequest[] {
-  return buffer.drain(limit).entries;
+  const drained = buffer.take(limit);
+  buffer.delivered();
+  return drained.entries;
 }
 
 test('a request is held until its own loading event names it complete', () => {
@@ -134,16 +137,31 @@ test('a drain hands each entry over once and reports only its own eviction windo
     buffer.add(loadingFinished(id, index));
   }
 
-  const first = buffer.drain(25);
+  const first = buffer.take(25);
+  buffer.delivered();
   assert.deepEqual(
     first.entries.map((entry) => entry.url),
     ['https://api.test/1', 'https://api.test/2'],
   );
   assert.equal(first.dropped, 1, 'the oldest request left the ring buffer');
 
-  const second = buffer.drain(25);
+  const second = buffer.take(25);
+  buffer.delivered();
   assert.deepEqual(second.entries, []);
   assert.equal(second.dropped, 0, 'a window nobody wrote to drops nothing');
+});
+
+test('an undelivered drain is re-offered rather than lost', () => {
+  const buffer = new CdpNetworkBuffer(10);
+  buffer.add(requestWillBeSent('r1', 'https://api.test/a', 1));
+  buffer.add(loadingFinished('r1', 1.25));
+
+  const lost = buffer.take(25);
+  buffer.reattach(lost.entries);
+
+  const retried = buffer.take(25);
+  assert.equal(retried.entries.length, 1, 'the window the reader never got is reportable again');
+  assert.equal(retried.dropped, 0);
 });
 
 test('a drain takes the newest entries and keeps them oldest first', () => {
@@ -179,12 +197,15 @@ test('a duration is never reported from an origin the runtime changed mid-reques
   assert.equal(finishedEntries(buffer)[0]?.durationMs, undefined);
 });
 
-test('only a protocol refusal falls back to the JavaScript hook', () => {
-  assert.equal(cdpMethodUnsupported(new Error("'Network.enable' was not found")), true);
-  assert.equal(cdpMethodUnsupported(new Error('Method Network.enable not supported')), true);
-  assert.equal(cdpMethodUnsupported(new Error('unhandled method Network.disable')), true);
+test('only the protocol method-not-found code falls back to the JavaScript hook', () => {
+  const refusal = (code: number | undefined, message: string) =>
+    new AppError('COMMAND_FAILED', `Debugger protocol error: ${message}`, { protocolCode: code });
+
+  assert.equal(cdpMethodUnsupported(refusal(-32601, "'Network.enable' was not found")), true);
+  assert.equal(cdpMethodUnsupported(refusal(-32601, 'whatever the runtime wording is')), true);
+  assert.equal(cdpMethodUnsupported(refusal(-32603, 'Method not supported')), false);
+  assert.equal(cdpMethodUnsupported(refusal(undefined, 'unhandled method')), false);
   assert.equal(cdpMethodUnsupported(new Error('socket hang up')), false);
-  assert.equal(cdpMethodUnsupported(new Error('Network domain is busy')), false);
 });
 
 function target(id: string, extra: Partial<MetroInspectorTarget> = {}): MetroInspectorTarget {

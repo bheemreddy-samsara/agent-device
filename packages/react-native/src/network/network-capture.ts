@@ -27,7 +27,11 @@ import {
   resolveNetworkCaptureTarget,
   type ResolvedCaptureTarget,
 } from './network-capture-target.ts';
-import { projectCapturedNetworkEntries, captureBufferNotes } from './network-capture-entries.ts';
+import {
+  projectCapturedNetworkEntries,
+  captureBufferNotes,
+  includesBody,
+} from './network-capture-entries.ts';
 import {
   NETWORK_CAPTURE_HEADER_CHARS,
   NETWORK_CAPTURE_MAX_ENTRIES,
@@ -37,6 +41,23 @@ import {
 } from './network-capture-runtime.ts';
 
 const HOLDER_DRAIN_TIMEOUT_MS = 15_000;
+
+/**
+ * How long a `metro-cdp` state may claim a capture with no pid yet. The state file is written
+ * before the holder spawns — the holder reads its binding from it — so between that write and the
+ * pid answer there is a real window with no process to probe. Past it, a pid-less state is what a
+ * start that died mid-arm leaves behind, and a session must be able to arm again without `stop`.
+ */
+const HOLDER_SPAWN_GRACE_MS = 60_000;
+
+function captureStillLive(state: NetworkCaptureState): boolean {
+  if (!networkCaptureHolderAlive(state)) return false;
+  if (state.source !== 'metro-cdp' || state.pid !== undefined) return true;
+  if (Date.now() - state.startedAt <= HOLDER_SPAWN_GRACE_MS) return true;
+  // A pid-less state whose grace has passed is not capturing, and its own files go away with the
+  // start that takes over, so nothing is left to clean up here.
+  return false;
+}
 
 /** What a start needs to know; everything else it decides itself. */
 export type StartMetroNetworkCaptureInput = Readonly<{
@@ -72,7 +93,7 @@ export async function startMetroNetworkCapture(
   input: StartMetroNetworkCaptureInput,
 ): Promise<StartedNetworkCapture> {
   const existing = readNetworkCaptureState(input.scope);
-  if (existing && networkCaptureHolderAlive(existing)) {
+  if (existing && captureStillLive(existing)) {
     throw new AppError(
       'UNSUPPORTED_OPERATION',
       'This session already has a network capture running.',
@@ -95,19 +116,20 @@ export async function startMetroNetworkCapture(
     ...(input.metroDevice === undefined ? {} : { device: input.metroDevice }),
   });
   const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, resolved.target));
-  let source: NetworkCaptureSource;
+  let armedRuntime: Awaited<ReturnType<typeof armReactNativeRuntime>>;
   try {
-    source = await armReactNativeRuntime(session, {
+    armedRuntime = await armReactNativeRuntime(session, {
       includesBodies: input.includesBodies,
       maxPayloadChars: input.maxPayloadChars,
     });
   } finally {
     session.close();
   }
-  const notes: string[] = [];
+  const { source, includesBodies } = armedRuntime;
+  const notes: string[] = [...armedRuntime.notes];
   let pid: number | undefined;
   let requiresRelaunch = false;
-  const state = stateFor(input, resolved, source);
+  const state = { ...stateFor(input, resolved, source), includesBodies };
   if (source === 'metro-cdp') {
     // The holder is a detached process and reads its binding from the state file, so the file has to
     // exist before the spawn; the pid that proves the capture is live is written once it answers.
@@ -167,7 +189,7 @@ export async function dumpMetroNetworkCapture(
       notes: Object.freeze([
         ...captureBufferNotes({ buffered: drained.buffered, dropped: drained.dropped }),
         ...drained.notes,
-        ...(state.includesBodies || input.include !== 'all'
+        ...(state.includesBodies || !includesBody(input.include)
           ? []
           : ['Bodies are off for this capture; run network start again to capture them.']),
       ]),
@@ -181,9 +203,32 @@ export async function dumpMetroNetworkCapture(
 export async function stopMetroNetworkCapture(scope: NetworkCaptureScope): Promise<void> {
   const state = readNetworkCaptureState(scope);
   if (state && state.source === 'metro-cdp' && networkCaptureHolderAlive(state)) {
-    await askNetworkCaptureHolder(scope, { action: 'stop' }, 5_000).catch(() => {});
+    const answered = await askNetworkCaptureHolder(scope, { action: 'stop' }, 5_000).then(
+      () => true,
+      () => false,
+    );
+    if (!answered && state.pid !== undefined) {
+      // A holder busy in a long drain never reads its socket in time. Leaving it alive would hold
+      // the runtime's one debugger connection with no reachable owner — a later start would arm a
+      // second holder on the same runtime — so the recorded pid is stopped directly.
+      await retireHolderProcess(state.pid);
+    }
   }
   clearNetworkCaptureState(scope);
+}
+
+async function retireHolderProcess(pid: number): Promise<void> {
+  try {
+    const { stopProcessAndConfirmExit, readProcessStartTime } =
+      await import('@agent-device/host-kit/process');
+    await stopProcessAndConfirmExit(
+      // The start time read now is what keeps the signal from aiming at a recycled pid.
+      { pid, identity: { startTime: readProcessStartTime(pid) ?? undefined } },
+      { termTimeoutMs: 2_000, killTimeoutMs: 2_000 },
+    );
+  } catch {
+    // Nothing left to prove: the caller clears every file that names this capture either way.
+  }
 }
 
 /** Whether the caller named a dev server, which stands in for the session's recorded binding. */
@@ -211,12 +256,42 @@ function metroBindingMissing(): AppError {
 async function armReactNativeRuntime(
   session: InspectorSession,
   options: Readonly<{ includesBodies: boolean; maxPayloadChars: number }>,
-): Promise<NetworkCaptureSource> {
-  if (await cdpNetworkAvailable(session)) return 'metro-cdp';
-  await session.evaluate(
-    `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${options.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS})`,
+): Promise<
+  Readonly<{ source: NetworkCaptureSource; includesBodies: boolean; notes: readonly string[] }>
+> {
+  if (await cdpNetworkAvailable(session)) {
+    return { source: 'metro-cdp', includesBodies: options.includesBodies, notes: [] };
+  }
+  const installed = await session.evaluate(
+    `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${options.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS}, ${options.includesBodies ? 'true' : 'false'})`,
   );
-  return 'metro-js-hook';
+  const notes: string[] = [];
+  let includesBodies = options.includesBodies;
+  if (installed === 'ready') {
+    // A hook from an earlier capture is still patched and still holding its buffer. That traffic
+    // belongs to no window this capture watched, so it is discarded here rather than handed to the
+    // first dump as if it did.
+    const discarded = readJson(
+      await session.evaluate(
+        `${NETWORK_CAPTURE_RUNTIME_GLOBAL}.drain(${NETWORK_CAPTURE_MAX_ENTRIES})`,
+      ),
+      'drain',
+    );
+    const count = Array.isArray(discarded.entries) ? discarded.entries.length : 0;
+    notes.push(
+      count > 0
+        ? `The app runtime still held a capture from an earlier run; its ${count} unread entr${count === 1 ? 'y' : 'ies'} were discarded so this window starts clean.`
+        : 'The app runtime already held the capture hook from an earlier run, so this window starts at that install.',
+    );
+    // A hook already installed decides its own body rule at its own install; the state must record
+    // what the runtime actually does, not what this caller asked for.
+    const stats = readJson(
+      await session.evaluate(`${NETWORK_CAPTURE_RUNTIME_GLOBAL}.stats()`),
+      'stats',
+    );
+    includesBodies = stats.captureBodies === true;
+  }
+  return { source: 'metro-js-hook', includesBodies, notes: Object.freeze(notes) };
 }
 
 /**
@@ -251,7 +326,7 @@ async function drainHookRuntime(
   const session = await InspectorSession.connect(debuggerUrlOn(serverUrl, resolved.target));
   try {
     const installed = await session.evaluate(
-      `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${input.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS})`,
+      `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${input.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS}, ${state.includesBodies ? 'true' : 'false'})`,
     );
     const drained = readJson(
       await session.evaluate(`${NETWORK_CAPTURE_RUNTIME_GLOBAL}.drain(${input.maxEntries})`),
@@ -272,7 +347,7 @@ async function drainHookRuntime(
         dropped: typeof drained.dropped === 'number' ? drained.dropped : 0,
       }),
     ];
-    if (!state.includesBodies && input.include === 'all') {
+    if (!state.includesBodies && includesBody(input.include)) {
       notes.push('Bodies are off for this capture; run network start again to capture them.');
     }
     if (entries.length === 0) {

@@ -17,8 +17,8 @@ export type ResolvedCaptureTarget = Readonly<{
 
 /**
  * Chooses the app runtime a capture will bind to. Exactly one runtime for the app wins; several
- * devices narrow by the caller's or the session's device name; anything still ambiguous fails closed
- * as `metro-runtime-ambiguous` and lists the candidates.
+ * devices narrow by the caller's `--device`; anything still ambiguous fails closed as
+ * `metro-runtime-ambiguous` and lists the candidates.
  */
 export async function resolveNetworkCaptureTarget(
   serverUrl: URL,
