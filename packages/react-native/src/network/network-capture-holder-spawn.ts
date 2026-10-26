@@ -15,7 +15,7 @@ import { HOLDER_ENV_SESSION, HOLDER_ENV_STATE_DIR } from './network-capture-hold
 import { askNetworkCaptureHolder } from './network-capture-socket.ts';
 
 /** The entry the detached holder runs, without its extension. */
-const HOLDER_ENTRYPOINT = 'network-capture-holder';
+export const HOLDER_ENTRYPOINT = 'network-capture-holder';
 
 const HOLDER_READY_TIMEOUT_MS = 15_000;
 const HOLDER_READY_POLL_MS = 100;

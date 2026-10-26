@@ -66,6 +66,12 @@ export type NetworkCaptureState = Readonly<{
   requiresRelaunch?: boolean;
   /** Set when a JavaScript reload replaced the bound target and the holder re-armed once. */
   rearmedAt?: number;
+  /**
+   * Set when the hook source adopted a hook an earlier run installed, and that hook — not this
+   * start — decided the body rule for the app's remaining lifetime. Telling the caller to start
+   * again cannot fix that rule, so the read names what would.
+   */
+  bodiesSetByExistingHook?: true;
 }>;
 
 export const NETWORK_CAPTURE_TYPED_REASONS = {

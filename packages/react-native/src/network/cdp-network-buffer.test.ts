@@ -164,6 +164,50 @@ test('an undelivered drain is re-offered rather than lost', () => {
   assert.equal(retried.dropped, 0);
 });
 
+test("evictions after a drain's snapshot survive its delivery instead of being zeroed", () => {
+  // A body read keeps one drain open across arrivals. The count a delivered reply spent covers its
+  // own window only; what the ring buffer gave up while the reply was in flight belongs to the next.
+  const buffer = new CdpNetworkBuffer(2);
+  for (const [index, id] of ['r1', 'r2', 'r3'].entries()) {
+    buffer.add(requestWillBeSent(id, `https://api.test/${index}`, index));
+    buffer.add(loadingFinished(id, index));
+  }
+
+  const first = buffer.take(25);
+  assert.equal(first.dropped, 1);
+  for (const [index, id] of ['r4', 'r5', 'r6'].entries()) {
+    buffer.add(requestWillBeSent(id, `https://api.test/${index}`, index));
+    buffer.add(loadingFinished(id, index));
+  }
+  buffer.delivered();
+
+  const second = buffer.take(25);
+  assert.equal(
+    second.dropped,
+    1,
+    'the request lost while the first reply was in flight is still owed a report',
+  );
+  buffer.delivered();
+  assert.equal(buffer.take(25).dropped, 0, 'and it is reported once');
+});
+
+test('an undelivered drain reports its eviction count once, not twice', () => {
+  const buffer = new CdpNetworkBuffer(2);
+  for (const [index, id] of ['r1', 'r2', 'r3'].entries()) {
+    buffer.add(requestWillBeSent(id, `https://api.test/${index}`, index));
+    buffer.add(loadingFinished(id, index));
+  }
+
+  const lost = buffer.take(25);
+  assert.equal(lost.dropped, 1);
+  buffer.reattach(lost.entries);
+
+  const retried = buffer.take(25);
+  assert.equal(retried.dropped, 1, 'the count the reply never carried is still owed');
+  buffer.delivered();
+  assert.equal(buffer.take(25).dropped, 0);
+});
+
 test('a drain takes the newest entries and keeps them oldest first', () => {
   const buffer = new CdpNetworkBuffer(10);
   for (const [index, id] of ['r1', 'r2', 'r3'].entries()) {

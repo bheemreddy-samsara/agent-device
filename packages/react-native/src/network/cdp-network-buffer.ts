@@ -51,7 +51,10 @@ export class CdpNetworkBuffer {
   #finished: InflightRequest[] = [];
   #completed: string[] = [];
   #completedIds = new Set<string>();
-  #dropped = 0;
+  /** Requests the ring buffer gave up that no drain has reported yet. */
+  #unreported = 0;
+  /** What the outstanding `take` reported, which `reattach` owes back to the next window. */
+  #unconfirmedDropped = 0;
 
   constructor(limit: number) {
     this.#limit = limit;
@@ -84,18 +87,28 @@ export class CdpNetworkBuffer {
   take(limit: number): { entries: CapturedCdpRequest[]; dropped: number } {
     const count = Math.max(0, Math.min(limit, this.#finished.length));
     const drained = this.#finished.splice(this.#finished.length - count, count);
-    return { entries: drained, dropped: this.#dropped };
+    // Snapshots what is reportable without spending it: until the reply crosses the socket, these
+    // losses still belong to a window nobody has reported.
+    this.#unconfirmedDropped = this.#unreported;
+    return { entries: drained, dropped: this.#unconfirmedDropped };
   }
 
-  /** Confirms the last `take` reached its reader; its eviction count is spent with it. */
+  /**
+   * Confirms the last `take` reached its reader. Spends only the count that drain reported:
+   * evictions that landed after its snapshot belong to a later window and must survive here.
+   */
   delivered(): void {
-    this.#dropped = 0;
+    this.#unreported -= this.#unconfirmedDropped;
+    this.#unconfirmedDropped = 0;
   }
 
   /** Puts an undelivered `take` back, oldest first, behind anything settled since. */
   reattach(entries: readonly CapturedCdpRequest[]): void {
     this.#finished.unshift(...entries);
     this.#evictToLimit();
+    // The window never reached its reader, so the count it carried stays unreported for the next
+    // drain; a later `delivered` must not spend it twice.
+    this.#unconfirmedDropped = 0;
   }
 
   buffered(): number {
@@ -186,7 +199,7 @@ export class CdpNetworkBuffer {
   #evictToLimit(): void {
     if (this.#finished.length > this.#limit) {
       const evicted = this.#finished.length - this.#limit;
-      this.#dropped += evicted;
+      this.#unreported += evicted;
       this.#finished.splice(0, evicted);
     }
   }

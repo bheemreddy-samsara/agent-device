@@ -417,6 +417,83 @@ test('the in-app hook is drained from the runtime the capture bound to and repor
   assert.ok(evaluations >= 3, 'the hook is checked, drained, and read its stats on every dump');
 });
 
+test('a start that adopts an existing hook records the body rule that hook actually runs', async () => {
+  // The hook a previous session installed decides bodies for the app's whole lifetime, so this
+  // start's `--include all` cannot have taken effect; the state must record what the runtime does,
+  // and the dump must not advise a rerun of a start that cannot change the rule.
+  const server = await harness([PIXEL]);
+  server.refuseMethod('Network.enable');
+  server.answer('Runtime.evaluate', (message) => {
+    const expression = String((message.params as { expression?: string })?.expression ?? '');
+    if (expression.includes('.stats()')) {
+      return {
+        result: { value: JSON.stringify({ ok: true, capturing: true, captureBodies: false }) },
+      };
+    }
+    if (expression.includes('.drain(')) {
+      return { result: { value: JSON.stringify({ entries: [], dropped: 0 }) } };
+    }
+    return { result: { value: 'ready' } };
+  });
+  const scope = await scopeFor(server.serverUrl);
+
+  const started = await startMetroNetworkCapture({
+    scope,
+    includesBodies: true,
+    maxPayloadChars: 2048,
+    spawnHolder: async () => {
+      throw new Error('the hook source needs no holder');
+    },
+  });
+  assert.equal(started.source, 'metro-js-hook');
+  assert.equal(
+    readNetworkCaptureState(scope)?.includesBodies,
+    false,
+    'the state records the rule the runtime runs, not the one this start asked for',
+  );
+
+  const dumped = await dumpMetroNetworkCapture(scope, {
+    maxEntries: 25,
+    include: 'all',
+    maxPayloadChars: 2048,
+  });
+  assert.match(
+    dumped.notes?.find((note) => note.includes('Bodies are off')) ?? '',
+    /already held a capture hook installed without them/,
+  );
+  assert.doesNotMatch(dumped.notes?.join(' ') ?? '', /run network start again to capture them/);
+});
+
+test("a pre-existing hook older than the stats field keeps this start's body rule in the state", async () => {
+  // A hook predating the stats field cannot answer what it records. Recording it as body-off would
+  // hide bodies the dump really carries, so the state keeps this start's rule and the truth wins.
+  const server = await harness([PIXEL]);
+  server.refuseMethod('Network.enable');
+  server.answer('Runtime.evaluate', (message) => {
+    const expression = String((message.params as { expression?: string })?.expression ?? '');
+    if (expression.includes('.stats()')) {
+      return { result: { value: JSON.stringify({ ok: true, capturing: true }) } };
+    }
+    if (expression.includes('.drain(')) {
+      return { result: { value: JSON.stringify({ entries: [], dropped: 0 }) } };
+    }
+    return { result: { value: 'ready' } };
+  });
+  const scope = await scopeFor(server.serverUrl);
+
+  const started = await startMetroNetworkCapture({
+    scope,
+    includesBodies: true,
+    maxPayloadChars: 2048,
+    spawnHolder: async () => {
+      throw new Error('the hook source needs no holder');
+    },
+  });
+  assert.equal(started.source, 'metro-js-hook');
+  assert.equal(readNetworkCaptureState(scope)?.includesBodies, true);
+  assert.equal(readNetworkCaptureState(scope)?.bodiesSetByExistingHook, undefined);
+});
+
 test('a hook capture ends at a JS reload, because the buffer lived in the runtime it replaced', async () => {
   const server = await harness([PIXEL]);
   server.refuseMethod('Network.enable');
@@ -465,6 +542,36 @@ test('a capture whose runtime is gone mid-window is refused rather than followed
       return true;
     },
   );
+});
+
+test('a temp file a dead write left behind cannot carry a wider mode into the state file', async () => {
+  // The rename keeps a file's mode, and these files hold captured headers and bodies, so the
+  // write narrows the temp path itself rather than trusting the create-time mode.
+  const stateDir = mkdtempForTestSync('agent-device-network-capture-mode-');
+  tempDirs.push(stateDir);
+  const scope: NetworkCaptureScope = { stateDir, session: 'mode-test' };
+  const statePath = networkCaptureStatePath(scope);
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  const staleTemp = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(staleTemp, 'stale\n', { encoding: 'utf8', mode: 0o644 });
+  fs.chmodSync(staleTemp, 0o644);
+
+  writeNetworkCaptureState(scope, {
+    source: 'metro-js-hook',
+    session: 'mode-test',
+    startedAt: Date.now(),
+    binding: {
+      serverUrl: 'http://127.0.0.1:8081',
+      appId: APP_ID,
+      logicalDeviceId: 'pixel',
+      targetId: 'pixel-1',
+    },
+    includesBodies: true,
+    maxPayloadChars: 2048,
+  });
+
+  assert.equal(fs.statSync(statePath).mode & 0o077, 0, 'owner-only, whatever the temp file was');
+  assert.equal(fs.existsSync(staleTemp), false, 'the stale temp file is the one that was written');
 });
 
 test('stop closes the capture so the next dump is the daemon app-log read again', async () => {

@@ -270,8 +270,10 @@ export class NetworkCaptureHolder {
   /**
    * Reads each drained entry's response body through `Network.getResponseBody`, which the runtime
    * serves from its own bounded preview buffer. A body the runtime already gave up is counted as
-   * missing, never guessed at. The whole phase runs inside one deadline well short of the reader's
-   * own: a reply that overruns it would be destroyed in flight and its window reported as empty.
+   * missing, never guessed at. This phase runs inside one deadline short of the reader's own, so a
+   * slow runtime keeps most of the drain budget for answering. A drain that overruns the reader's
+   * deadline anyway costs nothing permanent: the reply is destroyed in flight, the undelivered
+   * entries go back into the buffer, and the next dump reports them.
    */
   async #readResponseBodies(
     entries: readonly CapturedCdpRequest[],
@@ -326,7 +328,7 @@ async function readOneBody(
 
 /**
  * Serves one holder over a unix socket: `drain`, `stats`, `stop`. The socket lives in the session's
- * state dir, so only a reader on the host that armed the capture can reach it.
+ * owner's state dir and is reachable by that owner alone.
  */
 export async function serveNetworkCaptureHolder(
   holder: NetworkCaptureHolder,
@@ -354,7 +356,14 @@ export async function serveNetworkCaptureHolder(
       while (newline >= 0) {
         const request = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
-        queue = queue.then(() => respond(connection, request));
+        // The catch keeps one failed answer from poisoning the chain: a rejected link would make
+        // every later request's `then` run on it, and the holder would go deaf without dying.
+        queue = queue
+          .then(() => respond(connection, request))
+          .catch(() => {
+            // `respond` answers every failure itself; a rejection reaching here is a defect in this
+            // file, and the socket stays serving regardless.
+          });
         newline = buffer.indexOf('\n');
       }
     });
@@ -430,9 +439,18 @@ export async function serveNetworkCaptureHolder(
       });
     });
   }
+  /** Ends the capture and the socket. Total: no step's failure may skip the steps that clean up. */
   async function stopServing(): Promise<void> {
-    await holder.close();
-    server.close();
+    try {
+      await holder.close();
+    } catch {
+      // The connection is going away whatever it says about it.
+    }
+    try {
+      server.close();
+    } catch {
+      // A server already closed has nothing left to refuse.
+    }
     fs.rmSync(socketPath, { force: true });
   }
   await new Promise<void>((resolve, reject) => {

@@ -177,11 +177,14 @@ export function networkCaptureLost(reason: string | undefined): AppError {
 function writeJsonFile(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.tmp`;
-  // One person's capture state, whatever process writes it.
+  // One person's capture state, whatever process writes it. `mode` is applied only when the create
+  // happens, so a temp file a dead write left behind at a wider mode is narrowed here too: the
+  // rename carries a file's mode with it, and these files hold captured headers and bodies.
   fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, {
     encoding: 'utf8',
     mode: 0o600,
   });
+  fs.chmodSync(tempPath, 0o600);
   fs.renameSync(tempPath, filePath);
 }
 
@@ -239,6 +242,7 @@ function readCaptureState(value: unknown): NetworkCaptureState | undefined {
     maxPayloadChars: typeof record.maxPayloadChars === 'number' ? record.maxPayloadChars : 2048,
     ...(record.requiresRelaunch === true ? { requiresRelaunch: true } : {}),
     ...(typeof record.rearmedAt === 'number' ? { rearmedAt: record.rearmedAt } : {}),
+    ...(record.bodiesSetByExistingHook === true ? { bodiesSetByExistingHook: true as const } : {}),
   };
 }
 

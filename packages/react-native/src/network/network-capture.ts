@@ -23,6 +23,7 @@ import {
   type NetworkCaptureScope,
 } from './network-capture-state.ts';
 import { askNetworkCaptureHolder } from './network-capture-socket.ts';
+import { HOLDER_ENTRYPOINT } from './network-capture-holder-spawn.ts';
 import {
   resolveNetworkCaptureTarget,
   type ResolvedCaptureTarget,
@@ -125,11 +126,15 @@ export async function startMetroNetworkCapture(
   } finally {
     session.close();
   }
-  const { source, includesBodies } = armedRuntime;
+  const { source, includesBodies, bodiesSetByExistingHook } = armedRuntime;
   const notes: string[] = [...armedRuntime.notes];
   let pid: number | undefined;
   let requiresRelaunch = false;
-  const state = { ...stateFor(input, resolved, source), includesBodies };
+  const state = {
+    ...stateFor(input, resolved, source),
+    includesBodies,
+    ...(bodiesSetByExistingHook ? { bodiesSetByExistingHook: true as const } : {}),
+  };
   if (source === 'metro-cdp') {
     // The holder is a detached process and reads its binding from the state file, so the file has to
     // exist before the spawn; the pid that proves the capture is live is written once it answers.
@@ -219,11 +224,12 @@ export async function stopMetroNetworkCapture(scope: NetworkCaptureScope): Promi
 
 async function retireHolderProcess(pid: number): Promise<void> {
   try {
-    const { stopProcessAndConfirmExit, readProcessStartTime } =
-      await import('@agent-device/host-kit/process');
+    const { stopProcessAndConfirmExit } = await import('@agent-device/host-kit/process');
+    // Identity by content, not by a start time read at signal time: a timestamp sampled after the
+    // pid could change hands always agrees with itself and proves nothing. The entry file name can
+    // only name a network capture holder, so the signal cannot land on a recycled pid.
     await stopProcessAndConfirmExit(
-      // The start time read now is what keeps the signal from aiming at a recycled pid.
-      { pid, identity: { startTime: readProcessStartTime(pid) ?? undefined } },
+      { pid, identity: { matches: (command) => command.includes(HOLDER_ENTRYPOINT) } },
       { termTimeoutMs: 2_000, killTimeoutMs: 2_000 },
     );
   } catch {
@@ -257,16 +263,27 @@ async function armReactNativeRuntime(
   session: InspectorSession,
   options: Readonly<{ includesBodies: boolean; maxPayloadChars: number }>,
 ): Promise<
-  Readonly<{ source: NetworkCaptureSource; includesBodies: boolean; notes: readonly string[] }>
+  Readonly<{
+    source: NetworkCaptureSource;
+    includesBodies: boolean;
+    bodiesSetByExistingHook: boolean;
+    notes: readonly string[];
+  }>
 > {
   if (await cdpNetworkAvailable(session)) {
-    return { source: 'metro-cdp', includesBodies: options.includesBodies, notes: [] };
+    return {
+      source: 'metro-cdp',
+      includesBodies: options.includesBodies,
+      bodiesSetByExistingHook: false,
+      notes: [],
+    };
   }
   const installed = await session.evaluate(
     `(${NETWORK_CAPTURE_RUNTIME_SOURCE})(${JSON.stringify(NETWORK_CAPTURE_RUNTIME_VERSION)}, ${NETWORK_CAPTURE_MAX_ENTRIES}, ${options.maxPayloadChars}, ${NETWORK_CAPTURE_HEADER_CHARS}, ${options.includesBodies ? 'true' : 'false'})`,
   );
   const notes: string[] = [];
   let includesBodies = options.includesBodies;
+  let bodiesSetByExistingHook = false;
   if (installed === 'ready') {
     // A hook from an earlier capture is still patched and still holding its buffer. That traffic
     // belongs to no window this capture watched, so it is discarded here rather than handed to the
@@ -284,14 +301,24 @@ async function armReactNativeRuntime(
         : 'The app runtime already held the capture hook from an earlier run, so this window starts at that install.',
     );
     // A hook already installed decides its own body rule at its own install; the state must record
-    // what the runtime actually does, not what this caller asked for.
+    // what the runtime actually does, not what this caller asked for. A hook predating the stats
+    // field reports no answer, and recording it as body-off would hide bodies the dump does carry,
+    // so its rule is left as this start asked for and only the truth goes in the state.
     const stats = readJson(
       await session.evaluate(`${NETWORK_CAPTURE_RUNTIME_GLOBAL}.stats()`),
       'stats',
     );
-    includesBodies = stats.captureBodies === true;
+    if (typeof stats.captureBodies === 'boolean') {
+      includesBodies = stats.captureBodies;
+      bodiesSetByExistingHook = true;
+    }
   }
-  return { source: 'metro-js-hook', includesBodies, notes: Object.freeze(notes) };
+  return {
+    source: 'metro-js-hook',
+    includesBodies,
+    bodiesSetByExistingHook,
+    notes: Object.freeze(notes),
+  };
 }
 
 /**
@@ -348,7 +375,11 @@ async function drainHookRuntime(
       }),
     ];
     if (!state.includesBodies && includesBody(input.include)) {
-      notes.push('Bodies are off for this capture; run network start again to capture them.');
+      notes.push(
+        state.bodiesSetByExistingHook
+          ? 'Bodies are off for this capture because the app runtime already held a capture hook installed without them, and that hook keeps its rule for the app lifetime; reload the app to install one that captures bodies, then run network stop and network start again.'
+          : 'Bodies are off for this capture; run network start again to capture them.',
+      );
     }
     if (entries.length === 0) {
       notes.push(
