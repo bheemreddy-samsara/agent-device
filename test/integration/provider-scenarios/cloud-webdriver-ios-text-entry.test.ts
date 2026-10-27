@@ -319,6 +319,9 @@ test('cloud iOS fill sends no replacement and does not retry a rejected clear', 
     );
 
     assert.ok(response.json.error);
+    assert.equal(response.json.error.data?.code, 'COMMAND_FAILED');
+    assert.equal(response.json.error.data?.details?.status, 503);
+    assert.match(response.json.error.message ?? '', /clear rejected/);
     assert.equal(server.fieldValues.email, 'old-value');
     assert.equal(textEntryTranscript(server).filter((step) => step === 'clear').length, 1);
     assert.equal(textEntryTranscript(server).includes('keys'), false);

@@ -18,8 +18,11 @@ test('fill withholds keys until the tapped point holds text-entry focus', async 
   world.activeRects = ['none', 'none', CONTAINS_TAP];
 
   const result = await runFill(world);
-
   assert.equal(result?.textEntryReadiness, 'focused-element');
+  assert.deepEqual(vi.mocked(world.client.clearElement).mock.calls, [['tapped']]);
+  assert.deepEqual(vi.mocked(world.client.sendElementKeys).mock.calls, [
+    ['tapped', 'user@example.com'],
+  ]);
   assert.deepEqual(world.transcript, [
     'keyboard',
     'active',
@@ -440,12 +443,12 @@ function createTextEntryWorld() {
       world.tapped = true;
     },
     releaseActions: async () => {},
-    clearElement: async () => {
+    clearElement: vi.fn(async () => {
       world.transcript.push('clear');
-    },
-    sendElementKeys: async () => {
+    }),
+    sendElementKeys: vi.fn(async () => {
       world.transcript.push('keys');
-    },
+    }),
     activeElementReference: (timeoutMs?: number) =>
       world.client
         .activeElement(timeoutMs)

@@ -489,6 +489,13 @@ function assertWebDriverCalls(calls: readonly CloudWebDriverHttpCall[], leaseId:
   ]) {
     assert.ok(paths.includes(expected), `missing WebDriver transcript call: ${expected}`);
   }
+  const clearIndex = paths.indexOf('POST /wd/hub/session/wd-1/element/focused-field/clear');
+  const valueIndex = paths.indexOf('POST /wd/hub/session/wd-1/element/focused-field/value');
+  assert.ok(clearIndex < valueIndex);
+  assert.deepEqual(calls[valueIndex]?.body, {
+    text: 'hello cloud',
+    value: Array.from('hello cloud'),
+  });
   const create = calls.find((call) => call.path === '/wd/hub/session');
   assert.deepEqual(create?.body, {
     capabilities: {

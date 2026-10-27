@@ -419,6 +419,7 @@ for (const operation of ['clear', 'replace'] as const) {
       operation === 'clear'
         ? client.clearElement('field')
         : client.sendElementKeys('field', 'replacement'),
+      /provider unavailable/,
     );
     assert.equal(calls, 1);
   });

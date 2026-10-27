@@ -142,19 +142,19 @@ export type TypeTextBackendResult = {
 };
 
 /**
- * What a cloud `fill` could establish about its target taking text entry focus
- * before it sent the keys (#1658). The local Apple runner owns this discipline
- * in Swift and reports it as a `textEntryRoute`; a cloud session has no runner,
+ * Focus evidence reported by a cloud `fill` before clearing or typing (#1658).
+ * The local Apple runner owns this discipline in Swift and reports it as a
+ * `textEntryRoute`; a cloud session has no runner,
  * only what its provider will tell it, so it names what it observed instead of
  * which channel it typed through. Listed strongest evidence first:
  *
  * - `focused-element`: after the tap, the element holding text-entry focus is the
  *   one this fill aimed at — positive evidence that THIS field, not merely some
  *   field, took focus. A field that focusing re-laid out still counts.
- * - `keyboard-shown`: no active-element route, but the software keyboard went
- *   from hidden to shown after our tap. Witnesses that focus arrived somewhere,
- *   which only means our field when the keyboard was down beforehand.
- * Every value describes a fill that sent its keys AND witnessed focus first.
+ * - `keyboard-shown`: legacy WebDriver evidence that the software keyboard went
+ *   from hidden to shown after the tap. Retained for released provider results;
+ *   current WebDriver fills require a focused element reference and do not emit it.
+ * Current cloud fills report `focused-element`, including clear-only fills.
  * There is deliberately no value for "typed without evidence": nothing renders
  * this field, so such a value would reach a caller as an ordinary success and
  * recreate the #1658 silent false success it exists to remove. Every
@@ -167,9 +167,8 @@ export type TypeTextBackendResult = {
  *   wait could establish anything. `press` + `type` remains the deliberate way
  *   to enter text unwitnessed.
  *
- * Closed set: the two cloud interactors are its only producers and the boundary
- * that narrows it (readFillBackendResult in the touch handler) drops a value it
- * cannot name.
+ * Closed set accepted by readFillBackendResult at the touch boundary. It keeps
+ * the legacy result readable and drops values it cannot name.
  */
 export const CLOUD_TEXT_ENTRY_READINESS = ['focused-element', 'keyboard-shown'] as const;
 
