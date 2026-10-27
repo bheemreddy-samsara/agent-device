@@ -374,6 +374,56 @@ test('activeElement bounds its two sequential requests by one shared budget', as
   );
 });
 
+test('element clear and replacement address the same encoded element reference', async () => {
+  const calls: Array<{ path: string; method: string | undefined; body: unknown }> = [];
+  const client = await connectedClient(async (input, init) => {
+    calls.push({
+      path: new URL(String(input)).pathname,
+      method: init?.method,
+      body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+    });
+    return new Response(JSON.stringify({ value: null }), { status: 200 });
+  });
+
+  await client.clearElement('field/one');
+  await client.sendElementKeys('field/one', 'a😀');
+
+  assert.deepEqual(calls, [
+    { path: '/wd/hub/session/wd-1/element/field%2Fone/clear', method: 'POST', body: {} },
+    {
+      path: '/wd/hub/session/wd-1/element/field%2Fone/value',
+      method: 'POST',
+      body: { text: 'a😀', value: ['a', '😀'] },
+    },
+  ]);
+});
+
+for (const operation of ['clear', 'replace'] as const) {
+  test(`element ${operation} does not retry a provider failure`, async () => {
+    let calls = 0;
+    globalThis.fetch = webDriverResponse(200, { value: { sessionId: 'wd-1', capabilities: {} } });
+    const client = new WebDriverClient({
+      clientVersion: '0.0.0-test',
+      endpoint: 'http://cloud-webdriver.test/wd/hub/',
+      requestPolicy: { retryAttempts: 3 },
+    });
+    await client.createSession({ platformName: 'iOS' });
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ value: { message: 'provider unavailable' } }), {
+        status: 503,
+      });
+    };
+
+    await assert.rejects(
+      operation === 'clear'
+        ? client.clearElement('field')
+        : client.sendElementKeys('field', 'replacement'),
+    );
+    assert.equal(calls, 1);
+  });
+}
+
 const W3C_ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf';
 
 /** Dispatches by URL suffix, since `activeElement` makes two round trips. */

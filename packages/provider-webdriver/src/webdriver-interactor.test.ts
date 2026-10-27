@@ -27,6 +27,7 @@ test('fill withholds keys until the tapped point holds text-entry focus', async 
     'active',
     'active',
     'active',
+    'clear',
     'keys',
   ]);
 });
@@ -44,7 +45,7 @@ test('fill accepts a keyboard-up second field once focus lands on the tapped poi
   const result = await runFill(world);
 
   assert.equal(result?.textEntryReadiness, 'focused-element');
-  assert.deepEqual(world.transcript, ['keyboard', 'active', 'tap', 'active', 'keys']);
+  assert.deepEqual(world.transcript, ['keyboard', 'active', 'tap', 'active', 'clear', 'keys']);
 });
 
 // P1, the two-field misdelivery: email filled, keyboard stays up, the password
@@ -93,14 +94,16 @@ test('fill accepts a re-fill of the already-focused field it tapped', async () =
   assert.equal(result?.textEntryReadiness, 'focused-element');
 });
 
-test('fill falls back to the keyboard transition when there is no active-element route', async () => {
+test('fill refuses replacement when only the keyboard transition can confirm focus', async () => {
   const world = createTextEntryWorld();
   world.activeRoute = 'unimplemented';
   world.keyboardShown = [false, false, true];
 
-  const result = await runFill(world);
-
-  assert.equal(result?.textEntryReadiness, 'keyboard-shown');
+  await assert.rejects(runFill(world), (error: AppError) => {
+    assert.equal(error.code, 'UNSUPPORTED_OPERATION');
+    assert.equal(error.details?.reason, 'text_entry_clear_target_unavailable');
+    return true;
+  });
   assert.deepEqual(world.transcript, [
     'keyboard',
     'active',
@@ -108,7 +111,6 @@ test('fill falls back to the keyboard transition when there is no active-element
     'active',
     'keyboard',
     'keyboard',
-    'keys',
   ]);
 });
 
@@ -231,25 +233,17 @@ test('fill caps each probe timeout by the readiness budget remaining', async () 
  * past the whole readiness budget is safe for every case — once readiness
  * resolves there are no pending timers left to fire.
  */
-// `fill <target> ""` is the clear-field primitive (#2063). This backend's fill is tap +
-// sendKeys and owns no clear mechanism, so an empty fill must refuse up front — sending zero
-// keys and reporting success would claim a clear that never ran, before even touching the
-// device.
-test('fill refuses empty text as an unsupported clear rather than a vacuous success', async () => {
+test('fill clears an empty replacement without sending keys', async () => {
   const world = createTextEntryWorld();
+  world.activeRects = [CONTAINS_TAP];
   const interactor = createWebDriverInteractor({
     client: world.client,
     backend: 'xctest',
     capabilities: createCloudWebDriverCapabilities({ provider: 'test', platform: 'ios' }),
   });
 
-  await assert.rejects(interactor.fill(12, 24, ''), (error: AppError) => {
-    assert.equal(error.code, 'UNSUPPORTED_OPERATION');
-    assert.match(error.message, /clear field/);
-    return true;
-  });
-  // Fail-closed means untouched: no tap, no keys, no probes reached the device.
-  assert.deepEqual(world.transcript, []);
+  await interactor.fill(12, 24, '');
+  assert.deepEqual(world.transcript, ['keyboard', 'active', 'tap', 'active', 'clear']);
 });
 
 test('iOS WebDriver interactor routes snapshots through the acquisition adapter', async () => {
@@ -446,7 +440,10 @@ function createTextEntryWorld() {
       world.tapped = true;
     },
     releaseActions: async () => {},
-    sendKeys: async () => {
+    clearElement: async () => {
+      world.transcript.push('clear');
+    },
+    sendElementKeys: async () => {
       world.transcript.push('keys');
     },
     activeElementReference: (timeoutMs?: number) =>

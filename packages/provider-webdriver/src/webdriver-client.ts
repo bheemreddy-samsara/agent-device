@@ -40,7 +40,7 @@ export type WebDriverWindowRect = {
 };
 
 export type WebDriverActiveElement = {
-  /** Opaque W3C element reference; only ever compared for equality. */
+  /** Opaque W3C element reference. */
   id: string;
   rect: WebDriverWindowRect;
 };
@@ -155,6 +155,17 @@ export class WebDriverClient {
 
   async sendKeys(text: string): Promise<void> {
     await this.sessionRequest('POST', '/keys', { value: Array.from(text) });
+  }
+
+  async clearElement(elementId: string): Promise<void> {
+    await this.sessionRequest('POST', `/element/${encodeURIComponent(elementId)}/clear`);
+  }
+
+  async sendElementKeys(elementId: string, text: string): Promise<void> {
+    await this.sessionRequest('POST', `/element/${encodeURIComponent(elementId)}/value`, {
+      text,
+      value: Array.from(text),
+    });
   }
 
   async hideKeyboard(): Promise<void> {

@@ -1,7 +1,6 @@
 import type { DeviceRotation, HardwareButton } from '@agent-device/contracts/device';
 import type { BackMode } from '@agent-device/contracts/back-mode';
 import type {
-  CloudTextEntryReadiness,
   Interactor,
   ScreenshotOptions,
   SnapshotOptions,
@@ -239,18 +238,6 @@ class WebDriverInteractor implements Interactor {
     _delayMs?: number,
   ): Promise<Record<string, unknown>> {
     this.requireSupport('fill');
-    // This backend's fill is tap + sendKeys: it never clears the existing value, so the
-    // clear-field request (`fill <target> ""`, #2063) has no mechanism here — sending zero keys
-    // and reporting success would claim a clear that never ran.
-    if (text.length === 0) {
-      throw new AppError(
-        'UNSUPPORTED_OPERATION',
-        'fill with empty text (clear field) is not supported on the webdriver backend',
-        {
-          hint: 'Use a visible clear/reset control in the app, or fill the field with the intended replacement text directly.',
-        },
-      );
-    }
     // #1658: both readings are taken BEFORE the tap, because each is only
     // evidence as a change. A keyboard that was already up says nothing about
     // which field owns first responder now, and a focused element is only
@@ -259,9 +246,10 @@ class WebDriverInteractor implements Interactor {
     // fill that has not touched the device rather than typing into the dark.
     const beforeTap = await this.readTextEntryState();
     await this.tap(x, y);
-    const textEntryReadiness = await this.awaitTextEntryReadiness(beforeTap, x, y);
-    await this.type(text);
-    return { backend: 'webdriver', x, y, text, textEntryReadiness };
+    const focusedElementId = await this.awaitTextEntryReadiness(beforeTap, x, y);
+    await this.client.clearElement(focusedElementId);
+    if (text.length > 0) await this.client.sendElementKeys(focusedElementId, text);
+    return { backend: 'webdriver', x, y, text, textEntryReadiness: 'focused-element' };
   }
 
   async scroll(
@@ -625,7 +613,7 @@ class WebDriverInteractor implements Interactor {
     beforeTap: TextEntryStateBeforeTap,
     x: number,
     y: number,
-  ): Promise<CloudTextEntryReadiness> {
+  ): Promise<string> {
     const keyboardBeforeTap = beforeTap.keyboard;
     const deadline = Date.now() + TEXT_ENTRY_READINESS_TIMEOUT_MS;
     // Strongest evidence first: the focused element itself. Keyboard visibility
@@ -642,14 +630,17 @@ class WebDriverInteractor implements Interactor {
     // field that is ALREADY focused moves nothing, and only geometry can tell
     // that from a tap that missed everything.
     const focusedBeforeTap = beforeTap.focusedElementId;
+    let focusedElementId: string | undefined;
     const focus = await this.pollWithinBudget(deadline, async (timeoutMs) => {
       const active = await this.client.activeElement(timeoutMs);
       if (active === 'unsupported') return 'abandon';
       if (active === 'none') return 'retry';
       const moved = active.id !== focusedBeforeTap;
-      return moved || rectContains(active.rect, x, y) ? 'satisfied' : 'retry';
+      if (!moved && !rectContains(active.rect, x, y)) return 'retry';
+      focusedElementId = active.id;
+      return 'satisfied';
     });
-    if (focus === 'satisfied') return 'focused-element';
+    if (focusedElementId !== undefined) return focusedElementId;
     if (focus === 'expired') {
       throw textEntryFocusNotObservedError(
         x,
@@ -682,7 +673,13 @@ class WebDriverInteractor implements Interactor {
     const keyboard = await this.pollWithinBudget(deadline, async (timeoutMs) =>
       (await this.client.isKeyboardShown(timeoutMs)) === true ? 'satisfied' : 'retry',
     );
-    if (keyboard === 'satisfied') return 'keyboard-shown';
+    if (keyboard === 'satisfied') {
+      throw new AppError(
+        'UNSUPPORTED_OPERATION',
+        'fill requires a focused element reference to clear and replace the field',
+        { reason: 'text_entry_clear_target_unavailable' },
+      );
+    }
     throw textEntryFocusNotObservedError(x, y, 'no keyboard appeared, so the text was not sent');
   }
 

@@ -159,6 +159,7 @@ test('cloud iOS fill lands text in the field it tapped', async () => {
       'tap',
       'active',
       'active',
+      'clear',
       'keys',
     ]);
 
@@ -265,11 +266,108 @@ test('cloud iOS fill does not read the previous field geometry before tapping it
   });
 }, 15_000);
 
+test('cloud iOS fill replaces a non-empty field without changing its neighbor', async () => {
+  await withProviderScenarioResource(createCloudIosWorld, async ({ daemon, server }) => {
+    const lease = await openCloudIosSession(daemon);
+    server.focusField('email', 'old-value');
+    server.fieldValues.password = 'unchanged';
+
+    assertRpcOk(
+      await daemon.callCommand('fill', ['label=Email', 'replacement'], leaseFlags(lease.leaseId), {
+        meta: leaseMeta(lease.leaseId),
+      }),
+    );
+
+    assert.equal(server.fieldValues.email, 'replacement');
+    assert.equal(server.fieldValues.password, 'unchanged');
+    assert.equal(
+      server.calls.some((call) => call.path.endsWith('/keys')),
+      false,
+    );
+    assert.deepEqual(textEntryTranscript(server).slice(-2), ['clear', 'keys']);
+  });
+}, 15_000);
+
+test('cloud iOS empty fill clears the focused field without sending keys', async () => {
+  await withProviderScenarioResource(createCloudIosWorld, async ({ daemon, server }) => {
+    const lease = await openCloudIosSession(daemon);
+    server.focusField('email', 'old-value');
+
+    assertRpcOk(
+      await daemon.callCommand('fill', ['label=Email', ''], leaseFlags(lease.leaseId), {
+        meta: leaseMeta(lease.leaseId),
+      }),
+    );
+
+    assert.equal(server.fieldValues.email, '');
+    assert.equal(textEntryTranscript(server).includes('clear'), true);
+    assert.equal(textEntryTranscript(server).includes('keys'), false);
+  });
+}, 15_000);
+
+test('cloud iOS fill sends no replacement and does not retry a rejected clear', async () => {
+  await withProviderScenarioResource(createCloudIosWorld, async ({ daemon, server }) => {
+    const lease = await openCloudIosSession(daemon);
+    server.focusField('email', 'old-value');
+    server.clearFails = true;
+
+    const response = await daemon.callCommand(
+      'fill',
+      ['label=Email', 'replacement'],
+      leaseFlags(lease.leaseId),
+      { meta: leaseMeta(lease.leaseId) },
+    );
+
+    assert.ok(response.json.error);
+    assert.equal(server.fieldValues.email, 'old-value');
+    assert.equal(textEntryTranscript(server).filter((step) => step === 'clear').length, 1);
+    assert.equal(textEntryTranscript(server).includes('keys'), false);
+  });
+}, 15_000);
+
+test('cloud iOS fill replaces the confirmed element even if clearing changes focus', async () => {
+  await withProviderScenarioResource(createCloudIosWorld, async ({ daemon, server }) => {
+    const lease = await openCloudIosSession(daemon);
+    server.focusField('email', 'old-value');
+    server.fieldValues.password = 'unchanged';
+    server.focusAfterClear = 'password';
+
+    assertRpcOk(
+      await daemon.callCommand('fill', ['label=Email', 'replacement'], leaseFlags(lease.leaseId), {
+        meta: leaseMeta(lease.leaseId),
+      }),
+    );
+
+    assert.equal(server.fieldValues.email, 'replacement');
+    assert.equal(server.fieldValues.password, 'unchanged');
+  });
+}, 15_000);
+
+test('cloud iOS type remains append-only and never clears', async () => {
+  await withProviderScenarioResource(createCloudIosWorld, async ({ daemon, server }) => {
+    const lease = await openCloudIosSession(daemon);
+    server.focusField('email', 'old-value');
+
+    assertRpcOk(
+      await daemon.callCommand('type', ['-suffix'], leaseFlags(lease.leaseId), {
+        meta: leaseMeta(lease.leaseId),
+      }),
+    );
+
+    assert.equal(server.fieldValues.email, 'old-value-suffix');
+    assert.equal(textEntryTranscript(server).includes('clear'), false);
+  });
+}, 15_000);
+
 /** The tap/keys/keyboard requests in the order the driver received them. */
 function textEntryTranscript(server: FakeIosWebDriverServer): string[] {
   const labels: Record<string, string> = {
     'POST /wd/hub/session/wd-1/actions': 'tap',
     'POST /wd/hub/session/wd-1/keys': 'keys',
+    'POST /wd/hub/session/wd-1/element/email/clear': 'clear',
+    'POST /wd/hub/session/wd-1/element/password/clear': 'clear',
+    'POST /wd/hub/session/wd-1/element/email/value': 'keys',
+    'POST /wd/hub/session/wd-1/element/password/value': 'keys',
     'GET /wd/hub/session/wd-1/appium/device/is_keyboard_shown': 'keyboard',
     'GET /wd/hub/session/wd-1/element/active': 'active',
   };
@@ -348,6 +446,8 @@ class FakeIosWebDriverServer extends CloudWebDriverTestServer {
   focused: FieldName | undefined;
   sourceOverride: string | undefined;
   rectFailureField: FieldName | undefined;
+  clearFails = false;
+  focusAfterClear: FieldName | undefined;
 
   private pollsRemaining = Number.POSITIVE_INFINITY;
   private pendingFocus: FieldName | undefined;
@@ -367,6 +467,13 @@ class FakeIosWebDriverServer extends CloudWebDriverTestServer {
   protected respond(call: CloudWebDriverHttpCall) {
     const rectMatch = /^\/wd\/hub\/session\/wd-1\/element\/([^/]+)\/rect$/.exec(call.path);
     if (call.method === 'GET' && rectMatch) return this.elementRect(rectMatch[1]!);
+    const inputMatch = /^\/wd\/hub\/session\/wd-1\/element\/(email|password)\/(clear|value)$/.exec(
+      call.path,
+    );
+    if (call.method === 'POST' && inputMatch) {
+      const field = inputMatch[1] as FieldName;
+      return inputMatch[2] === 'clear' ? this.clearField(field) : this.sendKeys(field);
+    }
     const route = this.routes[`${call.method} ${call.path}`];
     return route ? route() : cloudWebDriverTestJson({ value: null });
   }
@@ -443,11 +550,23 @@ class FakeIosWebDriverServer extends CloudWebDriverTestServer {
     return this.focused !== undefined;
   }
 
-  private sendKeys(): CloudWebDriverTestResponse {
+  private clearField(field: FieldName): CloudWebDriverTestResponse {
+    if (this.clearFails) {
+      return cloudWebDriverTestJson(
+        { value: { error: 'unknown error', message: 'clear rejected' } },
+        503,
+      );
+    }
+    this.fieldValues[field] = '';
+    if (this.focusAfterClear !== undefined) this.focused = this.focusAfterClear;
+    return cloudWebDriverTestJson({ value: null });
+  }
+
+  private sendKeys(field = this.focused): CloudWebDriverTestResponse {
     // Unfocused keys are accepted by the grid and land nowhere; keys sent while
     // the WRONG field holds focus land in that field. Both are the bug's shape.
     const text = this.lastSentKeys();
-    if (this.focused && text !== undefined) this.fieldValues[this.focused] = text;
+    if (field && text !== undefined) this.fieldValues[field] += text;
     return cloudWebDriverTestJson({ value: null });
   }
 

@@ -24,7 +24,8 @@ function routeOf(input: Parameters<typeof fetch>[0], init?: RequestInit): string
   const method = init?.method ?? 'GET';
   const pathname = url.pathname
     .replace(/^\/wd\/hub/, '')
-    .replace(/^\/session\/wd-1/, '/session/:id');
+    .replace(/^\/session\/wd-1/, '/session/:id')
+    .replace(/\/element\/[^/]+(?=\/(?:clear|value)$)/, '/element/:element');
   if (pathname.endsWith('/execute/sync') && typeof init?.body === 'string') {
     return (JSON.parse(init.body) as { script: string }).script;
   }
@@ -131,6 +132,12 @@ const MUTATING_ROUTES: Record<string, MutatingRouteRow> = {
   'POST /session/:id/actions': { act: ({ interactor }) => interactor.tap(10, 20) },
   'DELETE /session/:id/actions': { act: ({ client }) => client.releaseActions() },
   'POST /session/:id/keys': { act: ({ client }) => client.sendKeys('hello') },
+  'POST /session/:id/element/:element/clear': {
+    act: ({ client }) => client.clearElement('field-1'),
+  },
+  'POST /session/:id/element/:element/value': {
+    act: ({ client }) => client.sendElementKeys('field-1', 'hello'),
+  },
   'POST /session/:id/back': { act: ({ interactor }) => interactor.back() },
   'POST /session/:id/rotation': { act: ({ client }) => client.setRotation(90) },
   'POST /session/:id/orientation': { act: ({ client }) => client.setOrientation('LANDSCAPE') },
@@ -188,7 +195,7 @@ function requestRoutesIn(source: string): string[] {
     ),
   ].map(([, helper, method, routePath]) => {
     const absolute = helper === 'sessionRequest' ? `/session/:id${routePath}` : routePath!;
-    return `${method} ${absolute.replace('${sessionId}', ':id')}`;
+    return `${method} ${absolute.replace('${sessionId}', ':id').replace('${encodeURIComponent(elementId)}', ':element')}`;
   });
 }
 
