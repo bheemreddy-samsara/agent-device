@@ -236,6 +236,7 @@ export class WebDriverClient {
     // overrun the deadline it was derived from. One deadline, and the second
     // request gets only what the first left.
     const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+    // The ID lookup receives only the outer operation's remaining budget.
     const reference = await this.activeElementReference(requestBudget(deadline).timeoutMs);
     if (typeof reference === 'string') return reference;
     const elementId = reference.id;

@@ -219,9 +219,7 @@ test('createSession is bounded by the operation deadline when it is shorter', as
   );
 });
 
-// The focused element is the only signal that can say WHICH field took focus,
-// so `fill` fails closed when it is unavailable. Each wire shape it
-// distinguishes is pinned here.
+// The pre-tap lookup consumes identity only; geometry must not be requested here.
 test('activeElementReference reads only the focused identity, not its geometry', async () => {
   const paths: string[] = [];
   const client = await connectedClient(async (input) => {
@@ -233,6 +231,9 @@ test('activeElementReference reads only the focused identity, not its geometry',
   assert.deepEqual(paths, ['/wd/hub/session/wd-1/element/active']);
 });
 
+// The focused element is the only signal that can say WHICH field took focus,
+// so `fill` fails closed when it is unavailable. Each wire shape it
+// distinguishes is pinned here.
 test('activeElement returns the focused element id and rect', async () => {
   const client = await connectedClient(
     webDriverRoutes({
