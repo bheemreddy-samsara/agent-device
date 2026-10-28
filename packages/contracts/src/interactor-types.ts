@@ -151,26 +151,21 @@ export type TypeTextBackendResult = {
  * - `focused-element`: after the tap, the element holding text-entry focus is the
  *   one this fill aimed at — positive evidence that THIS field, not merely some
  *   field, took focus. A field that focusing re-laid out still counts.
- * - `keyboard-shown`: legacy WebDriver evidence that the software keyboard went
- *   from hidden to shown after the tap. Retained for released provider results;
- *   current WebDriver fills require a focused element reference and do not emit it.
  * Current cloud fills report `focused-element`, including clear-only fills.
  * There is deliberately no value for "typed without evidence": nothing renders
  * this field, so such a value would reach a caller as an ordinary success and
  * recreate the #1658 silent false success it exists to remove. Every
  * unwitnessed case throws without typing instead —
  *
- * - `text_entry_focus_not_observed`: the tap focused nothing, or a keyboard
- *   already up on a driver that cannot say which field owns it (keys would have
- *   landed in the PREVIOUS field).
- * - `text_entry_focus_unobservable`: the driver implements neither route, so no
- *   wait could establish anything. `press` + `type` remains the deliberate way
- *   to enter text unwitnessed.
+ * - `text_entry_focus_not_observed`: the tap focused nothing or left the
+ *   previous field focused outside the tapped point.
+ * - `text_entry_clear_target_unavailable`: the driver cannot report a focused
+ *   element reference. An unsupported pre-tap lookup refuses before tapping.
  *
- * Closed set accepted by readFillBackendResult at the touch boundary. It keeps
- * the legacy result readable and drops values it cannot name.
+ * Closed set accepted by readFillBackendResult at the touch boundary. It drops
+ * values it cannot name.
  */
-export const CLOUD_TEXT_ENTRY_READINESS = ['focused-element', 'keyboard-shown'] as const;
+export const CLOUD_TEXT_ENTRY_READINESS = ['focused-element'] as const;
 
 export type CloudTextEntryReadiness = (typeof CLOUD_TEXT_ENTRY_READINESS)[number];
 

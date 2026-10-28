@@ -41,7 +41,7 @@ import { setWebDriverOrientation } from './webdriver-orientation.ts';
 const TEXT_ENTRY_READINESS_TIMEOUT_MS = 2_000;
 const TEXT_ENTRY_READINESS_POLL_MS = 100;
 /**
- * One keyboard probe's own transport bound. Well under the readiness budget it
+ * One focused-element probe's own transport bound. Well under the readiness budget it
  * serves, so a single hung probe cannot stretch that budget out toward the
  * WebDriver client's much longer default request timeout.
  */
@@ -76,38 +76,17 @@ function textEntryFocusNotObservedError(x: number, y: number, detail: string): A
   });
 }
 
-/**
- * The driver reports neither which element holds focus nor whether the keyboard
- * is up, so no wait could establish that the tap landed on a text input. A
- * distinct reason from a tap that missed: nothing about the target is wrong,
- * the grid simply cannot answer, and the caller's next move is different.
- */
-function textEntryFocusUnobservableError(x: number, y: number): AppError {
+function textEntryClearTargetUnavailableError(): AppError {
   return new AppError(
-    'COMMAND_FAILED',
-    `fill tapped (${x}, ${y}) but this driver reports neither the focused element nor keyboard state, so the text was not sent`,
-    {
-      reason: 'text_entry_focus_unobservable',
-      x,
-      y,
-      hint: 'This provider cannot confirm a field took focus. Use press <target> followed by type <text> to enter it anyway, accepting that nothing witnesses which field receives the keys.',
-    },
+    'UNSUPPORTED_OPERATION',
+    'fill requires a focused element reference to clear and replace the field',
+    { reason: 'text_entry_clear_target_unavailable' },
   );
 }
 
 function rectContains(rect: WebDriverWindowRect, x: number, y: number): boolean {
   return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
 }
-
-/**
- * What text entry looked like before the tap. Both readings are only evidence
- * as a change, so both must be captured before the device is touched.
- */
-type TextEntryStateBeforeTap = {
-  keyboard: boolean | 'unsupported';
-  /** `undefined` when nothing was focused, or when the driver cannot say. */
-  focusedElementId: string | undefined;
-};
 
 export type WebDriverInteractorOptions = {
   client: WebDriverClient;
@@ -238,15 +217,13 @@ class WebDriverInteractor implements Interactor {
     _delayMs?: number,
   ): Promise<Record<string, unknown>> {
     this.requireSupport('fill');
-    // #1658: both readings are taken BEFORE the tap, because each is only
-    // evidence as a change. A keyboard that was already up says nothing about
-    // which field owns first responder now, and a focused element is only
-    // proof our tap did something if it differs from the one already focused.
-    // Probe failures throw here, before the tap, so a broken session fails a
-    // fill that has not touched the device rather than typing into the dark.
-    const beforeTap = await this.readTextEntryState();
+    // Capture identity before the tap so post-tap geometry can distinguish a
+    // re-fill from a missed tap that left the previous field focused.
+    const active = await this.client.activeElementReference(TEXT_ENTRY_PROBE_TIMEOUT_MS);
+    if (active === 'unsupported') throw textEntryClearTargetUnavailableError();
+    const focusedBeforeTap = active === 'none' ? undefined : active.id;
     await this.tap(x, y);
-    const focusedElementId = await this.awaitTextEntryReadiness(beforeTap, x, y);
+    const focusedElementId = await this.awaitTextEntryReadiness(focusedBeforeTap, x, y);
     await this.client.clearElement(focusedElementId);
     if (text.length > 0) await this.client.sendElementKeys(focusedElementId, text);
     return { backend: 'webdriver', x, y, text, textEntryReadiness: 'focused-element' };
@@ -610,13 +587,12 @@ class WebDriverInteractor implements Interactor {
    * only the round trip between them gave the field time to focus.
    */
   private async awaitTextEntryReadiness(
-    beforeTap: TextEntryStateBeforeTap,
+    focusedBeforeTap: string | undefined,
     x: number,
     y: number,
   ): Promise<string> {
-    const keyboardBeforeTap = beforeTap.keyboard;
     const deadline = Date.now() + TEXT_ENTRY_READINESS_TIMEOUT_MS;
-    // Strongest evidence first: the focused element itself. Keyboard visibility
+    // Confirm the focused element itself. Keyboard visibility
     // can only witness that *a* field took focus, never *which* — which is why
     // filling a second field in an already-open form could send its keys to the
     // first one.
@@ -629,7 +605,6 @@ class WebDriverInteractor implements Interactor {
     // still earns its place as the second half of the test — re-filling the
     // field that is ALREADY focused moves nothing, and only geometry can tell
     // that from a tap that missed everything.
-    const focusedBeforeTap = beforeTap.focusedElementId;
     let focusedElementId: string | undefined;
     const focus = await this.pollWithinBudget(deadline, async (timeoutMs) => {
       const active = await this.client.activeElement(timeoutMs);
@@ -641,58 +616,12 @@ class WebDriverInteractor implements Interactor {
       return 'satisfied';
     });
     if (focusedElementId !== undefined) return focusedElementId;
-    if (focus === 'expired') {
-      throw textEntryFocusNotObservedError(
-        x,
-        y,
-        'nothing there took text-entry focus, so the text was not sent',
-      );
-    }
-
-    // No active-element route. Fall back to keyboard evidence, which can still
-    // witness focus arriving when the keyboard was down before our tap.
-    if (keyboardBeforeTap === 'unsupported') {
-      // Neither route: nothing this fill can wait for would mean anything. It
-      // used to settle briefly and type, reporting ordinary success — but
-      // nothing renders `textEntryReadiness`, so that read to a caller exactly
-      // like a fill that worked, which is the #1658 false success this whole
-      // change exists to remove. Refusing is the only honest answer, and it
-      // leaves `press` + `type` as the deliberate way to enter text unwitnessed.
-      throw textEntryFocusUnobservableError(x, y);
-    }
-    if (keyboardBeforeTap) {
-      // Keyboard already up and no way to ask which field owns it: every signal
-      // available here describes the PREVIOUS field. Typing anyway is exactly
-      // #1658's silent misdelivery, so refuse instead.
-      throw textEntryFocusNotObservedError(
-        x,
-        y,
-        'the keyboard was already up and this driver cannot report which field holds focus, so the text was not sent',
-      );
-    }
-    const keyboard = await this.pollWithinBudget(deadline, async (timeoutMs) =>
-      (await this.client.isKeyboardShown(timeoutMs)) === true ? 'satisfied' : 'retry',
+    if (focus === 'abandon') throw textEntryClearTargetUnavailableError();
+    throw textEntryFocusNotObservedError(
+      x,
+      y,
+      'nothing there took text-entry focus, so the text was not sent',
     );
-    if (keyboard === 'satisfied') {
-      throw new AppError(
-        'UNSUPPORTED_OPERATION',
-        'fill requires a focused element reference to clear and replace the field',
-        { reason: 'text_entry_clear_target_unavailable' },
-      );
-    }
-    throw textEntryFocusNotObservedError(x, y, 'no keyboard appeared, so the text was not sent');
-  }
-
-  /** Both pre-tap readings, taken together so neither is charged an extra tap-to-probe gap. */
-  private async readTextEntryState(): Promise<TextEntryStateBeforeTap> {
-    const [keyboard, active] = await Promise.all([
-      this.client.isKeyboardShown(TEXT_ENTRY_PROBE_TIMEOUT_MS),
-      this.client.activeElementReference(TEXT_ENTRY_PROBE_TIMEOUT_MS),
-    ]);
-    return {
-      keyboard,
-      focusedElementId: active === 'none' || active === 'unsupported' ? undefined : active.id,
-    };
   }
 
   /**

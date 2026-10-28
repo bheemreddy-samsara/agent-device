@@ -2,15 +2,18 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFillBackendResult } from './fill-backend-result.ts';
 
-test('readFillBackendResult preserves released keyboard-shown readiness', () => {
-  assert.deepEqual(readFillBackendResult({ textEntryReadiness: 'keyboard-shown' }), {
-    textEntryReadiness: 'keyboard-shown',
+test('readFillBackendResult preserves focused-element readiness', () => {
+  assert.deepEqual(readFillBackendResult({ textEntryReadiness: 'focused-element' }), {
+    textEntryReadiness: 'focused-element',
   });
 });
 
-test('readFillBackendResult drops an unknown readiness value', () => {
-  assert.deepEqual(readFillBackendResult({ textEntryReadiness: 'keyboard-visible' }), {});
-});
+test.each(['keyboard-shown', 'keyboard-visible'])(
+  'readFillBackendResult drops an unsupported readiness value: %s',
+  (textEntryReadiness) => {
+    assert.deepEqual(readFillBackendResult({ textEntryReadiness }), {});
+  },
+);
 
 test('readFillBackendResult preserves a complete unconfirmed verification', () => {
   assert.deepEqual(

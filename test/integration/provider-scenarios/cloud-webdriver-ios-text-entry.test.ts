@@ -154,7 +154,6 @@ test('cloud iOS fill lands text in the field it tapped', async () => {
     assert.equal(server.fieldValues.email, 'user@example.com');
     assert.deepEqual(textEntryTranscript(server), [
       'keyboard',
-      'keyboard',
       'active',
       'tap',
       'active',
@@ -235,6 +234,33 @@ test('cloud iOS fill sends no keys when a keyboard-up tap misses the second fiel
     assert.equal(server.fieldValues.email, 'user@example.com');
     assert.equal(server.fieldValues.password, '');
     assert.equal(textEntryTranscript(server).includes('keys'), false);
+  });
+}, 15_000);
+
+test('cloud iOS fill refuses before tapping when focused-element lookup is unsupported', async () => {
+  await withProviderScenarioResource(createCloudIosWorld, async ({ daemon, server }) => {
+    const lease = await openCloudIosSession(daemon);
+    server.focusField('email', 'old-value');
+    server.fieldValues.password = 'unchanged';
+    server.activeElementUnsupported = true;
+    const callsBeforeFill = server.calls.length;
+
+    const response = await daemon.callCommand(
+      'fill',
+      ['label=Password', 'replacement'],
+      leaseFlags(lease.leaseId),
+      { meta: leaseMeta(lease.leaseId) },
+    );
+
+    assert.equal(response.json.error?.data?.code, 'UNSUPPORTED_OPERATION');
+    assert.equal(response.json.error?.data?.details?.reason, 'text_entry_clear_target_unavailable');
+    assert.equal(server.fieldValues.email, 'old-value');
+    assert.equal(server.fieldValues.password, 'unchanged');
+    assert.deepEqual(textEntryTranscript(server).slice(-1), ['active']);
+    assert.deepEqual(
+      server.calls.slice(callsBeforeFill).filter((call) => call.method === 'POST'),
+      [],
+    );
   });
 }, 15_000);
 
@@ -450,6 +476,7 @@ class FakeIosWebDriverServer extends CloudWebDriverTestServer {
   sourceOverride: string | undefined;
   rectFailureField: FieldName | undefined;
   clearFails = false;
+  activeElementUnsupported = false;
   focusAfterClear: FieldName | undefined;
 
   private pollsRemaining = Number.POSITIVE_INFINITY;
@@ -521,6 +548,12 @@ class FakeIosWebDriverServer extends CloudWebDriverTestServer {
   }
 
   private activeElement(): CloudWebDriverTestResponse {
+    if (this.activeElementUnsupported) {
+      return cloudWebDriverTestJson(
+        { value: { error: 'unknown command', message: 'active element unsupported' } },
+        404,
+      );
+    }
     this.settle();
     if (!this.focused) {
       return cloudWebDriverTestJson(
