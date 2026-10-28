@@ -67,8 +67,7 @@ test('fill refuses when a keyboard-up tap misses and focus stays on the previous
     return true;
   });
 
-  // The decisive assertion: no keys reached the field the previous fill focused.
-  assert.equal(world.transcript.includes('keys'), false);
+  assert.ok(!world.transcript.some((step) => step === 'clear' || step === 'keys'));
 });
 
 // Found on a live AWS Device Farm iPhone 16: tapping Safari's collapsed address
@@ -130,7 +129,7 @@ test('fill refuses a keyboard-up tap when the driver cannot report the focused f
     return true;
   });
 
-  assert.equal(world.transcript.includes('keys'), false);
+  assert.ok(!world.transcript.some((step) => step === 'clear' || step === 'keys'));
 });
 
 // The last path that typed without evidence. It reported ordinary success, and
@@ -150,7 +149,7 @@ test('fill refuses when the driver implements neither focus route', async () => 
     return true;
   });
 
-  assert.equal(world.transcript.includes('keys'), false);
+  assert.ok(!world.transcript.some((step) => step === 'clear' || step === 'keys'));
 });
 
 // The #1658 report is "fill answered Filled N chars while the field kept its
@@ -167,7 +166,7 @@ test('fill refuses without typing when nothing ever takes focus', async () => {
     return true;
   });
 
-  assert.equal(world.transcript.includes('keys'), false);
+  assert.ok(!world.transcript.some((step) => step === 'clear' || step === 'keys'));
 });
 
 // A probe that FAILED is not a driver without the feature. Swallowing a dead
@@ -182,7 +181,7 @@ test('fill propagates a failing keyboard probe instead of typing blind', async (
   });
 
   // It threw on a pre-tap probe, so the device was never touched at all.
-  assert.equal(world.transcript.includes('tap'), false);
+  assert.deepEqual(world.transcript, ['keyboard', 'active']);
 });
 
 // Post-tap the device HAS been touched, so one transient grid error must not
@@ -208,7 +207,7 @@ test('fill rethrows the probe failure when no probe ever answers', async () => {
     return true;
   });
 
-  assert.equal(world.transcript.includes('keys'), false);
+  assert.ok(!world.transcript.some((step) => step === 'clear' || step === 'keys'));
 });
 
 // P2: a probe handed the full fixed timeout near the deadline would finish well
@@ -228,6 +227,7 @@ test('fill caps each probe timeout by the readiness budget remaining', async () 
   // The budget is 2s and probes start at t=0, so once under 1.5s remain the cap
   // is the remainder, and the final probe gets exactly one poll interval.
   assert.equal(timeouts.at(-1), 100);
+  assert.ok(!world.transcript.some((step) => step === 'clear' || step === 'keys'));
 });
 
 /**
